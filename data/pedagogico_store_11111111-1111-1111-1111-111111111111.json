@@ -1,0 +1,81 @@
+{
+  "retentionThreshold": 51,
+  "buscativaList": [],
+  "disciplinaryList": [],
+  "classRadarList": [
+    {
+      "id": "c1",
+      "grade": "8º Ano A",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c2",
+      "grade": "8º Ano B",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c3",
+      "grade": "9º Ano A",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c4",
+      "grade": "9º Ano B",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c5",
+      "grade": "7º Ano 522",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    }
+  ],
+  "substituteTeachers": [],
+  "pendingSubstitutions": [],
+  "substitutionHistory": [],
+  "classSchedules": {},
+  "conductRecords": [
+    {
+      "id": "7b251d8b-52b6-4c4c-a356-13ad0dfa972c",
+      "organization_id": "11111111-1111-1111-1111-111111111111",
+      "student_id": "00000000-0000-0000-0000-000000000001",
+      "class_id": "5af20502-39e1-4b86-8ca4-8a01c4eb017a",
+      "title": "Advertência Média",
+      "description": "Relato interno: Uso de dispositivo eletrônico durante atividade em grupo.",
+      "type": "leve",
+      "severity": "Média",
+      "points_deducted": 1,
+      "action_taken": "Orientação interna e recolhimento temporário.",
+      "status": "Homologada",
+      "shared_with_family": true,
+      "date": "2026-09-24",
+      "created_at": "2026-09-24T22:50:24.791Z",
+      "shared_message": "Infração média de conduta informada aos responsáveis.",
+      "homologated_at": "2026-09-24T22:50:25.043Z"
+    }
+  ]
+}

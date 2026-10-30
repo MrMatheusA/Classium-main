@@ -1,0 +1,1 @@
+I am writing the SQL locally to avoid output limits. The SQL has been generated in `supabase/complementary_core_phase3.sql`. I will print a summary of the work.

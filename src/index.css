@@ -1,0 +1,677 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Fraunces", Georgia, serif;
+  
+  --color-oxford: #0B1B3D;
+  --color-bordeaux: #A51C30;
+  --color-gold: #D4AF37;
+  --color-ice: #F8F9FA;
+  --color-dark-panel: #08142d;
+}
+
+/* ========================================================================= */
+/* FASE 1 — DEFINIÇÃO DOS DESIGN TOKENS GLOBAIS (TEMA CLARO SAAS ACESSÍVEL)  */
+/* ========================================================================= */
+:root {
+  /* Tipografia com escala mínima acessível */
+  --font-heading: 'Lexend', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --text-xs: 13px;   /* mínimo absoluto no sistema — nunca usar abaixo disso */
+  --text-sm: 14px;   /* labels, legendas, dados secundários */
+  --text-base: 16px; /* corpo padrão */
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: 36px;  /* números de destaque, relógio */
+  --line-height-base: 1.5;
+
+  /* Fundo geral (Clean Light SaaS) */
+  --bg-app: #F5F7FA;
+  --bg-card: #FFFFFF;
+  --bg-card-alt: #FAFBFC;
+  --bg-card-hover: #F8FAFC;
+  --bg-header: #FFFFFF;
+
+  /* Texto com alto contraste e legibilidade WCAG AA/AAA */
+  --text-heading: #0F172A;   /* contraste 15.8:1 sobre branco */
+  --text-body: #334155;      /* contraste 9.2:1 sobre branco */
+  --text-muted: #64748B;     /* contraste 4.6:1 sobre branco — nunca mais escuro que isso para texto funcional */
+
+  /* Bordas sutis e foco */
+  --border-subtle: #E2E8F0;
+  --border-focus: #2563EB;
+
+  /* Estados semânticos (suavizados para fundo claro) */
+  --color-warning-bg: #FEF3C7;
+  --color-warning-border: #FDE68A;
+  --color-warning-text: #92400E;
+  --color-success: #166534;
+  --color-success-bg: #DCFCE7;
+  --color-danger: #DC2626;
+  --color-danger-bg: #FEE2E2;
+
+  /* Sombras e bordas */
+  --shadow-card: 0 1px 2px rgba(15,23,42,0.04), 0 2px 8px rgba(15,23,42,0.06);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --radius-card: 16px;
+  --spacing-card-padding: 20px;
+
+  /* Default sidebar (Tema Claro - Portal Gestor) */
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: #1E293B;
+  --sidebar-border: #E2E8F0;
+  --sidebar-active-bg: #EFF6FF;
+  --portal-accent: #1E3A5F;
+  --portal-accent-soft: #EFF6FF;
+}
+
+/* Tokens da Landing Page (Tema Claro em tom azul suave) */
+[data-page="landing"] {
+  --bg-landing: #EFF6FF;
+  --bg-landing-card: #FFFFFF;
+  --bg-landing-hero-gradient: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+  --text-landing-heading: #0F172A;
+  --text-landing-body: #475569;
+  --accent-landing: #2563EB;
+  --accent-landing-warm: #F59E0B;
+}
+
+/* ========================================================================= */
+/* FASE 2 — SIDEBAR POR PORTAL (Base clara com acento de identidade visual)  */
+/* ========================================================================= */
+
+/* Portal Gestor — Sidebar branca/off-white com acento azul executivo */
+[data-portal="gestor"] {
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: #1E293B;
+  --sidebar-border: #E2E8F0;
+  --sidebar-active-bg: #EFF6FF;
+  --portal-accent: #1E3A5F;
+  --portal-accent-soft: #EFF6FF;
+}
+
+/* Portal Docente — Sidebar branca/off-white com acento verde acadêmico */
+[data-portal="docente"] {
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: #1E293B;
+  --sidebar-border: #E2E8F0;
+  --sidebar-active-bg: #F0FDF4;
+  --portal-accent: #166534;
+  --portal-accent-soft: #F0FDF4;
+}
+
+/* Portal Família — Sidebar branca/off-white com acento azul conexão */
+[data-portal="familia"] {
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: #1E293B;
+  --sidebar-border: #E2E8F0;
+  --sidebar-active-bg: #F0F9FF;
+  --portal-accent: #0284C7;
+  --portal-accent-soft: #F0F9FF;
+}
+
+/* Tipografia helper classes */
+.font-heading {
+  font-family: var(--font-heading) !important;
+}
+
+.font-body {
+  font-family: var(--font-body) !important;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F0EAE1;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-body);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Cards com Fundo Branco, cantos arredondados e sombra suave */
+.educa-card {
+  background-color: var(--bg-card);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-card);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--text-body);
+}
+
+.educa-card:hover {
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.educa-card-interactive {
+  cursor: pointer;
+}
+
+.educa-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  margin-bottom: 1rem;
+}
+
+.educa-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  margin-top: auto;
+}
+
+/* Standardized Form Inputs */
+.educa-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-heading);
+  margin-bottom: 0.375rem;
+}
+
+.educa-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: var(--bg-card);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0.75rem;
+  color: var(--text-heading);
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.educa-input:focus {
+  border-color: #1E3A5F;
+  box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.15);
+}
+
+.educa-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Table Design System */
+.educa-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.educa-table th {
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-card-alt);
+  color: var(--text-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.875rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.educa-table td {
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-body);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  transition: background-color 0.15s ease;
+}
+
+.educa-table tr:nth-child(even) td {
+  background-color: rgba(0, 0, 0, 0.015);
+}
+
+.educa-table tr:nth-child(odd) td {
+  background-color: var(--bg-card);
+}
+
+.educa-table tr:hover td {
+  background-color: rgba(30, 58, 95, 0.04);
+}
+
+/* Cards com Indicador de Topo (FASE 5) */
+.card-indicator-top {
+  position: relative;
+  overflow: hidden;
+}
+.card-indicator-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3.5px;
+  background-color: var(--indicator-color, #1F6F5C);
+  z-index: 1;
+}
+
+/* Badges em Formato Pílula (FASE 7) */
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Banners de Aviso Não-Crítico (FASE 6) */
+.banner-warning-soft {
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  border-radius: 0.75rem;
+  padding: 0.875rem 1rem;
+}
+
+/* Botões Primários em Tons Profundos (FASE 6) */
+.btn-primary-soft {
+  background-color: #14291F;
+  color: #FFFFFF;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  transition: all 0.2s ease;
+}
+.btn-primary-soft:hover {
+  background-color: #1E3A2F;
+}
+
+/* Skeleton Loading */
+.educa-skeleton {
+  background: linear-gradient(
+    90deg,
+    #F1F5F9 0%,
+    #E2E8F0 50%,
+    #F1F5F9 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.8s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+@keyframes skeletonPulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Badges Library (Calibradas para Alto Contraste em Fundo Claro) */
+.badge-premium {
+  background-color: #FEF3C7;
+  border: 1px solid #FDE68A;
+  color: #92400E;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+}
+
+.badge-vip {
+  background: linear-gradient(135deg, #F59E0B, #D97706);
+  color: #FFFFFF;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  box-shadow: 0 1px 3px rgba(217, 119, 6, 0.3);
+}
+
+.badge-novo {
+  background-color: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: #1D4ED8;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+}
+
+.badge-ia {
+  background-color: #FAF5FF;
+  border: 1px solid #E9D5FF;
+  color: #7E22CE;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+}
+
+.badge-beta {
+  background-color: #FDF2F8;
+  border: 1px solid #FBCFE8;
+  color: #BE185D;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+}
+
+.badge-ativo {
+  background-color: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  color: #15803D;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+}
+
+.badge-inativo {
+  background-color: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  color: #64748B;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+}
+
+.badge-urgente {
+  background-color: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #DC2626;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Keyframe Animations */
+/* Keyframe Animations for Mobile App Components */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInFast {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in-fast {
+  animation: fadeInFast 0.2s ease-out forwards;
+}
+
+/* Safe Area Insets for iOS Notch & Dynamic Island */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 16px));
+}
+
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 12px));
+}
+
+/* Touch Friendly Utilities */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Prevent accidental horizontal scrolling globally */
+html, body {
+  overflow-x: hidden;
+  touch-action: manipulation;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.3;
+    filter: drop-shadow(0 0 2px rgba(212, 175, 55, 0.4));
+  }
+  50% {
+    opacity: 0.9;
+    filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.8));
+  }
+}
+
+@keyframes pulseBlueGlow {
+  0%, 100% {
+    opacity: 0.4;
+    filter: drop-shadow(0 0 2px rgba(59, 130, 246, 0.4));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.8));
+  }
+}
+
+@keyframes dashFlow {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+
+@keyframes slowTilt {
+  0%, 100% {
+    transform: rotate(-12deg) translateY(0px) scale(1);
+  }
+  50% {
+    transform: rotate(-10deg) translateY(-15px) scale(1.02);
+  }
+}
+
+@keyframes particleFloat {
+  0% {
+    transform: translateY(0px) translateX(0px);
+    opacity: 0.1;
+  }
+  50% {
+    transform: translateY(-40px) translateX(20px);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(-80px) translateX(0px);
+    opacity: 0;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+.animate-pulse-blue {
+  animation: pulseBlueGlow 5s ease-in-out infinite;
+}
+
+.animate-dash-flow {
+  stroke-dasharray: 8, 4;
+  animation: dashFlow 20s linear infinite;
+}
+
+.animate-slow-tilt {
+  animation: slowTilt 12s ease-in-out infinite;
+}
+
+.animate-particle-1 {
+  animation: particleFloat 15s infinite linear;
+}
+.animate-particle-2 {
+  animation: particleFloat 22s infinite linear;
+  animation-delay: 4s;
+}
+.animate-particle-3 {
+  animation: particleFloat 18s infinite linear;
+  animation-delay: 8s;
+}
+.animate-particle-4 {
+  animation: particleFloat 25s infinite linear;
+  animation-delay: 12s;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #educa-shared-calendar-root {
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+  .print-canvas-only {
+    width: 100% !important;
+    max-width: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Isolation of Rifas & Ações Entre Amigos batch printing */
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  @page rifa-landscape {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  body.printing-rifas {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Completely suppress application UI when printing rifas batch */
+  body.printing-rifas > #root,
+  body.printing-rifas > .app-container,
+  body.printing-rifas nav,
+  body.printing-rifas header,
+  body.printing-rifas aside {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Display ONLY the print-area-rifas container */
+  body.printing-rifas #print-area-rifas {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+  }
+
+  body.printing-rifas #print-area-rifas * {
+    visibility: visible !important;
+  }
+
+  .print-page-rifas {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    box-sizing: border-box !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: 297mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 auto !important;
+    padding: 8mm 10mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .print-page-rifas.page-landscape {
+    page: rifa-landscape;
+    width: 297mm !important;
+    max-width: 297mm !important;
+    min-height: 210mm !important;
+    height: 210mm !important;
+    max-height: 210mm !important;
+  }
+
+  .print-page-rifas:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+}
+
+#print-area-rifas {
+  display: none !important;
+}
+
+

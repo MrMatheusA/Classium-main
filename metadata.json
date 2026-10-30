@@ -1,0 +1,8 @@
+{
+  "name": "Classium",
+  "description": "Plataforma Educacional Integrada (Classium OS) com portais dedicados para Gestor, Docente e Família, governança escolar e comunicação integrada.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

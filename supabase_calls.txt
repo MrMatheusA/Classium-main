@@ -1,0 +1,106 @@
+src/components/admin_master/SupabaseDiagnosticsModal.tsx:      const { data: healthCheck, error: healthError } = await supabase.from('schools').select('id').limit(1);
+src/components/admin_master/SupabaseDiagnosticsModal.tsx:        const { error } = await supabase.from(t).select('*', { count: 'exact', head: true });
+src/components/admin_master/SupabaseDiagnosticsModal.tsx:      const { data: sessionData } = await supabase.auth.getSession();
+src/components/admin_master/SupabaseDiagnosticsModal.tsx:      const { data: queryData, error: queryError } = await supabase.from('students').select('id, name, school_id').limit(5);
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('students').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('teachers').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('guardians').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('employees').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('classes').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('schools').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('grading_models').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('grades').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('communications').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('digital_signatures').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count: studentCount } = await supabase.from('students').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('library_loans').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('transport_vehicles').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count, error } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:        supabase.from('students').select('id, grade, class_id'),
+src/components/admin/AdminDashboardHome.tsx:        supabase.from('classes').select('id, name, grade, shift'),
+src/components/admin/AdminDashboardHome.tsx:        supabase.from('attendance_records').select('date, status')
+src/components/admin/AdminDashboardHome.tsx:        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(6),
+src/components/admin/AdminDashboardHome.tsx:        supabase.from('system_profiles').select('id, full_name')
+src/components/admin/AdminDashboardHome.tsx:      const { data: attendanceData } = await supabase.from('attendance_records').select('student_id, status');
+src/components/admin/AdminDashboardHome.tsx:          const { data: student } = await supabase.from('students').select('name').eq('id', studentId).single();
+src/components/admin/AdminDashboardHome.tsx:      const { data: schedules } = await supabase.from('class_schedules').select('id, teacher_id, day_of_week, start_time');
+src/components/admin/AdminDashboardHome.tsx:        const { data: teachers } = await supabase.from('teachers').select('name').in('id', uniqueIds);
+src/components/admin/AdminDashboardHome.tsx:      const { count: commCount } = await supabase.from('communications').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count: sigCount } = await supabase.from('digital_signatures').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:      const { count: studCount } = await supabase.from('students').select('*', { count: 'exact', head: true });
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('totalStudents', async () => (await supabase.from('students').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('totalTeachers', async () => (await supabase.from('teachers').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('totalGuardians', async () => (await supabase.from('guardians').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('totalEmployees', async () => (await supabase.from('employees').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('totalClasses', async () => (await supabase.from('classes').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('totalSchools', async () => (await supabase.from('schools').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('todayAttendance', async () => (await supabase.from('attendance_records').select('*', { count: 'exact', head: true }).eq('date', new Date().toISOString().split('T')[0])).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('assessmentsCreated', async () => (await supabase.from('grading_models').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('gradesPosted', async () => (await supabase.from('grades').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('communicationsSent', async () => (await supabase.from('communications').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('pendingSignatures', async () => (await supabase.from('digital_signatures').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('borrowedBooks', async () => (await supabase.from('library_loans').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('activeVehicles', async () => (await supabase.from('transport_vehicles').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/AdminDashboardHome.tsx:            onRetry={() => loadMetric('supportTickets', async () => (await supabase.from('support_tickets').select('*', { count: 'exact', head: true })).count || 0)} 
+src/components/admin/StudentEnrollmentWizard.tsx:          await supabase.from('library_members' as any).insert({
+src/components/admin/StudentEnrollmentWizard.tsx:            await supabase.from('student_transports' as any).insert({
+src/components/admin/StudentEnrollmentWizard.tsx:          await supabase.from('student_meal_cards' as any).insert({
+src/components/OnboardingPage.tsx:      const { error: schoolErr } = await supabase.from('schools').upsert(schoolRecord);
+src/components/OnboardingPage.tsx:      const { data: { user } } = await supabase.auth.getUser();
+src/components/OnboardingPage.tsx:        await supabase.from('profiles').upsert({
+src/core/api/index.ts:      let query = supabase.from(tableName).select(options?.select || '*');
+src/core/api/index.ts:      return supabase.from(tableName).select('*').eq('id', id).single();
+src/core/api/index.ts:      return supabase.from(tableName).insert(payload).select().single();
+src/core/api/index.ts:      return supabase.from(tableName).update(payload).eq('id', id).select().single();
+src/core/api/index.ts:      return supabase.from(tableName).delete().eq('id', id).select().single();
+src/core/storage/index.ts:      const { data, error } = await supabase.storage
+src/core/storage/index.ts:      const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(path);
+src/core/storage/index.ts:      const { data, error } = await supabase.storage.from(bucketName).download(path);
+src/core/storage/index.ts:      const { data, error } = await supabase.storage
+src/core/storage/index.ts:      const { error } = await supabase.storage.from(bucketName).remove([path]);
+src/sdk/users/index.ts:      let query = supabase.from('profiles').select('*', { count: 'exact', head: true });
+src/lib/supabase/storage.ts:      const { data, error } = await supabase.storage
+src/lib/supabase/storage.ts:      const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+src/lib/supabase/storage.ts:    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+src/lib/supabase/storage.ts:      const { error } = await supabase.storage.from(bucket).remove([filePath]);
+src/lib/supabase/storage.ts:      const { data, error } = await supabase.storage.from(bucket).list(path, {
+src/lib/supabase/auth.ts:    const { data } = await supabase.auth.getSession();
+src/lib/supabase/auth.ts:    const { data } = await supabase.auth.getUser();
+src/lib/supabase/auth.ts:      const { data, error } = await supabase.auth.signInWithPassword({
+src/lib/supabase/auth.ts:      const { data, error } = await supabase.auth.signUp({
+src/lib/supabase/auth.ts:      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+src/lib/supabase/auth.ts:      const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+src/lib/supabase/auth.ts:      await supabase.auth.signOut();
+src/lib/supabase/auth.ts:    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+src/auth/AuthProvider.tsx:    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+src/auth/AuthProvider.tsx:    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+src/auth/AuthProvider.tsx:    const { error } = await supabase.auth.signInWithPassword({
+src/auth/AuthProvider.tsx:    await supabase.auth.signOut();
+src/services/integration/GlobalEventBus.ts:      const { data: session } = await supabase.auth.getSession();
+src/services/shared/base.service.ts:        let query = supabase.from(this.tableName).select(options.select || '*');
+src/services/shared/base.service.ts:        let query = supabase.from(this.tableName).select(options.select || '*');
+src/services/shared/base.service.ts:      let query = supabase.from(this.tableName).select('*', { count: 'exact', head: true });
+src/services/partnerPersistenceService.ts:      const { error } = await supabase.from('partner_ads').upsert(dbRows, { onConflict: 'id' });
+src/services/partnerPersistenceService.ts:      const { error } = await supabase.from('professionals').upsert(dbRows, { onConflict: 'id' });
+src/services/partnerPersistenceService.ts:      await supabase.from('service_providers').upsert(dbRows, { onConflict: 'id' });
+src/services/partnerPersistenceService.ts:      const { data, error } = await supabase.from('partner_ads').select('*');
+src/services/partnerPersistenceService.ts:      const { data, error } = await supabase.from('professionals').select('*');
+src/services/storage/storage.service.ts:      const { data, error } = await supabase.storage
+src/services/storage/storage.service.ts:      const { data, error } = await supabase.storage
+src/services/storage/storage.service.ts:      const { data, error } = await supabase.storage
+src/services/storage/storage.service.ts:      const { data, error } = await supabase.storage
+src/services/storage/storage.service.ts:    const { data } = supabase.storage
+src/services/IntegrationService.ts:      const { data: session } = await supabase.auth.getSession();
+src/services/StorageService.ts:      const { data, error } = await supabase.storage
+src/services/StorageService.ts:        const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+src/services/StorageService.ts:    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
+src/services/StorageService.ts:    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+src/services/StorageService.ts:      // await supabase.storage.from(bucket).remove([path]);
+src/services/StorageService.ts:    const { data: session } = await supabase.auth.getSession();
+src/context/PlatformContext.tsx:          supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+src/context/PlatformContext.tsx:          supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+src/context/PlatformContext.tsx:          supabase.from('classes').select('*', { count: 'exact', head: true }).eq('school_id', schoolId)
+src/context/MasterPortalContext.tsx:      await supabase.from('audit_logs').insert({
+src/contexts/AuthContext.tsx:    supabase.auth.getSession().then(({ data: { session } }) => {
+src/contexts/AuthContext.tsx:    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+src/contexts/AuthContext.tsx:    await supabase.auth.signOut();

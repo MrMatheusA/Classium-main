@@ -1,0 +1,745 @@
+--- ANALYSIS OF TABLES DEFINED IN SCHEMA ---
+Total target tables: 47
+
+Table: "academic_years" (7 columns)
+  Required columns: id, organization_id, name, starts_on, ends_on
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - name: string (text)
+    - starts_on: string (date)
+    - ends_on: string (date)
+    - is_current: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "addresses" (14 columns)
+  Required columns: id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - label: string (text)
+    - street: string (text)
+    - number: string (text)
+    - complement: string (text)
+    - district: string (text)
+    - city: string (text)
+    - state: string (text)
+    - postal_code: string (text)
+    - country: string (text)
+    - is_primary: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "announcements" (10 columns)
+  Required columns: id, organization_id, title
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - author_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - title: string (text)
+    - body: string (text)
+    - target: string (text)
+    - class_id: string (uuid) - Note:
+This is a Foreign Key to `classes.id`.<fk table='classes' column='id'/>
+    - published_at: string (timestamp with time zone)
+    - expires_at: string (timestamp with time zone)
+    - created_at: string (timestamp with time zone)
+
+Table: "attendances" (8 columns)
+  Required columns: id, class_id, student_id, status
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - lesson_id: string (uuid) - Note:
+This is a Foreign Key to `lessons.id`.<fk table='lessons' column='id'/>
+    - class_id: string (uuid) - Note:
+This is a Foreign Key to `classes.id`.<fk table='classes' column='id'/>
+    - student_id: string (uuid) - Note:
+This is a Foreign Key to `students.id`.<fk table='students' column='id'/>
+    - status: string (text)
+    - notes: string (text)
+    - recorded_by: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - recorded_at: string (timestamp with time zone)
+
+Table: "audit_logs" (11 columns)
+  Required columns: id, action
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - actor_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - organization_id: string (uuid)
+    - action: string (text)
+    - entity_type: string (text)
+    - entity_id: string (uuid)
+    - old_data: undefined (jsonb)
+    - new_data: undefined (jsonb)
+    - ip_address: string (inet)
+    - user_agent: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "class_students" (5 columns)
+  Required columns: id, class_id, student_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - class_id: string (uuid) - Note:
+This is a Foreign Key to `classes.id`.<fk table='classes' column='id'/>
+    - student_id: string (uuid) - Note:
+This is a Foreign Key to `students.id`.<fk table='students' column='id'/>
+    - enrolled_at: string (timestamp with time zone)
+    - status: string (text)
+
+Table: "class_teachers" (5 columns)
+  Required columns: id, class_id, teacher_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - class_id: string (uuid) - Note:
+This is a Foreign Key to `classes.id`.<fk table='classes' column='id'/>
+    - teacher_id: string (uuid) - Note:
+This is a Foreign Key to `teachers.id`.<fk table='teachers' column='id'/>
+    - subject_id: string (uuid) - Note:
+This is a Foreign Key to `subjects.id`.<fk table='subjects' column='id'/>
+    - is_main: boolean (boolean)
+
+Table: "classes" (10 columns)
+  Required columns: id, organization_id, academic_year_id, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - academic_year_id: string (uuid) - Note:
+This is a Foreign Key to `academic_years.id`.<fk table='academic_years' column='id'/>
+    - course_id: string (uuid) - Note:
+This is a Foreign Key to `courses.id`.<fk table='courses' column='id'/>
+    - name: string (text)
+    - shift: string (text)
+    - max_students: integer (int32)
+    - room: string (text)
+    - is_active: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "contacts" (9 columns)
+  Required columns: id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - name: string (text)
+    - email: string (text)
+    - phone: string (text)
+    - role_title: string (text)
+    - is_primary: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "courses" (8 columns)
+  Required columns: id, organization_id, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - name: string (text)
+    - code: string (text)
+    - description: string (text)
+    - level: string (text)
+    - is_active: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "enrollments" (7 columns)
+  Required columns: id, organization_id, student_id, academic_year_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - student_id: string (uuid) - Note:
+This is a Foreign Key to `students.id`.<fk table='students' column='id'/>
+    - academic_year_id: string (uuid) - Note:
+This is a Foreign Key to `academic_years.id`.<fk table='academic_years' column='id'/>
+    - course_id: string (uuid) - Note:
+This is a Foreign Key to `courses.id`.<fk table='courses' column='id'/>
+    - status: string (text)
+    - enrolled_at: string (timestamp with time zone)
+
+Table: "family_links" (8 columns)
+  Required columns: id, student_id, guardian_id, relationship
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - student_id: string (uuid) - Note:
+This is a Foreign Key to `students.id`.<fk table='students' column='id'/>
+    - guardian_id: string (uuid) - Note:
+This is a Foreign Key to `guardians.id`.<fk table='guardians' column='id'/>
+    - relationship: string (text)
+    - is_financial_responsible: boolean (boolean)
+    - is_primary: boolean (boolean)
+    - can_pickup: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "grades" (12 columns)
+  Required columns: id, organization_id, student_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - student_id: string (uuid) - Note:
+This is a Foreign Key to `students.id`.<fk table='students' column='id'/>
+    - class_id: string (uuid) - Note:
+This is a Foreign Key to `classes.id`.<fk table='classes' column='id'/>
+    - subject_id: string (uuid) - Note:
+This is a Foreign Key to `subjects.id`.<fk table='subjects' column='id'/>
+    - teacher_id: string (uuid) - Note:
+This is a Foreign Key to `teachers.id`.<fk table='teachers' column='id'/>
+    - title: string (text)
+    - value: number (numeric)
+    - max_value: number (numeric)
+    - graded_at: string (date)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+
+Table: "guardians" (5 columns)
+  Required columns: id, profile_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - profile_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - relationship_default: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "infrastructure_assets" (10 columns)
+  Required columns: id, organization_id, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - name: string (text)
+    - type: string (text)
+    - identifier: string (text)
+    - status: string (text)
+    - location: string (text)
+    - metadata: undefined (jsonb)
+    - acquired_at: string (date)
+    - created_at: string (timestamp with time zone)
+
+Table: "learning_materials" (12 columns)
+  Required columns: id, organization_id, title
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - class_id: string (uuid) - Note:
+This is a Foreign Key to `classes.id`.<fk table='classes' column='id'/>
+    - subject_id: string (uuid) - Note:
+This is a Foreign Key to `subjects.id`.<fk table='subjects' column='id'/>
+    - teacher_id: string (uuid) - Note:
+This is a Foreign Key to `teachers.id`.<fk table='teachers' column='id'/>
+    - title: string (text)
+    - description: string (text)
+    - file_url: string (text)
+    - storage_path: string (text)
+    - type: string (text)
+    - is_public: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "lessons" (10 columns)
+  Required columns: id, class_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - class_id: string (uuid) - Note:
+This is a Foreign Key to `classes.id`.<fk table='classes' column='id'/>
+    - subject_id: string (uuid) - Note:
+This is a Foreign Key to `subjects.id`.<fk table='subjects' column='id'/>
+    - teacher_id: string (uuid) - Note:
+This is a Foreign Key to `teachers.id`.<fk table='teachers' column='id'/>
+    - title: string (text)
+    - description: string (text)
+    - starts_at: string (timestamp with time zone)
+    - ends_at: string (timestamp with time zone)
+    - location: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "notifications" (10 columns)
+  Required columns: id, user_id, title
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - organization_id: string (uuid)
+    - title: string (text)
+    - body: string (text)
+    - type: string (text)
+    - link: string (text)
+    - is_read: boolean (boolean)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+
+Table: "order_items" (8 columns)
+  Required columns: id, order_id, unit_price_cents, total_cents
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - order_id: string (uuid) - Note:
+This is a Foreign Key to `orders.id`.<fk table='orders' column='id'/>
+    - product_id: string (uuid) - Note:
+This is a Foreign Key to `products.id`.<fk table='products' column='id'/>
+    - plan_id: string (uuid) - Note:
+This is a Foreign Key to `plans.id`.<fk table='plans' column='id'/>
+    - description: string (text)
+    - quantity: integer (int32)
+    - unit_price_cents: integer (int32)
+    - total_cents: integer (int32)
+
+Table: "orders" (12 columns)
+  Required columns: id, status, total_cents
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - partner_id: string (uuid) - Note:
+This is a Foreign Key to `partners.id`.<fk table='partners' column='id'/>
+    - status: string (text)
+    - total_cents: integer (int32)
+    - currency: string (text)
+    - payment_status: string (text)
+    - external_order_id: string (text)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "organization_members" (6 columns)
+  Required columns: id, organization_id, user_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - member_role: string (text)
+    - status: string (text)
+    - joined_at: string (timestamp with time zone)
+
+Table: "organization_settings" (4 columns)
+  Required columns: organization_id
+  Columns:
+    - organization_id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - settings: undefined (jsonb)
+    - features: undefined (jsonb)
+    - updated_at: string (timestamp with time zone)
+
+Table: "organizations" (14 columns)
+  Required columns: id, type, legal_name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - type: string (text)
+    - legal_name: string (text)
+    - trade_name: string (text)
+    - document_number: string (text)
+    - email: string (text)
+    - phone: string (text)
+    - website: string (text)
+    - logo_url: string (text)
+    - is_active: boolean (boolean)
+    - plan_status: string (text)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "partner_contracts" (10 columns)
+  Required columns: id, partner_id, organization_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - partner_id: string (uuid) - Note:
+This is a Foreign Key to `partners.id`.<fk table='partners' column='id'/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - title: string (text)
+    - starts_on: string (date)
+    - ends_on: string (date)
+    - status: string (text)
+    - document_url: string (text)
+    - terms: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+
+Table: "partner_services" (7 columns)
+  Required columns: id, partner_id, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - partner_id: string (uuid) - Note:
+This is a Foreign Key to `partners.id`.<fk table='partners' column='id'/>
+    - name: string (text)
+    - description: string (text)
+    - category: string (text)
+    - is_active: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "partner_users" (6 columns)
+  Required columns: id, partner_id, profile_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - partner_id: string (uuid) - Note:
+This is a Foreign Key to `partners.id`.<fk table='partners' column='id'/>
+    - profile_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - role: string (text)
+    - status: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "partners" (13 columns)
+  Required columns: id, legal_name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - legal_name: string (text)
+    - trade_name: string (text)
+    - document_number: string (text)
+    - email: string (text)
+    - phone: string (text)
+    - type: string (text)
+    - status: string (text)
+    - logo_url: string (text)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "payments" (14 columns)
+  Required columns: id, amount_cents, status
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - order_id: string (uuid) - Note:
+This is a Foreign Key to `orders.id`.<fk table='orders' column='id'/>
+    - subscription_id: string (uuid) - Note:
+This is a Foreign Key to `subscriptions.id`.<fk table='subscriptions' column='id'/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - amount_cents: integer (int32)
+    - currency: string (text)
+    - status: string (text)
+    - provider: string (text)
+    - provider_payment_id: string (text)
+    - payment_method: string (text)
+    - paid_at: string (timestamp with time zone)
+    - raw_response: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+
+Table: "permissions" (6 columns)
+  Required columns: id, code, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - code: string (text)
+    - name: string (text)
+    - module: string (text)
+    - description: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "plan_features" (5 columns)
+  Required columns: id, plan_id, feature_code, feature_name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - plan_id: string (uuid) - Note:
+This is a Foreign Key to `plans.id`.<fk table='plans' column='id'/>
+    - feature_code: string (text)
+    - feature_name: string (text)
+    - value: string (text)
+
+Table: "plans" (12 columns)
+  Required columns: id, code, name, price_cents
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - code: string (text)
+    - name: string (text)
+    - description: string (text)
+    - price_cents: integer (int32)
+    - currency: string (text)
+    - interval: string (text)
+    - trial_days: integer (int32)
+    - is_active: boolean (boolean)
+    - sort_order: integer (int32)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+
+Table: "product_categories" (5 columns)
+  Required columns: id, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - name: string (text)
+    - slug: string (text)
+    - parent_id: string (uuid) - Note:
+This is a Foreign Key to `product_categories.id`.<fk table='product_categories' column='id'/>
+    - created_at: string (timestamp with time zone)
+
+Table: "products" (14 columns)
+  Required columns: id, name, price_cents
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - partner_id: string (uuid) - Note:
+This is a Foreign Key to `partners.id`.<fk table='partners' column='id'/>
+    - category_id: string (uuid) - Note:
+This is a Foreign Key to `product_categories.id`.<fk table='product_categories' column='id'/>
+    - name: string (text)
+    - slug: string (text)
+    - description: string (text)
+    - type: string (text)
+    - price_cents: integer (int32)
+    - currency: string (text)
+    - is_active: boolean (boolean)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "professional_specialties" (3 columns)
+  Required columns: id, professional_id, specialty
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - professional_id: string (uuid) - Note:
+This is a Foreign Key to `professionals.id`.<fk table='professionals' column='id'/>
+    - specialty: string (text)
+
+Table: "professionals" (9 columns)
+  Required columns: id, profile_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - profile_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - type: string (text)
+    - license_number: string (text)
+    - bio: string (text)
+    - is_external: boolean (boolean)
+    - status: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "profiles" (18 columns)
+  Required columns: id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - email: string (text)
+    - full_name: string (text)
+    - display_name: string (text)
+    - avatar_url: string (text)
+    - phone: string (text)
+    - document_type: string (text)
+    - document_number: string (text)
+    - birth_date: string (date)
+    - gender: string (text)
+    - bio: string (text)
+    - locale: string (text)
+    - timezone: string (text)
+    - is_active: boolean (boolean)
+    - last_seen_at: string (timestamp with time zone)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "role_permissions" (2 columns)
+  Required columns: role_id, permission_id
+  Columns:
+    - role_id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+This is a Foreign Key to `roles.id`.<fk table='roles' column='id'/>
+    - permission_id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+This is a Foreign Key to `permissions.id`.<fk table='permissions' column='id'/>
+
+Table: "roles" (6 columns)
+  Required columns: id, code, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - code: string (text)
+    - name: string (text)
+    - description: string (text)
+    - is_system: boolean (boolean)
+    - created_at: string (timestamp with time zone)
+
+Table: "student_documents" (8 columns)
+  Required columns: id, student_id, title
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - student_id: string (uuid) - Note:
+This is a Foreign Key to `students.id`.<fk table='students' column='id'/>
+    - title: string (text)
+    - file_url: string (text)
+    - storage_path: string (text)
+    - type: string (text)
+    - uploaded_by: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - created_at: string (timestamp with time zone)
+
+Table: "students" (12 columns)
+  Required columns: id, organization_id, full_name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - profile_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - registration_code: string (text)
+    - full_name: string (text)
+    - birth_date: string (date)
+    - document_number: string (text)
+    - gender: string (text)
+    - status: string (text)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "subjects" (6 columns)
+  Required columns: id, organization_id, name
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - name: string (text)
+    - code: string (text)
+    - description: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "subscriptions" (11 columns)
+  Required columns: id, organization_id, plan_id, status
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - plan_id: string (uuid) - Note:
+This is a Foreign Key to `plans.id`.<fk table='plans' column='id'/>
+    - status: string (text)
+    - current_period_start: string (timestamp with time zone)
+    - current_period_end: string (timestamp with time zone)
+    - cancel_at_period_end: boolean (boolean)
+    - external_subscription_id: string (text)
+    - metadata: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "support_ticket_messages" (7 columns)
+  Required columns: id, ticket_id, author_id, body
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - ticket_id: string (uuid) - Note:
+This is a Foreign Key to `support_tickets.id`.<fk table='support_tickets' column='id'/>
+    - author_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - body: string (text)
+    - is_internal: boolean (boolean)
+    - attachments: undefined (jsonb)
+    - created_at: string (timestamp with time zone)
+
+Table: "support_tickets" (11 columns)
+  Required columns: id, created_by, subject
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - created_by: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - assigned_to: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - subject: string (text)
+    - description: string (text)
+    - status: string (text)
+    - priority: string (text)
+    - category: string (text)
+    - created_at: string (timestamp with time zone)
+    - updated_at: string (timestamp with time zone)
+
+Table: "teachers" (8 columns)
+  Required columns: id, organization_id, profile_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - profile_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - employee_code: string (text)
+    - hire_date: string (date)
+    - status: string (text)
+    - bio: string (text)
+    - created_at: string (timestamp with time zone)
+
+Table: "user_roles" (8 columns)
+  Required columns: id, user_id, role_id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - role_id: string (uuid) - Note:
+This is a Foreign Key to `roles.id`.<fk table='roles' column='id'/>
+    - organization_id: string (uuid) - Note:
+This is a Foreign Key to `organizations.id`.<fk table='organizations' column='id'/>
+    - is_primary: boolean (boolean)
+    - valid_from: string (timestamp with time zone)
+    - valid_until: string (timestamp with time zone)
+    - created_at: string (timestamp with time zone)
+
+Table: "user_sessions_audit" (6 columns)
+  Required columns: id
+  Columns:
+    - id: string (uuid) - Note:
+This is a Primary Key.<pk/>
+    - user_id: string (uuid) - Note:
+This is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>
+    - event: string (text)
+    - ip_address: string (inet)
+    - user_agent: string (text)
+    - created_at: string (timestamp with time zone)
+
+--- VERIFICATION SUMMARY ---
+Verified tables: 47 / 47
+All 47 target tables exist in the live database schema!

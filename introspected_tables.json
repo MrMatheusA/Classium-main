@@ -1,0 +1,1048 @@
+[
+  {
+    "table": "academic_years",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "year",
+      "name",
+      "start_date",
+      "end_date",
+      "is_current",
+      "status",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "activities",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "addresses",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "announcement_reads",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "announcements",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "attendance",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "audit_logs",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "user_id",
+      "action",
+      "table_name",
+      "record_id",
+      "old_data",
+      "new_data",
+      "ip_address",
+      "created_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "calendar_events",
+    "status": "OK",
+    "rowCount": 3,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "title",
+      "description",
+      "event_type",
+      "start_date",
+      "end_date",
+      "start_time",
+      "end_time",
+      "location",
+      "target_audience",
+      "color",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "category",
+      "category_id",
+      "room_id",
+      "is_all_day",
+      "is_holiday",
+      "is_national_holiday",
+      "is_published",
+      "class_id",
+      "teacher_id",
+      "student_id",
+      "created_by"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "class_schedules",
+    "status": "OK",
+    "rowCount": 50,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "class_id",
+      "day_of_week",
+      "period_number",
+      "start_time",
+      "end_time",
+      "discipline_name",
+      "teacher_name",
+      "room",
+      "created_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "class_students",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "class_teachers",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "classes",
+    "status": "OK",
+    "rowCount": 7,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "school_id",
+      "code",
+      "name",
+      "grade",
+      "shift",
+      "room",
+      "max_capacity",
+      "max_students",
+      "academic_year",
+      "status",
+      "is_active",
+      "numeration_status",
+      "kit_escolar_status",
+      "uniform_status",
+      "school_days",
+      "created_at",
+      "updated_at",
+      "year_cycle",
+      "room_number",
+      "teacher_id",
+      "capacity",
+      "school_year",
+      "school_kit_required",
+      "uniform_required",
+      "teachers_assigned"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "classes_with_student_count",
+    "status": "OK",
+    "rowCount": 7,
+    "columnsSample": [
+      "id",
+      "school_id",
+      "organization_id",
+      "code",
+      "name",
+      "year_cycle",
+      "grade",
+      "shift",
+      "room_number",
+      "room",
+      "teacher_id",
+      "capacity",
+      "max_capacity",
+      "status",
+      "is_active",
+      "school_year",
+      "academic_year",
+      "school_kit_required",
+      "uniform_required",
+      "teachers_assigned",
+      "numeration_status",
+      "school_days",
+      "num_enrolled_students",
+      "enrolled_count",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "communication_attachments",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "communication_recipients",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "communication_templates",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "communications",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "content_management",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "digital_signatures",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "disciplines",
+    "status": "OK",
+    "rowCount": 9,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "name",
+      "code",
+      "workload_hours",
+      "segment",
+      "description",
+      "color",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "document_acknowledgements",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "drivers",
+    "status": "OK",
+    "rowCount": 2,
+    "columnsSample": [
+      "id",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "organization_id",
+      "full_name",
+      "cpf",
+      "cnh_number",
+      "cnh_expiration",
+      "phone",
+      "email",
+      "status"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "employees_counts_by_position",
+    "status": "ERROR",
+    "error": "Could not find the table 'public.employees_counts_by_position' in the schema cache",
+    "code": "PGRST205"
+  },
+  {
+    "table": "employees",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "event_categories",
+    "status": "OK",
+    "rowCount": 25,
+    "columnsSample": [
+      "id",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "organization_id",
+      "code",
+      "name",
+      "color",
+      "icon",
+      "is_default"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "event_subscriptions",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "events",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "family_links",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "food_inventory",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "food_suppliers",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "gate_access_logs",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "person_type",
+      "person_id",
+      "person_name",
+      "direction",
+      "gate_name",
+      "method",
+      "authorized_by",
+      "timestamp"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "grades",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "guardians",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "user_id",
+      "full_name",
+      "name",
+      "cpf",
+      "rg",
+      "email",
+      "phone",
+      "secondary_phone",
+      "kinship",
+      "profession",
+      "address",
+      "neighborhood",
+      "city",
+      "state",
+      "postal_code",
+      "status",
+      "created_at",
+      "updated_at",
+      "school_id"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "holidays",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "inspectors",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "integration_queue",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "lessons",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "lost_and_found_items",
+    "status": "OK",
+    "rowCount": 5,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "title",
+      "category",
+      "description",
+      "location_found",
+      "date_found",
+      "photo_url",
+      "status",
+      "claimed_by_student_id",
+      "claimed_by_name",
+      "claimed_at",
+      "delivered_by",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "lost_and_found_reservations",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "meal_service_records",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "menu_attachments",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "menus",
+    "status": "ERROR",
+    "error": "Could not find the table 'public.menus' in the schema cache",
+    "code": "PGRST205"
+  },
+  {
+    "table": "organizations",
+    "status": "OK",
+    "rowCount": 2,
+    "columnsSample": [
+      "id",
+      "name",
+      "trade_name",
+      "document_number",
+      "inep_code",
+      "email",
+      "phone",
+      "address",
+      "city",
+      "state",
+      "postal_code",
+      "logo_url",
+      "status",
+      "settings",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "partner_ads",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "pedagogical_reports",
+    "status": "OK",
+    "rowCount": 4,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "class_id",
+      "student_id",
+      "teacher_id",
+      "report_type",
+      "title",
+      "content",
+      "academic_year",
+      "created_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "pickup_authorization_students",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "pickup_authorizations",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "portarias",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "name",
+      "location",
+      "status",
+      "created_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "professionals",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "profiles",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "qr_codes",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "role_permissions",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "routes",
+    "status": "OK",
+    "rowCount": 2,
+    "columnsSample": [
+      "id",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "organization_id",
+      "name",
+      "description",
+      "vehicle_id",
+      "driver_id",
+      "start_time",
+      "end_time",
+      "status"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "schedule_time_slots",
+    "status": "OK",
+    "rowCount": 18,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "shift_name",
+      "slot_order",
+      "period_number",
+      "label",
+      "start_time",
+      "end_time",
+      "is_break",
+      "academic_year",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "school_calendar",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "school_menus",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "date",
+      "day_of_week",
+      "meal_type",
+      "title",
+      "menu_description",
+      "calories",
+      "allergens",
+      "nutritional_info",
+      "is_special_diet",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "description",
+      "month",
+      "year",
+      "status",
+      "published_at",
+      "created_by",
+      "nutritionist_name",
+      "nutritionist_crn"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "school_routes_user_documents",
+    "status": "ERROR",
+    "error": "Could not find the table 'public.school_routes_user_documents' in the schema cache",
+    "code": "PGRST205"
+  },
+  {
+    "table": "school_shifts",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "name",
+      "start_time",
+      "end_time",
+      "created_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "school_staff",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "professional_id",
+      "name",
+      "email",
+      "phone",
+      "role",
+      "shift",
+      "status",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "schools",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "name",
+      "inep_code",
+      "principal_name",
+      "email",
+      "phone",
+      "address",
+      "city",
+      "state",
+      "postal_code",
+      "status",
+      "created_at",
+      "updated_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "seat_assignments",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "student_conduct_records",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "student_dietary_restrictions",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "student_documents",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "student_exits",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "student_responsible_links",
+    "status": "OK",
+    "rowCount": 2,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "student_id",
+      "guardian_id",
+      "guardian_name",
+      "relationship",
+      "is_primary_contact",
+      "is_financial_responsible",
+      "is_pedagogical_responsible",
+      "can_pickup",
+      "created_at"
+    ],
+    "hasSchoolId": false,
+    "hasOrgId": true
+  },
+  {
+    "table": "students",
+    "status": "OK",
+    "rowCount": 2,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "class_id",
+      "user_id",
+      "full_name",
+      "name",
+      "registration_code",
+      "inep_id",
+      "birth_date",
+      "gender",
+      "sex",
+      "cpf",
+      "rg",
+      "birth_certificate",
+      "blood_type",
+      "has_special_needs",
+      "special_needs_description",
+      "medical_conditions",
+      "allergies",
+      "uses_transport",
+      "transport_route",
+      "status",
+      "avatar_url",
+      "guardian_name",
+      "guardian_phone",
+      "guardian_relationship",
+      "guardian_cpf",
+      "address",
+      "neighborhood",
+      "city",
+      "state",
+      "postal_code",
+      "created_at",
+      "updated_at",
+      "school_id"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "subjects",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "substitutions",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "teachers",
+    "status": "OK",
+    "rowCount": 5,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "user_id",
+      "name",
+      "full_name",
+      "email",
+      "phone",
+      "cpf",
+      "specialty",
+      "academic_degree",
+      "status",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "phone_number",
+      "rg",
+      "date_of_birth",
+      "hire_date",
+      "position",
+      "department",
+      "salary",
+      "is_active",
+      "weekly_workload_hours"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "transport_agreements",
+    "status": "OK",
+    "rowCount": 1,
+    "columnsSample": [
+      "id",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "organization_id",
+      "agreement_type",
+      "description",
+      "start_date",
+      "end_date",
+      "vehicle_id",
+      "driver_id",
+      "status"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "transport_boarding_logs",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "transport_students",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "transport_vehicles",
+    "status": "OK",
+    "rowCount": 4,
+    "columnsSample": [
+      "id",
+      "organization_id",
+      "route_name",
+      "route_code",
+      "plate",
+      "model",
+      "year",
+      "driver_name",
+      "driver_phone",
+      "driver_cnh",
+      "monitor_name",
+      "monitor_phone",
+      "capacity",
+      "status",
+      "shift",
+      "gps_lat",
+      "gps_lng",
+      "created_at",
+      "updated_at",
+      "school_id"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  },
+  {
+    "table": "user_consents",
+    "status": "ERROR",
+    "error": "Could not find the table 'public.user_consents' in the schema cache",
+    "code": "PGRST205"
+  },
+  {
+    "table": "user_preferences",
+    "status": "OK",
+    "rowCount": 0,
+    "columnsSample": [],
+    "hasSchoolId": false,
+    "hasOrgId": false
+  },
+  {
+    "table": "vehicles",
+    "status": "OK",
+    "rowCount": 2,
+    "columnsSample": [
+      "id",
+      "created_at",
+      "updated_at",
+      "school_id",
+      "organization_id",
+      "plate",
+      "model",
+      "brand",
+      "year",
+      "capacity",
+      "status",
+      "current_driver_id",
+      "address_id"
+    ],
+    "hasSchoolId": true,
+    "hasOrgId": true
+  }
+]

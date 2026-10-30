@@ -1,0 +1,834 @@
+src/services/dashboardService.ts:304: const g = c.grade || c.name || 'Série';
+src/services/transportRpcService.ts:283: if (r.name) routesMap.set(r.name.toLowerCase().trim(), r);
+src/services/transportRpcService.ts:283: if (r.name) routesMap.set(r.name.toLowerCase().trim(), r);
+src/services/transportRpcService.ts:349: name: s.full_name || s.name || 'Estudante',
+src/services/users.service.ts:124: name: userAcc.name || userAcc.full_name || userAcc.email || 'Usuário',
+src/services/communicationRpcService.ts:261: name: c.name,
+src/services/communicationRpcService.ts:268: name: g.name,
+src/services/communicationRpcService.ts:286: name: s.name,
+src/services/accessControlService.ts:95: name: p.name,
+src/services/accessControlService.ts:216: name: s.name,
+src/services/accessControlService.ts:234: name: i.name,
+src/services/accessControlService.ts:273: name: st.full_name || st.name || 'Estudante',
+src/services/accessControlService.ts:274: fullName: st.full_name || st.name || 'Estudante',
+src/services/accessControlService.ts:310: name: st.full_name || st.name || 'Estudante',
+src/services/accessControlService.ts:311: fullName: st.full_name || st.name || 'Estudante',
+src/services/accessControlService.ts:338: name: st.full_name || st.name || 'Estudante',
+src/services/accessControlService.ts:339: fullName: st.full_name || st.name || 'Estudante',
+src/services/institutionService.ts:207: const officialName = payload.official_name || payload.legal_name || payload.name || '';
+src/services/institutionService.ts:355: name: payload.name,
+src/services/institutionService.ts:401: name: payload.name,
+src/services/institutionService.ts:562: name: (member.name || '').trim(),
+src/services/adminPartnerService.ts:545: name: p.name,
+src/services/calendarRpcService.ts:264: name: c.name,
+src/services/calendarRpcService.ts:610: title: h.name,
+src/services/calendarRpcService.ts:611: description: `Feriado Nacional Oficial do Brasil: ${h.name}`,
+src/services/menuService.ts:55: const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+src/services/menuService.ts:56: const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name);
+src/services/menuService.ts:67: const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+src/services/menuService.ts:141: file_name: file.name,
+src/services/menuService.ts:172: file_name: file.name,
+src/services/partnerPersistenceService.ts:41: name: ad.name,
+src/services/partnerPersistenceService.ts:99: full_name: p.name || 'Profissional',
+src/services/partnerPersistenceService.ts:100: name: p.name || 'Profissional',
+src/services/partnerPersistenceService.ts:145: name: sp.name,
+src/services/partnerPersistenceService.ts:183: name: row.name || row.payload?.name || '',
+src/services/partnerPersistenceService.ts:225: name: row.name || row.payload?.name || '',
+src/services/partnerPersistenceService.ts:256: name: row.name || row.payload?.name || '',
+src/services/holidays.service.ts:70: name: item.name,
+src/services/lostFoundService.ts:189: const title = row.title || row.name || row.item_name || 'Objeto Encontrado';
+src/services/StorageService.ts:42: const fileExt = file.name.split('.').pop();
+src/services/StorageService.ts:72: file_name: file.name,
+src/services/students/students.service.ts:56: const name = String(s.full_name || s.name || '').trim().toLowerCase();
+src/services/students/students.service.ts:238: full_name: payload.full_name || payload.name,
+src/services/students/students.service.ts:239: name: payload.full_name || payload.name,
+src/services/classes/classes.service.ts:104: full_name: st.full_name || st.name,
+src/services/classes/classes.service.ts:105: name: st.full_name || st.name,
+src/services/classes/classes.service.ts:144: name: c.name || `${110 + index + 1}`,
+src/services/classes/classes.service.ts:189: name: (payload.name || 'Nova Turma').trim(),
+src/services/classes/classes.service.ts:190: grade: (payload.grade || payload.name || '1º ANO').trim().toUpperCase(),
+src/services/classes/classes.service.ts:313: if (payload.name !== undefined) updateRecord.name = payload.name.trim();
+src/services/classes/classes.service.ts:313: if (payload.name !== undefined) updateRecord.name = payload.name.trim();
+src/services/classes/classes.service.ts:313: if (payload.name !== undefined) updateRecord.name = payload.name.trim();
+src/services/classes/classes.service.ts:423: name: st.full_name || st.name,
+src/services/classes/classes.service.ts:424: full_name: st.full_name || st.name,
+src/services/classes/classes.service.ts:458: name: s.full_name || s.name,
+src/services/classes/classes.service.ts:459: full_name: s.full_name || s.name,
+src/services/schedule/classScheduleService.ts:693: name: classData.name.trim(),
+src/services/schedule/classScheduleService.ts:696: grade: classData.grade?.trim() || classData.name.trim().split(' ')[0] || '7º Ano',
+src/services/schedule/classScheduleService.ts:734: name: classData.name.trim(),
+src/components/AdminDashboard.tsx:220: {schoolInfo.name}
+src/components/Header.tsx:22: const parts = guardian.name.split(' ');
+src/components/Header.tsx:24: return guardian.name.substring(0, 2).toUpperCase();
+src/components/Header.tsx:27: const parts = currentUser.name.split(' ');
+src/components/Header.tsx:29: return currentUser.name.substring(0, 2).toUpperCase();
+src/components/Header.tsx:41: if (mode === 'family' && guardian?.name) return guardian.name;
+src/components/Header.tsx:42: if (currentUser?.name) return currentUser.name;
+src/components/Header.tsx:135: {st.name} ({st.grade || 'Aluno'})
+src/components/RelatoriosTab.tsx:273: if (cls) return formatClassCycle(cls.name);
+src/components/RelatoriosTab.tsx:408: const studentName = activeStudent.name || (activeStudent as any).full_name || 'Arthur Vinícius Pereira';
+src/components/RelatoriosTab.tsx:781: const formattedName = formatClassCycle(cls.name);
+src/components/RelatoriosTab.tsx:920: const stName = st.name || (st as any).full_name;
+src/components/RelatoriosTab.tsx:935: <strong className="text-sm font-bold text-white">{activeStudent.name || (activeStudent as any).full_name}</strong>
+src/components/LogbookTab.tsx:79: name: s.name,
+src/components/LogbookTab.tsx:92: name: s.name,
+src/components/LogbookTab.tsx:307: studentName: currentStudent.name,
+src/components/LogbookTab.tsx:349: setOccSuccessMsg(`Advertência/Conduta registrada em tempo real para ${currentStudent.name}! (${isPositive ? '+Elogio Formal' : `-${totalDeduction.toFixed(1)} pts`})`);
+src/components/LogbookTab.tsx:433: const rawName = turma.name || 'Turma';
+src/components/LogbookTab.tsx:511: {s.name} (Nota: {s.points.toFixed(1)}/20.0)
+src/components/LogbookTab.tsx:551: Aluno: <strong className="text-white">{selectedStudentObj.name}</strong>
+src/components/ClassesTab.tsx:38: name: c.class_name || c.name || 'Turma',
+src/components/ClassesTab.tsx:105: <h4 className="text-lg font-serif font-extrabold text-white leading-tight">{cls.name}</h4>
+src/components/ProfessorDashboard.tsx:123: name: c.name || `Turma ${c.grade || idx + 1}`,
+src/components/ProfessorDashboard.tsx:124: class_name: c.name || `Turma ${c.grade || idx + 1}`,
+src/components/ProfessorDashboard.tsx:125: grade: c.grade || c.name || 'Geral',
+src/components/ProfessorDashboard.tsx:205: const className = cls.class_name || cls.name || `Turma ${classId}`;
+src/components/ProfessorDashboard.tsx:223: const studentName = st.full_name || st.name || `Estudante ${sIdx + 1}`;
+src/components/ProfessorDashboard.tsx:381: name: st.full_name || st.name || 'Estudante',
+src/components/ProfessorDashboard.tsx:382: full_name: st.full_name || st.name || 'Estudante',
+src/components/ProfessorDashboard.tsx:541: description: quickOccDesc || `Registro ${quickOccType} para ${selectedStudentForOcc.name}`,
+src/components/ProfessorDashboard.tsx:928: studentName: studentObj.name,
+src/components/ProfessorDashboard.tsx:939: setOccurrenceSuccessMessage(`Sucesso! Ocorrência registrada para ${studentObj.name}. Nota de conduta atualizada para ${finalPoints.toFixed(1)}/20.0`);
+src/components/ProfessorDashboard.tsx:960: setGradeSuccessMessage(`Sucesso! Nota ${val.toFixed(1)} gravada para ${studentObj.name} em ${selectedGradeSubject} no ${selectedGradeBimester.toUpperCase().replace('B', '')}º Bimestre.`);
+src/components/ProfessorDashboard.tsx:975: trimestral: `PARECER PEDAGÓGICO TRIMESTRAL - ALUNO: ${studentObj.name.toUpperCase()}
+src/components/ProfessorDashboard.tsx:978: O(A) estudante ${studentObj.name} apresenta um comportamento participativo e com ótimos insights durante as discussões temáticas. Demonstra sólida compreensão dos fatos históricos trabalhados neste trimestre. Seu empenho em projetos de equipe é notável, agindo como facilitador para os demais. Como ponto de atenção e desenvolvimento contínuo, recomenda-se que mantenha o foco e evite dispersões durante os momentos de instrução direta, otimizando o uso do tempo em sala.
+src/components/ProfessorDashboard.tsx:983: ALUNO: ${studentObj.name.toUpperCase()} | ANO: 8º Ano A | DATA DE EMISSÃO: 18/07/2026
+src/components/ProfessorDashboard.tsx:985: O(A) estudante ${studentObj.name} apresenta bom engajamento geral nas matérias, mas foi observado comportamento de isolamento em momentos de recreação coletiva e oscilações abruptas no padrão de interação em sala (queda de oralidade). Em sala de aula, mantém atitude cooperativa, porém episódios recentes sugerem ansiedade frente a cobranças avaliativas de alta performance. Encaminhamos para acompanhamento psicológico especializado visando aprofundar o suporte socioemocional.
+src/components/ProfessorDashboard.tsx:990: ALUNO: ${studentObj.name.toUpperCase()} | DATA DE EMISSÃO: 18/07/2026
+src/components/ProfessorDashboard.tsx:992: Observa-se que o educando ${studentObj.name} possui raciocínio abstrato bem desenvolvido e facilidade para organizar ideias de forma sistemática. Apresenta, no entanto, certa lentidão em tarefas escritas longas ou repetitivas, o que gera dispersão. Sugere-se a aplicação de metodologias ativas, avaliações fracionadas e o uso de ferramentas de suporte digital para maximizar seu potencial de retenção.
+src/components/ProfessorDashboard.tsx:997: ALUNO: ${studentObj.name.toUpperCase()} | BIMESTRE: 3º Bimestre de 2026
+src/components/ProfessorDashboard.tsx:999: O(A) estudante ${studentObj.name} obteve uma evolução constante no seu ritmo de aprendizagem. Seus registros em diário de bordo mostram superação de dificuldades em raciocínio analítico, especialmente na transição de conteúdos teóricos para análises práticas. A dedicação e pontualidade na entrega de atividades escolares complementares evidenciam responsabilidade. Recomenda-se a continuidade do plano de incentivos de liderança positiva.
+src/components/ProfessorDashboard.tsx:1015: st.name.toLowerCase().includes(studentSearchTerm.toLowerCase())
+src/components/ProfessorDashboard.tsx:1160: <h2 className="text-xl md:text-2xl font-serif font-bold text-white mt-0.5">{currentTeacher.name}</h2>
+src/components/ProfessorDashboard.tsx:1231: const rawName = info.class_name || info.name || 'Turma';
+src/components/ProfessorDashboard.tsx:1365: <span className="font-bold text-sm text-white">{turma.name}</span>
+src/components/ProfessorDashboard.tsx:1381: className: turma.name,
+src/components/ProfessorDashboard.tsx:1408: teacherName={profile?.name || currentTeacher.name}
+src/components/ProfessorDashboard.tsx:1451: {currentTeacher.name}
+src/components/ProfessorDashboard.tsx:1495: const rawName = info.class_name || info.name || 'Turma';
+src/components/ProfessorDashboard.tsx:1582: alt={st.name}
+src/components/ProfessorDashboard.tsx:1587: <h4 className="font-serif text-sm font-bold text-white truncate max-w-[150px]">{st.name}</h4>
+src/components/ProfessorDashboard.tsx:1644: alt={selectedStudentForOcc.name}
+src/components/ProfessorDashboard.tsx:1650: <h3 className="text-base font-serif font-bold text-white">{selectedStudentForOcc.name}</h3>
+src/components/ProfessorDashboard.tsx:1766: teacherName={currentTeacher.name}
+src/components/ProfessorDashboard.tsx:1780: teacherName={currentTeacher.name}
+src/components/ProfessorDashboard.tsx:1815: <span>{currentTeacher.name}</span>
+src/components/ProfessorDashboard.tsx:1861: const rawName = info.class_name || info.name || 'Turma';
+src/components/ProfessorDashboard.tsx:2088: alt={seatedStudent.name}
+src/components/ProfessorDashboard.tsx:2096: {seatedStudent.name.split(' ')[0]}
+src/components/ProfessorDashboard.tsx:2213: alt={st.name}
+src/components/ProfessorDashboard.tsx:2218: <span className="font-bold text-white block truncate">{st.name}</span>
+src/components/ProfessorDashboard.tsx:2261: alt={activeDetailStudent.name}
+src/components/ProfessorDashboard.tsx:2264: <h4 className="font-bold text-white text-xs truncate">{activeDetailStudent.name}</h4>
+src/components/ProfessorDashboard.tsx:2273: <p>• {activeDetailStudent.name} é o aluno selecionado no painel da sala.</p>
+src/components/ProfessorDashboard.tsx:2311: teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+src/components/ProfessorDashboard.tsx:2327: name: c.name,
+src/components/ProfessorDashboard.tsx:2347: teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+src/components/ProfessorDashboard.tsx:2356: name: c.name,
+src/components/ProfessorDashboard.tsx:2371: teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+src/components/ProfessorDashboard.tsx:2381: teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+src/components/ProfessorDashboard.tsx:2390: name: c.name,
+src/components/ProfessorDashboard.tsx:2406: teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+src/components/ProfessorDashboard.tsx:2414: name: c.name,
+src/components/ProfessorDashboard.tsx:2469: <option key={s.id} value={s.id}>{s.name} (ID: {s.id})</option>
+src/components/ProfessorDashboard.tsx:2544: <option key={s.id} value={s.id}>{s.name} (Faltas: {s.attendance === 'F' ? '1' : '0'})</option>
+src/components/LandingPage.tsx:879: value={profForm.name}
+src/components/LandingPage.tsx:884: {formErrors.name && <p className="text-[10px] text-[#7F1D1D] font-bold">{formErrors.name}</p>}
+src/components/LandingPage.tsx:884: {formErrors.name && <p className="text-[10px] text-[#7F1D1D] font-bold">{formErrors.name}</p>}
+src/components/LandingPage.tsx:976: value={empForm.name}
+src/components/LandingPage.tsx:981: {formErrors.name && <p className="text-[10px] text-[#7F1D1D] font-bold">{formErrors.name}</p>}
+src/components/LandingPage.tsx:981: {formErrors.name && <p className="text-[10px] text-[#7F1D1D] font-bold">{formErrors.name}</p>}
+src/components/LandingPage.tsx:1089: value={prestForm.name}
+src/components/LandingPage.tsx:1094: {formErrors.name && <p className="text-[10px] text-[#7F1D1D] font-bold">{formErrors.name}</p>}
+src/components/LandingPage.tsx:1094: {formErrors.name && <p className="text-[10px] text-[#7F1D1D] font-bold">{formErrors.name}</p>}
+src/components/LandingPage.tsx:1553: if (!profForm.name) errors.name = 'Nome é obrigatório';
+src/components/LandingPage.tsx:1553: if (!profForm.name) errors.name = 'Nome é obrigatório';
+src/components/LandingPage.tsx:1559: if (!empForm.name) errors.name = 'Nome da empresa é obrigatório';
+src/components/LandingPage.tsx:1559: if (!empForm.name) errors.name = 'Nome da empresa é obrigatório';
+src/components/LandingPage.tsx:1565: if (!prestForm.name) errors.name = 'Nome/Razão Social é obrigatório';
+src/components/LandingPage.tsx:1565: if (!prestForm.name) errors.name = 'Nome/Razão Social é obrigatório';
+src/components/LandingPage.tsx:1584: nome: profForm.name,
+src/components/LandingPage.tsx:1599: nome: empForm.name,
+src/components/LandingPage.tsx:1614: nome: prestForm.name,
+src/components/LandingPage.tsx:1649: name: cardCustomForm.nome || profForm.name,
+src/components/LandingPage.tsx:1665: name: cardCustomForm.nome || empForm.name,
+src/components/LandingPage.tsx:1680: name: cardCustomForm.nome || prestForm.name,
+src/components/FamilyDashboard.tsx:240: full_name: st.full_name || st.name || 'Estudante',
+src/components/FamilyDashboard.tsx:381: alt={student.name}
+src/components/FamilyDashboard.tsx:394: <h2 className="font-serif text-2xl font-bold text-white tracking-tight">{student.name}</h2>
+src/components/FamilyDashboard.tsx:440: alt={child.name}
+src/components/FamilyDashboard.tsx:452: <p className="font-serif text-xs font-bold text-white truncate">{child.name}</p>
+src/components/OnboardingPage.tsx:26: adminNome: gestorAccount.name || '',
+src/components/Dashboard.tsx:33: alt={student.name}
+src/components/Dashboard.tsx:37: <h2 className="text-2xl font-serif font-bold text-ice tracking-wide">{student.name}</h2>
+src/components/LoginPage.tsx:220: setCurrentUser({ name: staff.name, email: staff.email, role: activeTab });
+src/components/LoginPage.tsx:484: name: firstChild.full_name || firstChild.name,
+src/components/LoginPage.tsx:1068: <span className="font-bold text-white">{c.name}</span>
+src/components/LoginPage.tsx:1190: <img src={c.photoUrl} alt={c.name} className="w-9 h-9 rounded-full object-cover border border-[#D4AF37]/30 shrink-0" referrerPolicy="no-referrer" />
+src/components/LoginPage.tsx:1192: <p className="text-xs font-bold text-white truncate">{c.name}</p>
+src/components/EducaStudio.tsx:63: name: c.name,
+src/components/EducaStudio.tsx:64: grade: c.grade || `${c.name} - Fundamental`,
+src/components/EducaStudio.tsx:234: if (cls.name.includes('9º Ano')) {
+src/components/EducaStudio.tsx:245: } else if (cls.name.includes('8º Ano')) {
+src/components/EducaStudio.tsx:256: } else if (cls.name.includes('7º Ano')) {
+src/components/EducaStudio.tsx:520: const dbNames = disciplinesList.map(d => d.name);
+src/components/EducaStudio.tsx:653: {c.name} ({c.subject || 'Geral'})
+src/components/admin/AdminTransporte.tsx:435: {st.name.charAt(0)}
+src/components/admin/AdminTransporte.tsx:438: <h4 className="font-bold text-sm text-white line-clamp-1" title={st.name}>{st.name}</h4>
+src/components/admin/AdminTransporte.tsx:438: <h4 className="font-bold text-sm text-white line-clamp-1" title={st.name}>{st.name}</h4>
+src/components/admin/AdminTransporte.tsx:692: st.name.toLowerCase().includes(q) ||
+src/components/admin/AdminTransporte.tsx:727: {st.name.charAt(0)}
+src/components/admin/AdminTransporte.tsx:730: <h4 className="font-bold text-sm text-white truncate">{st.name}</h4>
+src/components/admin/AdminTransporte.tsx:1337: {st.name} ({st.grade} - {st.shift})
+src/components/admin/AdminTransporte.tsx:1366: <span className="font-bold text-xs text-white">{st.name}</span>
+src/components/admin/AdminTransporte.tsx:1540: {schoolInfo.name || 'CLASSIUM SISTEMAS EDUCACIONAIS'}
+src/components/admin/AdminTransporte.tsx:1642: <td className="p-2 font-bold">{st.name}</td>
+src/components/admin/AdminTransporte.tsx:1688: <td className="p-1 font-bold">{p.name}</td>
+src/components/admin/InstitutionDataPanel.tsx:91: setOfficialName(data.official_name || data.legal_name || data.name || '');
+src/components/admin/CommunicationEditor.tsx:491: student.name.toLowerCase().includes(studentSearchTerm.toLowerCase())
+src/components/admin/CommunicationEditor.tsx:1240: const targetStudentName = firstStudent ? firstStudent.name : dynamicFieldValues['NOME_ALUNO'] || undefined;
+src/components/admin/CommunicationEditor.tsx:1537: {isSold ? saleInfo.name : '________________________'}
+src/components/admin/AdminLostFound.tsx:162: name: item.title || item.item_name || item.name || 'Objeto Achado',
+src/components/admin/AdminLostFound.tsx:203: item.name.toLowerCase().includes(q) ||
+src/components/admin/AdminLostFound.tsx:279: setFormName(item.name);
+src/components/admin/AdminLostFound.tsx:494: alt={item.name}
+src/components/admin/AdminLostFound.tsx:519: <h3 className="font-serif text-base font-bold text-slate-900 line-clamp-2">{item.name}</h3>
+src/components/admin/AdminLostFound.tsx:818: <img src={selectedItemForDetails.photoUrl} alt={selectedItemForDetails.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/admin/AdminLostFound.tsx:823: <h3 className="font-serif text-base font-bold text-slate-900">{selectedItemForDetails.name}</h3>
+src/components/admin/AdminLostFound.tsx:871: <p className="font-bold text-slate-900 text-sm">{selectedItemForDelivery.name}</p>
+src/components/admin/AdminComunicacao.tsx:188: if (item.class?.name) return item.class.name;
+src/components/admin/AdminComunicacao.tsx:360: const matchAuthor = author.name.toLowerCase().includes(lower) || author.email.toLowerCase().includes(lower);
+src/components/admin/AdminComunicacao.tsx:717: {author.name}
+src/components/admin/AdminComunicacao.tsx:961: <span className="truncate">{cls.name}</span>
+src/components/admin/AdminComunicacao.tsx:986: .filter(s => !searchStudentTerm || s.name.toLowerCase().includes(searchStudentTerm.toLowerCase()))
+src/components/admin/AdminComunicacao.tsx:1011: <span className="truncate">{st.name}</span>
+src/components/admin/AdminDashboardHome.tsx:328: const initials = member.name
+src/components/admin/AdminDashboardHome.tsx:365: {member.name}
+src/components/admin/AdminPedagogico.tsx:241: name: st.full_name || st.name || 'Estudante',
+src/components/admin/AdminPedagogico.tsx:244: level: colorInfo.name,
+src/components/admin/AdminPedagogico.tsx:267: const classStudents = dbStudents.filter(s => s.class_id === c.id || s.grade === c.name || s.grade === c.grade);
+src/components/admin/AdminPedagogico.tsx:276: grade: c.name || c.grade || 'Turma',
+src/components/admin/AdminPedagogico.tsx:281: level: colorInfo.name,
+src/components/admin/AdminPedagogico.tsx:693: <strong className="text-sm text-slate-900">{s.name}</strong>
+src/components/admin/AdminPedagogico.tsx:831: {st.full_name || st.name} ({st.grade || 'Turma Cadastrada'}) - {st.registration_code || 'RA'}
+src/components/admin/AdminPedagogico.tsx:907: <p><strong>Estudante:</strong> {radarActionModal.student.name} ({radarActionModal.student.grade})</p>
+src/components/admin/SupabaseCenter.tsx:216: <span className="font-serif font-bold text-white text-xs">{test.name}</span>
+src/components/admin/AdminPessoas.tsx:393: name: fs.name,
+src/components/admin/AdminPessoas.tsx:403: parent: primaryG ? primaryG.name : 'Maria das Graças Silva',
+src/components/admin/AdminPessoas.tsx:425: name: g.name,
+src/components/admin/AdminPessoas.tsx:529: setSimulatedCall(resp.name);
+src/components/admin/AdminPessoas.tsx:530: showToast(`Iniciando chamada de áudio integrada com ${resp.relationship}: ${resp.name}...`);
+src/components/admin/AdminPessoas.tsx:535: name: resp.name,
+src/components/admin/AdminPessoas.tsx:537: message: `Olá, ${resp.name}! Aqui é da secretaria do Colégio Classium. Gostaríamos de tratar sobre um assunto referente ao estudante.`
+src/components/admin/AdminPessoas.tsx:539: showToast(`Criando minuta de chat via WhatsApp para ${resp.name}...`);
+src/components/admin/AdminPessoas.tsx:544: name: resp.name,
+src/components/admin/AdminPessoas.tsx:547: body: `Prezado(a) ${resp.name},\n\nEntramos em contato para tratar de assuntos escolares importantes de interesse do estudante ${student.name}.\n\nPor favor, retorne assim que possível.\n\nAtenciosamente,\nSecretaria Pedagógica Classium`
+src/components/admin/AdminPessoas.tsx:547: body: `Prezado(a) ${resp.name},\n\nEntramos em contato para tratar de assuntos escolares importantes de interesse do estudante ${student.name}.\n\nPor favor, retorne assim que possível.\n\nAtenciosamente,\nSecretaria Pedagógica Classium`
+src/components/admin/AdminPessoas.tsx:549: showToast(`Minutando e-mail corporativo para ${resp.name}...`);
+src/components/admin/AdminPessoas.tsx:559: description: `Convocação de reunião extraordinária com ${resp.name} para acompanhamento pedagógico de ${student.name}.`,
+src/components/admin/AdminPessoas.tsx:559: description: `Convocação de reunião extraordinária com ${resp.name} para acompanhamento pedagógico de ${student.name}.`,
+src/components/admin/AdminPessoas.tsx:561: targetName: resp.name
+src/components/admin/AdminPessoas.tsx:572: description: `Assinatura pendente do termo de responsabilidade para passeios e atividades extras de ${student.name}.`,
+src/components/admin/AdminPessoas.tsx:574: targetName: resp.name
+src/components/admin/AdminPessoas.tsx:589: responsibleName: resp.name,
+src/components/admin/AdminPessoas.tsx:590: studentName: student.name,
+src/components/admin/AdminPessoas.tsx:607: showToast(`Notificação com prioridade ${priority} enviada para o aplicativo de ${resp.name}!`);
+src/components/admin/AdminPessoas.tsx:618: templateText = `Prezado(a) ${resp.name}, informamos que o(a) estudante ${student.name} apresentou sintomas de indisposição/febre durante as aulas hoje. Solicitamos que entre em contato ou compareça à escola para acompanhamento ou retirada antecipada.`;
+src/components/admin/AdminPessoas.tsx:618: templateText = `Prezado(a) ${resp.name}, informamos que o(a) estudante ${student.name} apresentou sintomas de indisposição/febre durante as aulas hoje. Solicitamos que entre em contato ou compareça à escola para acompanhamento ou retirada antecipada.`;
+src/components/admin/AdminPessoas.tsx:622: templateText = `Prezado(a) ${resp.name}, informamos que o(a) estudante ${student.name} registrou uma ocorrência disciplinar hoje devido ao descumprimento das normas de convivência escolar. Solicitamos sua leitura atenta no portal ou comparecimento para esclarecimentos.`;
+src/components/admin/AdminPessoas.tsx:622: templateText = `Prezado(a) ${resp.name}, informamos que o(a) estudante ${student.name} registrou uma ocorrência disciplinar hoje devido ao descumprimento das normas de convivência escolar. Solicitamos sua leitura atenta no portal ou comparecimento para esclarecimentos.`;
+src/components/admin/AdminPessoas.tsx:626: templateText = `Prezado(a) ${resp.name}, a equipe pedagógica solicita agendamento para uma reunião de acompanhamento escolar de ${student.name}. Por favor, escolha um horário disponível no aplicativo ou entre em contato com a secretaria.`;
+src/components/admin/AdminPessoas.tsx:626: templateText = `Prezado(a) ${resp.name}, a equipe pedagógica solicita agendamento para uma reunião de acompanhamento escolar de ${student.name}. Por favor, escolha um horário disponível no aplicativo ou entre em contato com a secretaria.`;
+src/components/admin/AdminPessoas.tsx:630: templateText = `Prezado(a) ${resp.name}, notificamos que o transporte escolar referente ao trajeto de ${student.name} registrou um pequeno atraso hoje devido ao trânsito na região. A chegada prevista ocorrerá com cerca de 20 minutos de atraso.`;
+src/components/admin/AdminPessoas.tsx:630: templateText = `Prezado(a) ${resp.name}, notificamos que o transporte escolar referente ao trajeto de ${student.name} registrou um pequeno atraso hoje devido ao trânsito na região. A chegada prevista ocorrerá com cerca de 20 minutos de atraso.`;
+src/components/admin/AdminPessoas.tsx:634: templateText = `Prezado(a) ${resp.name}, identificamos pendência na entrega de atividades obrigatórias ou tarefas escolares de ${student.name}. Solicitamos incentivar o cumprimento das entregas para evitar prejuízos na nota do bimestre.`;
+src/components/admin/AdminPessoas.tsx:634: templateText = `Prezado(a) ${resp.name}, identificamos pendência na entrega de atividades obrigatórias ou tarefas escolares de ${student.name}. Solicitamos incentivar o cumprimento das entregas para evitar prejuízos na nota do bimestre.`;
+src/components/admin/AdminPessoas.tsx:638: templateText = `Prezado(a) ${resp.name}, identificamos que a mensalidade de ${student.name} referente a este período está com pendência em nosso sistema. Pedimos a regularização no portal financeiro ou contato com a tesouraria.`;
+src/components/admin/AdminPessoas.tsx:638: templateText = `Prezado(a) ${resp.name}, identificamos que a mensalidade de ${student.name} referente a este período está com pendência em nosso sistema. Pedimos a regularização no portal financeiro ou contato com a tesouraria.`;
+src/components/admin/AdminPessoas.tsx:642: templateText = `Prezado(a) ${resp.name}, confirmamos a solicitação de saída antecipada de ${student.name} para o dia de hoje, autorizada previamente via aplicativo de forma segura.`;
+src/components/admin/AdminPessoas.tsx:642: templateText = `Prezado(a) ${resp.name}, confirmamos a solicitação de saída antecipada de ${student.name} para o dia de hoje, autorizada previamente via aplicativo de forma segura.`;
+src/components/admin/AdminPessoas.tsx:646: templateText = `Prezado(a) ${resp.name}, há um documento pendente de sua assinatura digital no portal Classium Família referente à autorização de passeio pedagógico extraclasse para ${student.name}.`;
+src/components/admin/AdminPessoas.tsx:646: templateText = `Prezado(a) ${resp.name}, há um documento pendente de sua assinatura digital no portal Classium Família referente à autorização de passeio pedagógico extraclasse para ${student.name}.`;
+src/components/admin/AdminPessoas.tsx:650: templateText = `Prezado(a) ${resp.name}, informamos que as atividades escolares encerraram e o(a) estudante ${student.name} encontra-se na recepção aguardando sua retirada de forma segura.`;
+src/components/admin/AdminPessoas.tsx:650: templateText = `Prezado(a) ${resp.name}, informamos que as atividades escolares encerraram e o(a) estudante ${student.name} encontra-se na recepção aguardando sua retirada de forma segura.`;
+src/components/admin/AdminPessoas.tsx:654: templateText = `Prezado(a) ${resp.name}, gostaríamos de alinhar informações sobre o rendimento de ${student.name}.`;
+src/components/admin/AdminPessoas.tsx:654: templateText = `Prezado(a) ${resp.name}, gostaríamos de alinhar informações sobre o rendimento de ${student.name}.`;
+src/components/admin/AdminPessoas.tsx:779: name: s.name || s.full_name || '',
+src/components/admin/AdminPessoas.tsx:814: name: gd.name,
+src/components/admin/AdminPessoas.tsx:819: email: gd.email || `${gd.name.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
+src/components/admin/AdminPessoas.tsx:857: name: t.name,
+src/components/admin/AdminPessoas.tsx:860: email: t.email || `${t.name.toLowerCase().replace(/\s+/g, '.')}@educamais.edu`,
+src/components/admin/AdminPessoas.tsx:1149: if (!teacherForm.name || !teacherForm.cpf) return;
+src/components/admin/AdminPessoas.tsx:1155: loginToSave = generateUniqueLogin(teacherForm.name, teachers);
+src/components/admin/AdminPessoas.tsx:1167: p_name: teacherForm.name,
+src/components/admin/AdminPessoas.tsx:1198: full_name: teacherForm.name,
+src/components/admin/AdminPessoas.tsx:1223: showToast(`Professor ${teacherForm.name} atualizado com sucesso!`);
+src/components/admin/AdminPessoas.tsx:1228: p_name: teacherForm.name,
+src/components/admin/AdminPessoas.tsx:1258: full_name: teacherForm.name,
+src/components/admin/AdminPessoas.tsx:1274: full_name: teacherForm.name,
+src/components/admin/AdminPessoas.tsx:1310: showToast(`Professor ${teacherForm.name} cadastrado com sucesso!`);
+src/components/admin/AdminPessoas.tsx:1314: name: teacherForm.name,
+src/components/admin/AdminPessoas.tsx:1382: showToast(`Senha provisória gerada com sucesso para o Professor ${teacher.name}!`);
+src/components/admin/AdminPessoas.tsx:1389: name: teacher.name,
+src/components/admin/AdminPessoas.tsx:1390: login: teacher.login || generateUniqueLogin(teacher.name, teachers),
+src/components/admin/AdminPessoas.tsx:1437: showToast(`Professor ${teacher.name} removido com sucesso.`);
+src/components/admin/AdminPessoas.tsx:1451: name: teacher.name,
+src/components/admin/AdminPessoas.tsx:1554: msg: `Vínculo acadêmico salvo com sucesso para o Professor ${teacher.name}! O sistema automaticamente:
+src/components/admin/AdminPessoas.tsx:1719: if (!newStudentForm.name) return;
+src/components/admin/AdminPessoas.tsx:1746: full_name: newStudentForm.name,
+src/components/admin/AdminPessoas.tsx:1747: name: newStudentForm.name,
+src/components/admin/AdminPessoas.tsx:1778: showToast(`Estudante ${newStudentForm.name} atualizado com sucesso!`);
+src/components/admin/AdminPessoas.tsx:1798: showToast(`Estudante ${newStudentForm.name} cadastrado com sucesso!`);
+src/components/admin/AdminPessoas.tsx:1883: const existingNames = new Set(baseClasses.map(c => c.name));
+src/components/admin/AdminPessoas.tsx:1894: s.grade === c.name ||
+src/components/admin/AdminPessoas.tsx:1895: s.grade.startsWith(c.name) ||
+src/components/admin/AdminPessoas.tsx:1896: (c.name.includes('111') && s.grade.includes('111')) ||
+src/components/admin/AdminPessoas.tsx:1897: (c.name.includes('525') && s.grade.includes('525'))
+src/components/admin/AdminPessoas.tsx:1903: name: c.name,
+src/components/admin/AdminPessoas.tsx:1912: s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+src/components/admin/AdminPessoas.tsx:1970: const matchesSearch = t.name.toLowerCase().includes(teacherSearchQuery.toLowerCase()) ||
+src/components/admin/AdminPessoas.tsx:1985: }).sort((a, b) => a.name.localeCompare(b.name)); // Alphabetical order as requested!
+src/components/admin/AdminPessoas.tsx:1985: }).sort((a, b) => a.name.localeCompare(b.name)); // Alphabetical order as requested!
+src/components/admin/AdminPessoas.tsx:2117: + students.map(s => `"${s.name}","${s.grade}","${s.shift}","${s.matricula}","${s.cpf}"`).join("\n");
+src/components/admin/AdminPessoas.tsx:2217: <option key={item.name} value={item.name}>
+src/components/admin/AdminPessoas.tsx:2217: <option key={item.name} value={item.name}>
+src/components/admin/AdminPessoas.tsx:2218: {item.name} ({item.count} Est.)
+src/components/admin/AdminPessoas.tsx:2514: <span className="font-medium text-white group-hover:text-gold transition-colors">{s.name}</span>
+src/components/admin/AdminPessoas.tsx:2590: if (confirm(`Deseja arquivar ou excluir permanentemente o estudante ${s.name}?`)) {
+src/components/admin/AdminPessoas.tsx:2664: {selectedStudent.name.charAt(0)}
+src/components/admin/AdminPessoas.tsx:2670: <h3 className="text-base font-bold text-white font-serif tracking-wide">{selectedStudent.name}</h3>
+src/components/admin/AdminPessoas.tsx:2739: if (confirm(`Deseja realmente excluir permanentemente o estudante ${selectedStudent.name}?`)) {
+src/components/admin/AdminPessoas.tsx:2764: showToast(`Estudante ${oldStudent.name} removido com sucesso.`);
+src/components/admin/AdminPessoas.tsx:2873: alert(`Iniciando fluxo de transferência escolar para o aluno: ${selectedStudent.name}`);
+src/components/admin/AdminPessoas.tsx:2927: value={newStudentForm.name}
+src/components/admin/AdminPessoas.tsx:3196: <span>{parsed.name}</span>
+src/components/admin/AdminPessoas.tsx:3658: alt={t.name}
+src/components/admin/AdminPessoas.tsx:3663: <span className="font-bold text-slate-200 block">{t.name}</span>
+src/components/admin/AdminPessoas.tsx:3797: alt={t.name}
+src/components/admin/AdminPessoas.tsx:3804: {t.name}
+src/components/admin/AdminPessoas.tsx:3932: if (confirm(`Deseja realmente excluir permanentemente o professor ${t.name}?`)) {
+src/components/admin/AdminPessoas.tsx:3963: Grade Horária Inteligente: {currentTeacher.name}
+src/components/admin/AdminPessoas.tsx:4131: value={teacherForm.name}
+src/components/admin/AdminPessoas.tsx:4395: const isChecked = teacherForm.permissions.includes(perm.name);
+src/components/admin/AdminPessoas.tsx:4408: ? [...teacherForm.permissions, perm.name]
+src/components/admin/AdminPessoas.tsx:4409: : teacherForm.permissions.filter(p => p !== perm.name);
+src/components/admin/AdminPessoas.tsx:4415: <span className="text-xs font-bold text-white block leading-tight">{perm.name}</span>
+src/components/admin/AdminPessoas.tsx:4498: <p className="text-white font-semibold font-sans">{savedTeacherCredentials.name}</p>
+src/components/admin/AdminPessoas.tsx:4557: const msg = `Olá, ${savedTeacherCredentials.name}! Seu cadastro foi realizado no Classium e seu acesso ao ClassiumProfessor já está disponível:\n\n🔗 Aplicativo: professor.educamais.gov\n👤 Login Único: ${savedTeacherCredentials.login}\n🔑 Senha Temporária: ${savedTeacherCredentials.senha}\n\nPor favor, altere sua senha no primeiro acesso.`;
+src/components/admin/AdminPessoas.tsx:4606: alt={currentTeacher.name}
+src/components/admin/AdminPessoas.tsx:4610: <h4 className="font-serif font-bold text-white text-base leading-tight">{currentTeacher.name}</h4>
+src/components/admin/AdminPessoas.tsx:4761: <span className="text-[11px] font-bold text-slate-400 uppercase">Grade de Turmas Cadastradas para {currentTeacher.name}</span>
+src/components/admin/AdminPessoas.tsx:4771: {currentTeacher.name} • {link.subject} • {link.grade} • {link.room}
+src/components/admin/AdminPessoas.tsx:4861: const matchesStudentName = s.name.toLowerCase().includes(query);
+src/components/admin/AdminPessoas.tsx:4869: r.name.toLowerCase().includes(query) ||
+src/components/admin/AdminPessoas.tsx:4899: alt={student.name}
+src/components/admin/AdminPessoas.tsx:4905: <span className="font-bold text-white text-xs truncate">{student.name}</span>
+src/components/admin/AdminPessoas.tsx:4937: {student.name.split(' ')[0]} {student.name.split(' ').slice(-1)[0]} ({student.grade})
+src/components/admin/AdminPessoas.tsx:4937: {student.name.split(' ')[0]} {student.name.split(' ').slice(-1)[0]} ({student.grade})
+src/components/admin/AdminPessoas.tsx:4966: alt={profile.name}
+src/components/admin/AdminPessoas.tsx:4979: <h4 className="font-serif text-lg font-bold text-white">{profile.name}</h4>
+src/components/admin/AdminPessoas.tsx:5157: {resp.name.split(' ').slice(0, 2).map(n => n[0]).join('')}
+src/components/admin/AdminPessoas.tsx:5161: <h4 className="font-bold text-white text-sm">{resp.name}</h4>
+src/components/admin/AdminPessoas.tsx:5328: <p className="text-white font-bold">{simulatedWhatsApp.name} ({simulatedWhatsApp.phone})</p>
+src/components/admin/AdminPessoas.tsx:5351: showToast(`Mensagem enviada com sucesso para o WhatsApp de ${simulatedWhatsApp.name}!`);
+src/components/admin/AdminPessoas.tsx:5379: <p className="text-white font-bold">{simulatedEmail.name} &lt;{simulatedEmail.email}&gt;</p>
+src/components/admin/AdminPessoas.tsx:5412: showToast(`E-mail enviado com sucesso para ${simulatedEmail.name}!`);
+src/components/admin/AdminPessoas.tsx:5438: <p><strong>Estudante:</strong> {quickTemplateModal.student.name} • <strong>Responsável:</strong> {quickTemplateModal.responsible.name} ({quickTemplateModal.responsible.relationship})</p>
+src/components/admin/AdminPessoas.tsx:5438: <p><strong>Estudante:</strong> {quickTemplateModal.student.name} • <strong>Responsável:</strong> {quickTemplateModal.responsible.name} ({quickTemplateModal.responsible.relationship})</p>
+src/components/admin/AdminPessoas.tsx:5592: <p className="text-white font-bold text-sm">{addressModal.name}</p>
+src/components/admin/AdminGateQRCode.tsx:138: setGateLocation(matched.name + (matched.location ? ` - ${matched.location}` : ''));
+src/components/admin/AdminGateQRCode.tsx:159: setStaffName(matched.name + (matched.role ? ` (${matched.role})` : ''));
+src/components/admin/AdminGateQRCode.tsx:304: setGateLocation(found.name + (found.location ? ` - ${found.location}` : ''));
+src/components/admin/AdminGateQRCode.tsx:315: setStaffName(found.name + (found.role ? ` (${found.role})` : ''));
+src/components/admin/AdminGateQRCode.tsx:329: setGateLocation(res.portaria.name + (res.portaria.location ? ` - ${res.portaria.location}` : ''));
+src/components/admin/AdminGateQRCode.tsx:657: studentName: mainStudent.name,
+src/components/admin/AdminGateQRCode.tsx:662: studentName: s.name,
+src/components/admin/AdminGateQRCode.tsx:694: studentName: s.name,
+src/components/admin/AdminGateQRCode.tsx:1048: {portaria.name} {portaria.location ? `(${portaria.location})` : ''}
+src/components/admin/AdminGateQRCode.tsx:1075: {inspector.name}
+src/components/admin/AdminGateQRCode.tsx:1401: <span className="truncate text-xs">{st.name}</span>
+src/components/admin/AdminSmartHorarios.tsx:92: rooms: INITIAL_ROOMS.filter(r => ['Sala 08', 'Sala 09', 'Sala 10', 'Sala 11', 'Sala Maker', 'Laboratório Ciências'].includes(r.name)),
+src/components/admin/AdminSmartHorarios.tsx:361: name: c.name,
+src/components/admin/AdminSmartHorarios.tsx:378: name: s.name,
+src/components/admin/AdminSmartHorarios.tsx:393: name: t.profiles?.full_name || t.name || 'Sem nome',
+src/components/admin/AdminEstudantes.tsx:312: full_name: student.full_name || student.name || '',
+src/components/admin/AdminEstudantes.tsx:318: class_name: mainClass.class_name || mainClass.name || student.class_name || '8º Ano A',
+src/components/admin/AdminEstudantes.tsx:354: const matchedClass = realOrgClasses.find(c => c.name === mainClass.name || c.id === student.class_id);
+src/components/admin/AdminEstudantes.tsx:354: const matchedClass = realOrgClasses.find(c => c.name === mainClass.name || c.id === student.class_id);
+src/components/admin/AdminEstudantes.tsx:357: customClassName: !matchedClass && mainClass.name && mainClass.name !== 'Sem Turma' ? mainClass.name : '',
+src/components/admin/AdminEstudantes.tsx:357: customClassName: !matchedClass && mainClass.name && mainClass.name !== 'Sem Turma' ? mainClass.name : '',
+src/components/admin/AdminEstudantes.tsx:357: customClassName: !matchedClass && mainClass.name && mainClass.name !== 'Sem Turma' ? mainClass.name : '',
+src/components/admin/AdminEstudantes.tsx:378: targetClassName = cls.name;
+src/components/admin/AdminEstudantes.tsx:511: showToast(`Estudante ${studentToDelete.full_name || studentToDelete.name} excluído do banco de dados com sucesso!`);
+src/components/admin/AdminEstudantes.tsx:527: const studentName = student.full_name || student.name || 'Estudante';
+src/components/admin/AdminEstudantes.tsx:803: const classNames = (item.classes || []).map(c => c.class_name || c.name || c.title || item.class_name).filter(Boolean);
+src/components/admin/AdminEstudantes.tsx:838: const nameStr = (item.full_name || item.name || '').toLowerCase();
+src/components/admin/AdminEstudantes.tsx:851: const studentClassNames = (item.classes || []).map(c => c.class_name || c.name || c.title || item.class_name);
+src/components/admin/AdminEstudantes.tsx:1038: <option key={c.name} value={c.name} className="bg-slate-900 text-white">
+src/components/admin/AdminEstudantes.tsx:1038: <option key={c.name} value={c.name} className="bg-slate-900 text-white">
+src/components/admin/AdminEstudantes.tsx:1039: {c.name} ({c.count})
+src/components/admin/AdminEstudantes.tsx:1112: const displayName = item.full_name || item.name || 'Sem nome';
+src/components/admin/AdminEstudantes.tsx:1166: {(!mainClass.name || mainClass.name === 'Sem Turma' || mainClass.name.includes('Sem turma') || mainClass.name.includes('Pendente')) ? (
+src/components/admin/AdminEstudantes.tsx:1166: {(!mainClass.name || mainClass.name === 'Sem Turma' || mainClass.name.includes('Sem turma') || mainClass.name.includes('Pendente')) ? (
+src/components/admin/AdminEstudantes.tsx:1166: {(!mainClass.name || mainClass.name === 'Sem Turma' || mainClass.name.includes('Sem turma') || mainClass.name.includes('Pendente')) ? (
+src/components/admin/AdminEstudantes.tsx:1166: {(!mainClass.name || mainClass.name === 'Sem Turma' || mainClass.name.includes('Sem turma') || mainClass.name.includes('Pendente')) ? (
+src/components/admin/AdminEstudantes.tsx:1182: {mainClass.class_name || mainClass.name || mainClass.title}
+src/components/admin/AdminEstudantes.tsx:1220: <p className="font-bold text-slate-200">{primaryGuardian.full_name || primaryGuardian.name || 'Responsável'}</p>
+src/components/admin/AdminEstudantes.tsx:1392: (selectedStudent.full_name || selectedStudent.name || 'E').trim().charAt(0).toUpperCase()
+src/components/admin/AdminEstudantes.tsx:1397: {selectedStudent.full_name || selectedStudent.name || 'Estudante'}
+src/components/admin/AdminEstudantes.tsx:1424: <span className="font-bold text-white text-sm">{selectedStudent.full_name || selectedStudent.name || '—'}</span>
+src/components/admin/AdminEstudantes.tsx:1591: <span className="font-bold text-white text-xs">{g.full_name || g.name || 'Responsável'}</span>
+src/components/admin/AdminEstudantes.tsx:2000: Estudante: <strong className="text-rose-300">{studentToDelete.full_name || studentToDelete.name}</strong> (RA: {studentToDelete.registration_code || 'N/A'})
+src/components/admin/AdminEstudantes.tsx:2051: {studentToLink.full_name || studentToLink.name} (RA: {studentToLink.registration_code || 'N/A'})
+src/components/admin/AdminEstudantes.tsx:2082: {cls.name} ({cls.shift || 'Matutino'}{cls.room ? ` • ${cls.room}` : ''})
+src/components/admin/EducaIntelligenceCenter.tsx:247: <td>${u.name}</td>
+src/components/admin/EducaIntelligenceCenter.tsx:793: {METRICS_DB.units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+src/components/admin/EducaIntelligenceCenter.tsx:803: {METRICS_DB.units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+src/components/admin/CentroDisciplinarEducaPlus.tsx:421: if (o.classId !== cls.name && o.grade !== cls.grade) return false;
+src/components/admin/CentroDisciplinarEducaPlus.tsx:506: studentName: student.name,
+src/components/admin/CentroDisciplinarEducaPlus.tsx:511: triggerToast(`Sugerida e registrada Advertência Verbal para ${student.name}!`);
+src/components/admin/CentroDisciplinarEducaPlus.tsx:549: triggerToast(`${typeLabel} gerado com sucesso para a família de ${student.name}! Integrado ao módulo Comunicação.`);
+src/components/admin/CentroDisciplinarEducaPlus.tsx:593: `Reunião Disciplinar Crítica com responsáveis de ${student.name}. Pauta: ${meetingAta}`
+src/components/admin/CentroDisciplinarEducaPlus.tsx:596: triggerToast(`Reunião agendada com sucesso para ${student.name} em ${new Date(meetingDate).toLocaleDateString('pt-BR')} às ${meetingTime}!`);
+src/components/admin/CentroDisciplinarEducaPlus.tsx:614: const matchesSearch = h.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+src/components/admin/CentroDisciplinarEducaPlus.tsx:823: <h4 className="font-serif text-sm font-bold text-white">{cls.name}</h4>
+src/components/admin/CentroDisciplinarEducaPlus.tsx:862: className: cls.name,
+src/components/admin/CentroDisciplinarEducaPlus.tsx:887: {hoveredCell && hoveredCell.className === cls.name && (
+src/components/admin/CentroDisciplinarEducaPlus.tsx:970: alt={student.name}
+src/components/admin/CentroDisciplinarEducaPlus.tsx:975: <h4 className="font-bold text-xs text-white leading-snug">{student.name}</h4>
+src/components/admin/CentroDisciplinarEducaPlus.tsx:1106: alt={selectedStudentHistory.name}
+src/components/admin/CentroDisciplinarEducaPlus.tsx:1111: <p className="text-sm font-bold text-white">{selectedStudentHistory.name}</p>
+src/components/admin/CentroDisciplinarEducaPlus.tsx:1217: <p><strong>Nome Completo:</strong> {selectedStudentReport.name}</p>
+src/components/admin/CentroDisciplinarEducaPlus.tsx:1341: {convokeType === 'comunicado' && `Prezados responsáveis por ${selectedStudentConvoke.name}, solicitamos o seu comparecimento urgente na secretaria para tratarmos do rendimento disciplinar de seu filho.`}
+src/components/admin/AdminGestaoParceiros.tsx:250: p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+src/components/admin/AdminGestaoParceiros.tsx:285: `Parceiro: ${partner.name}`,
+src/components/admin/AdminGestaoParceiros.tsx:288: showToast(`✅ Parceiro "${partner.name}" aprovado e publicado com sucesso!`);
+src/components/admin/AdminGestaoParceiros.tsx:315: `Parceiro: ${rejectingPartner.name}`,
+src/components/admin/AdminGestaoParceiros.tsx:320: showToast(`❌ Cadastro de "${rejectingPartner.name}" rejeitado com justificativa gravada.`);
+src/components/admin/AdminGestaoParceiros.tsx:339: `Parceiro: ${partner.name}`,
+src/components/admin/AdminGestaoParceiros.tsx:342: showToast(willBlock ? `🚫 Parceiro "${partner.name}" bloqueado.` : `✅ Parceiro "${partner.name}" desbloqueado.`);
+src/components/admin/AdminGestaoParceiros.tsx:342: showToast(willBlock ? `🚫 Parceiro "${partner.name}" bloqueado.` : `✅ Parceiro "${partner.name}" desbloqueado.`);
+src/components/admin/AdminGestaoParceiros.tsx:393: partnerName: planChangePartner.name,
+src/components/admin/AdminGestaoParceiros.tsx:405: `Parceiro: ${planChangePartner.name}`,
+src/components/admin/AdminGestaoParceiros.tsx:411: showToast(`🔄 Plano de "${planChangePartner.name}" atualizado para ${nextPlanName}!`);
+src/components/admin/AdminGestaoParceiros.tsx:429: `Parceiro: ${editingPartner.name}`,
+src/components/admin/AdminGestaoParceiros.tsx:432: showToast(`✨ Parceiro "${editingPartner.name}" cadastrado com sucesso!`);
+src/components/admin/AdminGestaoParceiros.tsx:438: `Parceiro: ${editingPartner.name}`,
+src/components/admin/AdminGestaoParceiros.tsx:441: showToast(`💾 Alterações de "${editingPartner.name}" salvas com sucesso!`);
+src/components/admin/AdminGestaoParceiros.tsx:519: `"${p.name}"`,
+src/components/admin/AdminGestaoParceiros.tsx:520: `"${p.tradeName || p.name}"`,
+src/components/admin/AdminGestaoParceiros.tsx:817: <span className="text-slate-400 block">{pl.name}</span>
+src/components/admin/AdminGestaoParceiros.tsx:1010: <span className="font-bold text-white text-xs">{p.tradeName || p.name}</span>
+src/components/admin/AdminGestaoParceiros.tsx:1173: onClick={() => handleDeletePartner(p.id, p.name)}
+src/components/admin/AdminGestaoParceiros.tsx:1229: <h4 className="font-bold text-white text-sm">{p.name}</h4>
+src/components/admin/AdminGestaoParceiros.tsx:1387: {pl.name}
+src/components/admin/AdminGestaoParceiros.tsx:1600: <span className="font-bold text-white">{p.name}</span>
+src/components/admin/AdminGestaoParceiros.tsx:1693: {selectedPartnerForDetail.name}
+src/components/admin/AdminGestaoParceiros.tsx:1833: value={editingPartner.name}
+src/components/admin/AdminGestaoParceiros.tsx:2038: <span className="text-white font-bold text-sm">{planChangePartner.name}</span>
+src/components/admin/AdminGestaoParceiros.tsx:2051: {pl.name} — R$ {pl.monthlyPrice.toFixed(2)}/mês ({pl.description.slice(0, 50)}...)
+src/components/admin/AdminGestaoParceiros.tsx:2106: Você está recusando a homologação de <strong className="text-white">{rejectingPartner.name}</strong>.
+src/components/admin/EducaPlusIntegrationHub.tsx:56: ev.user.name.toLowerCase().includes(searchQuery.toLowerCase());
+src/components/admin/EducaPlusIntegrationHub.tsx:200: <h4 className="font-serif font-bold text-xs text-white pt-1">{m.name}</h4>
+src/components/admin/EducaPlusIntegrationHub.tsx:277: <span>Operador: <strong className="text-slate-200">{ev.user.name} ({ev.user.role})</strong> • IP: {ev.user.ip}</span>
+src/components/admin/DashboardHeaderUnificado.tsx:217: setOfficialName(data.official_name || data.legal_name || data.name || '');
+src/components/admin/DashboardHeaderUnificado.tsx:390: setMemberName(m.name);
+src/components/admin/DashboardHeaderUnificado.tsx:449: setToast({ type: 'success', message: `Integrante "${member.name}" removido da Equipe Gestora com sucesso.` });
+src/components/admin/DashboardHeaderUnificado.tsx:1015: aria-label={`Editar ${member.name}`}
+src/components/admin/DashboardHeaderUnificado.tsx:1028: aria-label={`Excluir ${member.name}`}
+src/components/admin/DashboardHeaderUnificado.tsx:1042: {member.name}
+src/components/admin/DashboardHeaderUnificado.tsx:1251: <span className="font-bold text-slate-900">{memberToDelete.name}</span>
+src/components/admin/StudentEnrollmentWizard.tsx:498: if (!g.name.trim()) {
+src/components/admin/StudentEnrollmentWizard.tsx:619: if (!primaryGuardian || !primaryGuardian.name.trim()) {
+src/components/admin/StudentEnrollmentWizard.tsx:636: const gName = g.name.trim();
+src/components/admin/StudentEnrollmentWizard.tsx:695: ? selectedClassObj.name
+src/components/admin/StudentEnrollmentWizard.tsx:721: guardian_name: primaryGuardian.name,
+src/components/admin/StudentEnrollmentWizard.tsx:745: guardian_name: g.name,
+src/components/admin/StudentEnrollmentWizard.tsx:779: setExecutionLog(prev => prev.map(l => l.step === 5 ? { ...l, status: 'success' as const, label: `Estudante alocado na turma ${selectedClassObj.name}.` } : l.step === 6 ? { ...l, status: 'running' as const } : l));
+src/components/admin/StudentEnrollmentWizard.tsx:791: full_name: g.name,
+src/components/admin/StudentEnrollmentWizard.tsx:792: name: g.name,
+src/components/admin/StudentEnrollmentWizard.tsx:1213: value={g.name}
+src/components/admin/StudentEnrollmentWizard.tsx:1347: grade: cls.name,
+src/components/admin/StudentEnrollmentWizard.tsx:1357: {`${cls.name} · ${cls.shift || '-'} · ${cls.room || '-'}`}
+src/components/admin/StudentEnrollmentWizard.tsx:1474: <p className="font-bold text-[11px] text-white leading-tight">{g.name}</p>
+src/components/admin/AdminHorarioAula.tsx:355: const isStandard = STANDARD_DISCIPLINES.some(d => d.name.toLowerCase() === initialDisc.toLowerCase());
+src/components/admin/AdminHorarioAula.tsx:505: setEditClassName(c.name);
+src/components/admin/AdminHorarioAula.tsx:707: const standard = STANDARD_DISCIPLINES.find(d => d.name.toLowerCase() === disciplineName.toLowerCase());
+src/components/admin/AdminHorarioAula.tsx:709: return { name: standard.name, color: standard.color, isAllocated: true, tag: standard.tag };
+src/components/admin/AdminHorarioAula.tsx:712: const fromDb = disciplinesList.find(d => d.name.toLowerCase() === disciplineName.toLowerCase());
+src/components/admin/AdminHorarioAula.tsx:714: return { name: fromDb.name, color: fromDb.color || '#38BDF8', isAllocated: true, tag: fromDb.name.substring(0, 4).toUpperCase() };
+src/components/admin/AdminHorarioAula.tsx:714: return { name: fromDb.name, color: fromDb.color || '#38BDF8', isAllocated: true, tag: fromDb.name.substring(0, 4).toUpperCase() };
+src/components/admin/AdminHorarioAula.tsx:873: {selectedClass ? selectedClass.name : 'Nenhuma selecionada'}
+src/components/admin/AdminHorarioAula.tsx:1006: {day.name}
+src/components/admin/AdminHorarioAula.tsx:1098: {meta.name}
+src/components/admin/AdminHorarioAula.tsx:1170: const isSelected = tempDiscipline === d.name;
+src/components/admin/AdminHorarioAula.tsx:1173: key={d.name}
+src/components/admin/AdminHorarioAula.tsx:1175: onClick={() => setTempDiscipline(d.name)}
+src/components/admin/AdminHorarioAula.tsx:1182: <span className="truncate">{d.name}</span>
+src/components/admin/AdminHorarioAula.tsx:1513: Altere os dados cadastrais da turma <strong className="text-slate-900">{editingClass.name}</strong>.
+src/components/admin/AdminHorarioAula.tsx:1584: <Trash2 className="w-5 h-5 text-rose-600" /> Excluir Turma — {deletingClass.name}
+src/components/admin/AdminHorarioAula.tsx:1588: Deseja realmente remover a turma <strong className="text-slate-900">{deletingClass.name}</strong>?
+src/components/admin/AdminSecretaria.tsx:374: <h4 className="font-serif text-xs font-bold text-white leading-relaxed">{d.name}</h4>
+src/components/admin/AdminSecretaria.tsx:380: onClick={() => alert(`Download iniciado: ${d.name}`)}
+src/components/admin/AdminRadarRotina.tsx:117: name: s.name || s.full_name || `Estudante #${idx + 1}`,
+src/components/admin/AdminRadarRotina.tsx:131: name: g.name || 'Responsável',
+src/components/admin/AdminRadarRotina.tsx:269: s.name.toLowerCase().includes(term) ||
+src/components/admin/AdminRadarRotina.tsx:280: s.name.toLowerCase().includes(term) ||
+src/components/admin/AdminRadarRotina.tsx:302: setPipelineLogs(prev => [...prev, `🟢 [Central Disciplinar] ${simulationTeacher} registrou ocorrência: "${simulationInfraction}" para ${selectedStudent.name}.`]);
+src/components/admin/AdminRadarRotina.tsx:343: studentName: selectedStudent.name,
+src/components/admin/AdminRadarRotina.tsx:356: student_name: selectedStudent.name,
+src/components/admin/AdminRadarRotina.tsx:402: studentName: entryExitStudent.name,
+src/components/admin/AdminRadarRotina.tsx:422: alert(`Movimentação "${entryExitType}" registrada para ${entryExitStudent.name} e comunicada em tempo real à família!`);
+src/components/admin/AdminRadarRotina.tsx:437: studentName: targetStudent.name,
+src/components/admin/AdminRadarRotina.tsx:440: summary: `O estudante ${targetStudent.name} apresenta um histórico comportamental monitorado pela Central Disciplinar com um índice de estabilidade no último bimestre.`,
+src/components/admin/AdminRadarRotina.tsx:651: <span className="font-semibold">{s.name} ({s.grade})</span>
+src/components/admin/AdminRadarRotina.tsx:668: alt={selectedStudent.name}
+src/components/admin/AdminRadarRotina.tsx:673: <h4 className="font-serif font-bold text-xs text-white truncate">{selectedStudent.name}</h4>
+src/components/admin/AdminRadarRotina.tsx:690: <span>{g.name} ({g.relation}) — {g.phone}</span>
+src/components/admin/AdminRadarRotina.tsx:863: {s.name} ({s.grade})
+src/components/admin/AdminRadarRotina.tsx:872: <p className="font-bold text-white">{entryExitStudent.name}</p>
+src/components/admin/AdminRadarRotina.tsx:988: <option key={s.id} value={s.id}>{s.name} ({s.grade})</option>
+src/components/admin/AdminOutros.tsx:111: name: activeUnit.name,
+src/components/admin/AdminOutros.tsx:112: razaoSocial: schoolInfo.razaoSocial || activeUnit.name,
+src/components/admin/AdminOutros.tsx:251: schoolName: schoolInfo.name || 'Escola Municipal Professora Maria Aparecida',
+src/components/admin/AdminOutros.tsx:826: schoolName: schoolInfo.name || prev.schoolName,
+src/components/admin/AdminOutros.tsx:3265: <h4 className="font-bold text-sm text-white line-clamp-1" title={st.name}>{st.name}</h4>
+src/components/admin/AdminOutros.tsx:3265: <h4 className="font-bold text-sm text-white line-clamp-1" title={st.name}>{st.name}</h4>
+src/components/admin/AdminOutros.tsx:3530: st.name.toLowerCase().includes(q) ||
+src/components/admin/AdminOutros.tsx:3565: {st.name.charAt(0)}
+src/components/admin/AdminOutros.tsx:3568: <h4 className="font-bold text-sm text-white truncate">{st.name}</h4>
+src/components/admin/AdminOutros.tsx:4201: {st.name} ({st.grade} - {st.shift})
+src/components/admin/AdminOutros.tsx:4230: <span className="font-bold text-xs text-white">{st.name}</span>
+src/components/admin/AdminOutros.tsx:4404: {schoolInfo.name || 'CLASSIUM SISTEMAS EDUCACIONAIS'}
+src/components/admin/AdminOutros.tsx:4506: <td className="p-2 font-bold">{st.name}</td>
+src/components/admin/AdminOutros.tsx:4552: <td className="p-1 font-bold">{p.name}</td>
+src/components/admin/AdminOutros.tsx:4621: <span className="font-bold text-white block">{p.name}</span>
+src/components/admin/SchoolClassesGridSection.tsx:59: const numGradeA = extractNum(a.grade || a.name);
+src/components/admin/SchoolClassesGridSection.tsx:60: const numGradeB = extractNum(b.grade || b.name);
+src/components/admin/SchoolClassesGridSection.tsx:64: const nameComp = (a.name || '').localeCompare(b.name || '', 'pt-BR', { numeric: true, sensitivity: 'base' });
+src/components/admin/SchoolClassesGridSection.tsx:64: const nameComp = (a.name || '').localeCompare(b.name || '', 'pt-BR', { numeric: true, sensitivity: 'base' });
+src/components/admin/SchoolClassesGridSection.tsx:100: } else if (c.name) {
+src/components/admin/SchoolClassesGridSection.tsx:102: const m = c.name.match(/^(\d+º\s*Ano|[A-Za-zÀ-ÿ]+\s*Ano)/i);
+src/components/admin/SchoolClassesGridSection.tsx:159: return (c.grade && c.grade.trim() === filterGrade) || (c.name && c.name.includes(filterGrade));
+src/components/admin/SchoolClassesGridSection.tsx:159: return (c.grade && c.grade.trim() === filterGrade) || (c.name && c.name.includes(filterGrade));
+src/components/admin/SchoolClassesGridSection.tsx:172: const nameMatch = c.name?.toLowerCase().includes(q);
+src/components/admin/SchoolClassesGridSection.tsx:522: {c.name}
+src/components/admin/SchoolClassesGridSection.tsx:544: aria-label={`Editar turma ${c.name}`}
+src/components/admin/SchoolClassesGridSection.tsx:557: aria-label={`Excluir turma ${c.name}`}
+src/components/admin/smart-horarios/GeneratorTab.tsx:539: <option key={c.id} value={c.id} className="bg-slate-950 text-slate-200">{c.name} ({c.shift})</option>
+src/components/admin/smart-horarios/GeneratorTab.tsx:542: <option key={t.id} value={t.id} className="bg-slate-950 text-slate-200">{t.name} ({t.subject})</option>
+src/components/admin/smart-horarios/GeneratorTab.tsx:545: <option key={r.id} value={r.id} className="bg-slate-950 text-slate-200">{r.name} ({r.type})</option>
+src/components/admin/smart-horarios/GeneratorTab.tsx:610: const code = getTurmaCode(c.name);
+src/components/admin/smart-horarios/GeneratorTab.tsx:616: <div className="text-[8px] text-slate-500 truncate max-w-[80px]">{c.name}</div>
+src/components/admin/smart-horarios/GeneratorTab.tsx:646: <span className="truncate">{subj.name.substring(0, 4).toUpperCase()}</span>
+src/components/admin/smart-horarios/GeneratorTab.tsx:729: <span className="font-bold text-[11px] truncate">{subj.name}</span>
+src/components/admin/smart-horarios/GeneratorTab.tsx:828: <option key={s.id} value={s.id}>{s.name}</option>
+src/components/admin/smart-horarios/GeneratorTab.tsx:841: <option key={t.id} value={t.id}>{t.name}</option>
+src/components/admin/smart-horarios/GeneratorTab.tsx:854: <option key={r.id} value={r.id}>{r.name} ({r.type})</option>
+src/components/admin/smart-horarios/ConfigurationTab.tsx:361: value={h.name}
+src/components/admin/smart-horarios/TablesTabs.tsx:108: if (subTab === 'turmas' && newClass.name) {
+src/components/admin/smart-horarios/TablesTabs.tsx:112: name: newClass.name!,
+src/components/admin/smart-horarios/TablesTabs.tsx:123: name: newClass.name!,
+src/components/admin/smart-horarios/TablesTabs.tsx:134: const finalSubjectName = newSubject.name === 'Outros (editável)' ? customSubjectName : newSubject.name;
+src/components/admin/smart-horarios/TablesTabs.tsx:134: const finalSubjectName = newSubject.name === 'Outros (editável)' ? customSubjectName : newSubject.name;
+src/components/admin/smart-horarios/TablesTabs.tsx:158: } else if (subTab === 'salas' && newRoom.name) {
+src/components/admin/smart-horarios/TablesTabs.tsx:162: name: newRoom.name!,
+src/components/admin/smart-horarios/TablesTabs.tsx:169: name: newRoom.name!,
+src/components/admin/smart-horarios/TablesTabs.tsx:187: name: c.name,
+src/components/admin/smart-horarios/TablesTabs.tsx:201: const isPredefined = PREDEFINED_SUBJECTS.includes(s.name);
+src/components/admin/smart-horarios/TablesTabs.tsx:203: name: isPredefined ? s.name : 'Outros (editável)',
+src/components/admin/smart-horarios/TablesTabs.tsx:211: setCustomSubjectName(s.name);
+src/components/admin/smart-horarios/TablesTabs.tsx:219: name: r.name,
+src/components/admin/smart-horarios/TablesTabs.tsx:261: const currentSubName = newSubject.name === 'Outros (editável)' ? customSubjectName : newSubject.name;
+src/components/admin/smart-horarios/TablesTabs.tsx:261: const currentSubName = newSubject.name === 'Outros (editável)' ? customSubjectName : newSubject.name;
+src/components/admin/smart-horarios/TablesTabs.tsx:312: .filter(c => (c.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()))
+src/components/admin/smart-horarios/TablesTabs.tsx:317: {c.name}
+src/components/admin/smart-horarios/TablesTabs.tsx:370: .filter(s => (s.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()))
+src/components/admin/smart-horarios/TablesTabs.tsx:377: {s.name}
+src/components/admin/smart-horarios/TablesTabs.tsx:430: .filter(r => (r.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()))
+src/components/admin/smart-horarios/TablesTabs.tsx:435: {r.name}
+src/components/admin/smart-horarios/TablesTabs.tsx:484: value={newClass.name}
+src/components/admin/smart-horarios/TablesTabs.tsx:556: value={newSubject.name}
+src/components/admin/smart-horarios/TablesTabs.tsx:566: {newSubject.name === 'Outros (editável)' && (
+src/components/admin/smart-horarios/TablesTabs.tsx:601: <option key={t.id} value={t.id}>{t.name} (Especialista)</option>
+src/components/admin/smart-horarios/TablesTabs.tsx:607: <option key={t.id} value={t.id}>{t.name} ({t.subject})</option>
+src/components/admin/smart-horarios/TablesTabs.tsx:647: value={newRoom.name}
+src/components/admin/smart-horarios/TeachersTab.tsx:96: if (!newTeacherForm.name) return;
+src/components/admin/smart-horarios/TeachersTab.tsx:100: name: newTeacherForm.name,
+src/components/admin/smart-horarios/TeachersTab.tsx:283: const email = `${(t.name || 'professor').toLowerCase().replace(/\s+/g, '')}@educamais.com.br`;
+src/components/admin/smart-horarios/TeachersTab.tsx:295: <img referrerPolicy="no-referrer" src={t.avatar} alt={t.name} className="w-11 h-11 rounded-full object-cover border border-slate-800" />
+src/components/admin/smart-horarios/TeachersTab.tsx:298: {(t.name || 'P').charAt(0)}
+src/components/admin/smart-horarios/TeachersTab.tsx:304: {t.name}
+src/components/admin/smart-horarios/TeachersTab.tsx:406: value={newTeacherForm.name}
+src/components/admin/smart-horarios/TeachersTab.tsx:448: const isSelected = newTeacherForm.grades?.includes(c.name);
+src/components/admin/smart-horarios/TeachersTab.tsx:455: const next = current.includes(c.name) ? current.filter(g => g !== c.name) : [...current, c.name];
+src/components/admin/smart-horarios/TeachersTab.tsx:455: const next = current.includes(c.name) ? current.filter(g => g !== c.name) : [...current, c.name];
+src/components/admin/smart-horarios/TeachersTab.tsx:455: const next = current.includes(c.name) ? current.filter(g => g !== c.name) : [...current, c.name];
+src/components/admin/smart-horarios/TeachersTab.tsx:462: {c.name}
+src/components/admin/smart-horarios/TeachersTab.tsx:497: const matchesSearch = (c.name || '').toLowerCase().includes((allocatingSearchTerm || '').toLowerCase());
+src/components/admin/smart-horarios/TeachersTab.tsx:499: const matchesSegment = segmentFilter === 'Todos' || getSegment(c.name) === segmentFilter;
+src/components/admin/smart-horarios/TeachersTab.tsx:529: return sum + (t.classAllocations?.[c.name] || 0);
+src/components/admin/smart-horarios/TeachersTab.tsx:552: <span>Professor: <strong className="text-white">{allocatingTeacher.name}</strong></span>
+src/components/admin/smart-horarios/TeachersTab.tsx:663: const isAllocated = (tempAllocations[c.name] || 0) > 0;
+src/components/admin/smart-horarios/TeachersTab.tsx:668: return sum + (tempAllocations[c.name] || 0);
+src/components/admin/smart-horarios/TeachersTab.tsx:670: return sum + (t.classAllocations?.[c.name] || 0);
+src/components/admin/smart-horarios/TeachersTab.tsx:673: const teacherAllocForThisClass = tempAllocations[c.name] || 0;
+src/components/admin/smart-horarios/TeachersTab.tsx:688: onClick={() => handleToggleClass(c.name)}
+src/components/admin/smart-horarios/TeachersTab.tsx:700: {c.name}
+src/components/admin/smart-horarios/TeachersTab.tsx:717: onClick={() => handleDecrement(c.name)}
+src/components/admin/smart-horarios/TeachersTab.tsx:728: onClick={() => handleIncrement(c.name)}
+src/components/admin/smart-horarios/TeachersTab.tsx:796: <img referrerPolicy="no-referrer" src={editingTeacher.avatar} alt={editingTeacher.name} className="w-10 h-10 rounded-full object-cover border border-slate-800" />
+src/components/admin/smart-horarios/TeachersTab.tsx:803: <h3 className="font-serif text-sm font-bold text-white">{editingTeacher.name}</h3>
+src/components/admin/smart-horarios/TeachersTab.tsx:985: Defina a turma, disciplina e atribuições semanais do professor <strong>{linkingTeacher.name}</strong>.
+src/components/admin/ia/IaModelsSettings.tsx:127: {p.name}
+src/components/admin/ia/IaKnowledgeMemory.tsx:130: doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+src/components/admin/ia/IaKnowledgeMemory.tsx:315: <h5 className="font-bold text-white">{doc.name}</h5>
+src/components/admin/ia/IaAutomationPrompts.tsx:92: alert(`Sucesso! Automação "${wf.name}" executada perfeitamente de forma síncrona.`);
+src/components/admin/ia/IaAutomationPrompts.tsx:152: {t.name}
+src/components/admin/ia/IaAutomationPrompts.tsx:205: <h5 className="font-bold text-white">{wf.name}</h5>
+src/components/admin/ia/IaAgents.tsx:57: const matchesSearch = agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+src/components/admin/ia/IaAgents.tsx:66: if (a.name === targetAgentName) {
+src/components/admin/ia/IaAgents.tsx:82: if (a.name === selectedAgent.name) {
+src/components/admin/ia/IaAgents.tsx:82: if (a.name === selectedAgent.name) {
+src/components/admin/ia/IaAgents.tsx:140: <h4 className="text-sm font-bold text-white mt-1">{agent.name}</h4>
+src/components/admin/ia/IaAgents.tsx:216: <Sparkles className="w-5 h-5 text-[#D4AF37]" /> Personalizar Instruções do {selectedAgent.name}
+src/components/admin/communication/ConvocacoesTab.tsx:197: s.name.toLowerCase().includes(query) ||
+src/components/admin/communication/ConvocacoesTab.tsx:210: ? selectedStudent.name
+src/components/admin/communication/ConvocacoesTab.tsx:261: p_target_student_label: selectedStudent ? `Para: ${selectedStudent.name.split(' ')[0]}` : null,
+src/components/admin/communication/ConvocacoesTab.tsx:404: if (selectedStudent) updateTargetAgenda(selectedStudent.name);
+src/components/admin/communication/ConvocacoesTab.tsx:478: updateTargetAgenda(s.name);
+src/components/admin/communication/ConvocacoesTab.tsx:487: <span className="truncate">{s.name} ({s.class_name || 'Sem turma'})</span>
+src/components/admin/communication/ConvocacoesTab.tsx:517: <option key={c.id} value={c.id}>{c.name} ({c.shift || 'Geral'})</option>
+src/components/admin/communication/ConvocacoesTab.tsx:539: <span>{c.name} ({c.shift || 'Geral'})</span>
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:204: s.name.toLowerCase().includes(query) ||
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:225: const sName = student.name;
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:257: p_target_student_name: selectedStudent.name,
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:258: p_target_student_label: `Para: ${selectedStudent.name.split(' ')[0]}`,
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:448: {s.name.substring(0, 2).toUpperCase()}
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:451: <p className="text-xs font-bold truncate">{s.name}</p>
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:477: <p className="text-sm font-bold text-white">{selectedStudent.name}</p>
+src/components/admin/communication/ComunicadoUrgenteTab.tsx:555: <span>Pronto para envio para o responsável de <strong>{selectedStudent.name}</strong></span>
+src/components/admin/communication/AssinaturasTab.tsx:248: s.name.toLowerCase().includes(query) ||
+src/components/admin/communication/AssinaturasTab.tsx:260: ? selectedStudent.name
+src/components/admin/communication/AssinaturasTab.tsx:314: p_target_student_label: selectedStudent ? `Para: ${selectedStudent.name.split(' ')[0]}` : null,
+src/components/admin/communication/AssinaturasTab.tsx:461: if (selectedStudent) updateTargetText(selectedStudent.name);
+src/components/admin/communication/AssinaturasTab.tsx:535: updateTargetText(s.name);
+src/components/admin/communication/AssinaturasTab.tsx:544: <span className="truncate">{s.name} ({s.class_name || 'Sem turma'})</span>
+src/components/admin/communication/AssinaturasTab.tsx:574: <option key={c.id} value={c.id}>{c.name} ({c.shift || 'Manhã'})</option>
+src/components/admin/communication/AssinaturasTab.tsx:596: <span>{c.name} ({c.shift || 'Geral'})</span>
+src/components/admin/communication/InformativosTab.tsx:291: s.name.toLowerCase().includes(query) ||
+src/components/admin/communication/InformativosTab.tsx:344: p_target_student_label: selectedStudent ? `Para: ${selectedStudent.name.split(' ')[0]}` : null,
+src/components/admin/communication/InformativosTab.tsx:551: <option key={c.id} value={c.id}>{c.name} ({c.shift || 'Geral'})</option>
+src/components/admin/communication/InformativosTab.tsx:573: <span>{c.name} ({c.shift || 'Geral'})</span>
+src/components/admin/communication/InformativosTab.tsx:614: <span className="truncate">{s.name} ({s.class_name || 'Sem turma'})</span>
+src/components/family/LostFoundTab.tsx:99: name: item.students.full_name || item.students.name || 'Estudante',
+src/components/family/LostFoundTab.tsx:121: name: s.name,
+src/components/family/LostFoundTab.tsx:131: name: currentFamilyStudent.name,
+src/components/family/LostFoundTab.tsx:205: name: dbItem.name || dbItem.title || 'Objeto Encontrado',
+src/components/family/LostFoundTab.tsx:265: const itemName = (item.name || '').toLowerCase();
+src/components/family/LostFoundTab.tsx:302: chosenStudent.name,
+src/components/family/LostFoundTab.tsx:315: studentName: chosenStudent.name,
+src/components/family/LostFoundTab.tsx:329: student_name: chosenStudent.name,
+src/components/family/LostFoundTab.tsx:339: itemName: claimingItem.name,
+src/components/family/LostFoundTab.tsx:340: studentName: chosenStudent.name,
+src/components/family/LostFoundTab.tsx:456: alt={item.name}
+src/components/family/LostFoundTab.tsx:482: {item.name}
+src/components/family/LostFoundTab.tsx:592: alt={claimingItem.name}
+src/components/family/LostFoundTab.tsx:596: <p className="font-bold text-oxford text-sm">{claimingItem.name}</p>
+src/components/family/LostFoundTab.tsx:622: alt={student.name}
+src/components/family/LostFoundTab.tsx:626: <p className="font-bold text-oxford truncate text-xs">{student.name}</p>
+src/components/family/LostFoundTab.tsx:725: <h4 className="font-serif text-base font-bold text-oxford">{selectedDetailItem.name}</h4>
+src/components/family/LostFoundTab.tsx:734: alt={selectedDetailItem.name}
+src/components/family/AppointmentTab.tsx:84: professionalName: selectedProf.name,
+src/components/family/AppointmentTab.tsx:147: alt={prof.name}
+src/components/family/AppointmentTab.tsx:152: <p className="text-xs font-bold text-oxford truncate max-w-[120px]">{prof.name}</p>
+src/components/family/GateQRCodeTab.tsx:773: alt={child.name}
+src/components/family/GateQRCodeTab.tsx:777: <p className="text-sm font-bold truncate leading-tight text-slate-900">{child.name}</p>
+src/components/family/StudentClassScheduleTab.tsx:290: name: s.full_name || s.name,
+src/components/family/StudentClassScheduleTab.tsx:388: name: shiftData.name || '1º Turno (Matutino)',
+src/components/family/StudentClassScheduleTab.tsx:662: alt={st.name}
+src/components/family/StudentClassScheduleTab.tsx:665: <span>{st.name}</span>
+src/components/family/StudentClassScheduleTab.tsx:681: <strong className="text-base text-emerald-800 font-semibold">{shiftsInfo.name.includes('1º') ? 'Matutino (Manhã)' : shiftsInfo.name}</strong>
+src/components/family/StudentClassScheduleTab.tsx:681: <strong className="text-base text-emerald-800 font-semibold">{shiftsInfo.name.includes('1º') ? 'Matutino (Manhã)' : shiftsInfo.name}</strong>
+src/components/family/StudentClassScheduleTab.tsx:689: <strong className="text-sm text-slate-800 font-semibold truncate block" title={schoolContact.name}>
+src/components/family/StudentClassScheduleTab.tsx:690: {schoolContact.name.length > 22 ? schoolContact.name.substring(0, 22) + '...' : schoolContact.name}
+src/components/family/StudentClassScheduleTab.tsx:690: {schoolContact.name.length > 22 ? schoolContact.name.substring(0, 22) + '...' : schoolContact.name}
+src/components/family/StudentClassScheduleTab.tsx:690: {schoolContact.name.length > 22 ? schoolContact.name.substring(0, 22) + '...' : schoolContact.name}
+src/components/family/StudentClassScheduleTab.tsx:742: Grade Semanal de Horários — {studentObj.name} ({gradeName})
+src/components/family/StudentClassScheduleTab.tsx:910: {member.name}
+src/components/family/RoutineRadarTab.tsx:473: onClick={() => alert(`Direcionando para o agendamento de atendimento presencial para ${currentStudent.name}...`)}
+src/components/family/RoutineRadarTab.tsx:536: Estudante: <strong className="text-white">{currentStudent.name}</strong>
+src/components/family/TutorsMarketplaceTab.tsx:149: p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+src/components/family/TutorsMarketplaceTab.tsx:203: specialist_name: showBookingModal.name,
+src/components/family/TutorsMarketplaceTab.tsx:349: alt={mentisAd.name}
+src/components/family/TutorsMarketplaceTab.tsx:362: {mentisAd.name}
+src/components/family/TutorsMarketplaceTab.tsx:695: alt={prof.name}
+src/components/family/TutorsMarketplaceTab.tsx:711: {prof.displayName || prof.name}
+src/components/family/TutorsMarketplaceTab.tsx:866: alt={activeProfessional.name}
+src/components/family/TutorsMarketplaceTab.tsx:879: <h3 className="font-serif text-2xl font-bold text-oxford">{activeProfessional.name}</h3>
+src/components/family/TutorsMarketplaceTab.tsx:1120: <p className="text-xs text-emerald-800 font-medium">Com {showBookingModal.name}</p>
+src/components/family/TutorsMarketplaceTab.tsx:1135: Sua solicitação de aula foi encaminhada para <strong>{showBookingModal.name}</strong>. O profissional entrará em contato via WhatsApp/Notificação para confirmar o horário.
+src/components/family/ThemeSettingsTab.tsx:183: <span className="text-xs font-bold text-[#D4AF37]">{activeTheme.name}</span>
+src/components/family/ThemeSettingsTab.tsx:239: {theme.name}
+src/components/family/StudentsAndLinkingTab.tsx:87: const currentKey = studentsList.map(s => `${s.student_id}:${s.full_name || s.name}:${s.is_active_on_panel ? '1' : '0'}`).join('|');
+src/components/family/StudentsAndLinkingTab.tsx:95: name: s.full_name || s.name || 'Estudante',
+src/components/family/StudentsAndLinkingTab.tsx:207: name: st.full_name || st.name || 'Estudante',
+src/components/family/StudentsAndLinkingTab.tsx:208: full_name: st.full_name || st.name || 'Estudante',
+src/components/family/StudentsAndLinkingTab.tsx:433: setSuccessMsg(`✓ Estudante "${candidate.full_name || candidate.name}" vinculado com sucesso à sua conta familiar!`);
+src/components/family/StudentsAndLinkingTab.tsx:563: name: child.full_name || child.name || 'Estudante',
+src/components/family/StudentsAndLinkingTab.tsx:578: setSuccessMsg(`Estudante "${child.full_name || child.name}" selecionado como ativo no painel.`);
+src/components/family/StudentsAndLinkingTab.tsx:836: {candidate.full_name || candidate.name}
+src/components/family/StudentsAndLinkingTab.tsx:1005: {child.full_name || child.name}
+src/components/family/StudentsAndLinkingTab.tsx:1050: onClick={() => handleUnlinkClick(child.student_id, child.full_name || child.name, child.link_id)}
+src/components/family/TransportTab.tsx:15: const studentShort = student?.name ? student.name.split(' ')[0] : 'Estudante';
+src/components/family/TransportTab.tsx:175: <img src={driverInfo.avatar} alt={driverInfo.name} className="w-11 h-11 rounded-full object-cover border border-gray-200" referrerPolicy="no-referrer" />
+src/components/family/TransportTab.tsx:177: <span className="font-bold text-oxford block">{driverInfo.name}</span>
+src/components/family/TransportTab.tsx:185: <img src={monitorInfo.avatar} alt={monitorInfo.name} className="w-11 h-11 rounded-full object-cover border border-gray-200" referrerPolicy="no-referrer" />
+src/components/family/TransportTab.tsx:187: <span className="font-bold text-oxford block">{monitorInfo.name}</span>
+src/components/family/UrgentNoticesTab.tsx:406: <option key={st.id} value={st.id}>{st.name}</option>
+src/components/family/UrgentNoticesTab.tsx:493: <span className="underline font-semibold text-slate-800">{notice.attachment.name}</span>
+src/components/family/UrgentNoticesTab.tsx:557: <p className="text-xs font-bold text-slate-600">{selectedAttachmentModal.name}</p>
+src/components/family/UrgentNoticesTab.tsx:563: <p className="text-xs font-bold text-oxford">{selectedAttachmentModal.name}</p>
+src/components/family/UrgentNoticesTab.tsx:574: alert(`Iniciando download do arquivo ${selectedAttachmentModal.name}...`);
+src/components/family/DocsChatTab.tsx:20: const studentShort = student?.name ? student.name.split(' ')[0] : 'Estudante';
+src/components/family/DocsChatTab.tsx:21: const guardianShort = guardian?.name ? guardian.name.split(' ')[0] : 'Responsável';
+src/components/family/DocsChatTab.tsx:150: <p className="text-xs font-bold text-oxford truncate" title={doc.name}>{doc.name}</p>
+src/components/family/DocsChatTab.tsx:150: <p className="text-xs font-bold text-oxford truncate" title={doc.name}>{doc.name}</p>
+src/components/family/DocsChatTab.tsx:155: onClick={() => handleDownload(doc.name)}
+src/components/family/DocsChatTab.tsx:159: {downloadingFile === doc.name ? (
+src/components/family/DocsChatTab.tsx:164: <span>{downloadingFile === doc.name ? 'Baixando...' : 'Download'}</span>
+src/components/family/CentralComunicacaoTab.tsx:758: <option key={st.id} value={st.id}>{st.name}</option>
+src/components/family/StudentDataTab.tsx:246: name: st.full_name || st.name || 'Estudante',
+src/components/family/StudentDataTab.tsx:247: fullName: st.full_name || st.name || 'Estudante',
+src/components/family/StudentDataTab.tsx:286: name: st.full_name || st.name || 'Roberth Henrique Alves',
+src/components/family/StudentDataTab.tsx:287: fullName: st.full_name || st.name || 'Roberth Henrique Alves',
+src/components/family/StudentDataTab.tsx:398: (dg.name && savedName && dg.name.toLowerCase().trim() === savedName.toLowerCase().trim());
+src/components/family/StudentDataTab.tsx:398: (dg.name && savedName && dg.name.toLowerCase().trim() === savedName.toLowerCase().trim());
+src/components/family/StudentDataTab.tsx:404: name: dg.full_name || dg.name || principalName,
+src/components/family/StudentDataTab.tsx:418: name: dg.full_name || dg.name || 'Responsável Secundário',
+src/components/family/StudentDataTab.tsx:624: if (!guardianForm.name?.trim()) {
+src/components/family/StudentDataTab.tsx:639: name: guardianForm.name.trim(),
+src/components/family/StudentDataTab.tsx:654: name: newG.name,
+src/components/family/StudentDataTab.tsx:682: name: guardianForm.name?.trim() || g.name,
+src/components/family/StudentDataTab.tsx:682: name: guardianForm.name?.trim() || g.name,
+src/components/family/StudentDataTab.tsx:697: name: guardianForm.name?.trim(),
+src/components/family/StudentDataTab.tsx:743: setSuccessMsg(`Responsável "${targetG.name}" removido com sucesso.`);
+src/components/family/StudentDataTab.tsx:758: name: studentItem.fullName || studentItem.name,
+src/components/family/StudentDataTab.tsx:772: setSuccessMsg(`Estudante "${studentItem.fullName || studentItem.name}" definido como ficha ativa no painel.`);
+src/components/family/StudentDataTab.tsx:878: {stItem.fullName || stItem.name}
+src/components/family/StudentDataTab.tsx:915: value={stItem.fullName || stItem.name}
+src/components/family/StudentDataTab.tsx:1151: {g.name ? g.name.substring(0, 2).toUpperCase() : 'RP'}
+src/components/family/StudentDataTab.tsx:1151: {g.name ? g.name.substring(0, 2).toUpperCase() : 'RP'}
+src/components/family/StudentDataTab.tsx:1156: <h4 className="font-bold text-sm text-oxford truncate font-serif">{g.name}</h4>
+src/components/family/StudentDataTab.tsx:1426: value={guardianForm.name || ''}
+src/components/professor/StudentDossierModal.tsx:221: alt={student.name}
+src/components/professor/StudentDossierModal.tsx:234: <h2 className="text-xl sm:text-2xl font-serif font-bold text-white mt-1">{student.name}</h2>
+src/components/professor/ClassroomStudentActionModal.tsx:144: studentName: student.name,
+src/components/professor/ClassroomStudentActionModal.tsx:170: alt={student.name}
+src/components/professor/ClassroomStudentActionModal.tsx:190: <h3 className="text-lg sm:text-xl font-serif font-bold text-white mt-0.5">{student.name}</h3>
+src/components/professor/HorarioDoProfessor.tsx:417: const displayName = formatClassCycle(cls.name || cls.class_name || 'Turma');
+src/components/professor/HorarioDoProfessor.tsx:559: <span className="block text-[9px] text-gray-500 font-normal">{period.name}</span>
+src/components/common/RealtimeSyncBadge.tsx:212: <span>Por: <strong className="text-slate-300">{ev.user.name} ({ev.user.role})</strong> • IP: {ev.user.ip}</span>
+src/components/common/EducaSharedCalendar.tsx:382: title: isRecess ? 'Recesso Escolar (Carnaval)' : h.name,
+src/components/common/EducaSharedCalendar.tsx:385: description: isRecess ? 'Recesso Escolar Oficial' : `Feriado Nacional Oficial do Brasil: ${h.name}`
+src/components/common/EducaSharedCalendar.tsx:537: title: h.name,
+src/components/common/EducaSharedCalendar.tsx:1786: <option key={c.id} value={c.id}>{c.name} ({c.shift || 'Geral'})</option>
+src/components/common/EducaSharedCalendar.tsx:1800: <option key={t.id} value={t.id}>{t.name} - {t.specialty || 'Docente'}</option>
+src/components/commercial/CommercialAdminModule.tsx:69: const matchesSearch = p.name.toLowerCase().includes(filterText.toLowerCase()) || p.category.toLowerCase().includes(filterText.toLowerCase());
+src/components/commercial/CommercialAdminModule.tsx:79: addAuditLog('TOGGLE_PARTNER_STATUS', 'Ecossistema Comercial', `Parceiro: ${p.name}`, `Status: ${nextStatus}`);
+src/components/commercial/CommercialAdminModule.tsx:176: <p className="font-bold text-white">{p.name}</p>
+src/components/commercial/PartnerRegistrationFlow.tsx:29: addAuditLog('REGISTER_COMMERCIAL_PARTNER', 'Ecossistema Comercial', 'Novo Cadastro Submetido', formData.name);
+src/components/commercial/PartnerRegistrationFlow.tsx:52: Recebemos os dados de <strong>{formData.name}</strong>. Nossa equipe entrará em contato em até 24 horas úteis para homologar seu credenciamento na rede Classium.
+src/components/commercial/PartnerRegistrationFlow.tsx:116: value={formData.name}
+src/components/navigation/MobileHeader.tsx:32: const parts = guardian.name.split(' ');
+src/components/navigation/MobileHeader.tsx:34: return guardian.name.substring(0, 2).toUpperCase();
+src/components/navigation/MobileHeader.tsx:37: const parts = currentUser.name.split(' ');
+src/components/navigation/MobileHeader.tsx:39: return currentUser.name.substring(0, 2).toUpperCase();
+src/components/navigation/MobileHeader.tsx:151: {st.name} ({st.grade || 'Aluno'})
+src/components/partner/PartnerPortalDashboard.tsx:84: addAuditLog('TOGGLE_PARTNER_2FA', 'Portal do Parceiro', `Parceiro: ${currentPartner.name}`, `2FA ${nextState ? 'Ativado' : 'Desativado'}`);
+src/components/partner/PartnerPortalDashboard.tsx:96: alt={currentPartner.name}
+src/components/partner/PartnerPortalDashboard.tsx:101: <h2 className="font-serif font-bold text-lg text-white">{currentPartner.name}</h2>
+src/components/partner/PartnerPortalDashboard.tsx:294: <h4 className="font-serif font-bold text-base text-white">{currentPartner.name}</h4>
+src/components/partner/PartnerPortalDashboard.tsx:340: <h5 className="font-bold text-white">{lead.name}</h5>
+src/components/partner/PartnerPortalDashboard.tsx:345: href={`https://wa.me/${lead.phone.replace(/\D/g, '')}?text=Olá ${lead.name}, sou da equipe da ${currentPartner.name} via Portal Classium!`}
+src/components/partner/PartnerPortalDashboard.tsx:345: href={`https://wa.me/${lead.phone.replace(/\D/g, '')}?text=Olá ${lead.name}, sou da equipe da ${currentPartner.name} via Portal Classium!`}
+src/components/partner/PartnerPortalDashboard.tsx:369: value={partnerForm.name || ''}
+src/components/partner/PartnerAuthModal.tsx:72: setTempPartnerName(res.partner.name);
+src/components/alimentacao/CardapioPanel.tsx:217: setUploadStatusText(`Enviando arquivo (${i + 1}/${files.length}): ${file.name}...`);
+src/components/alimentacao/CardapioPanel.tsx:219: const cleanName = file.name.replace(/\.[^/.]+$/, '');
+src/components/carreira/EducaCarreiraEBeneficios.tsx:568: const matchName = ad.name.toLowerCase().includes(q);
+src/components/carreira/EducaCarreiraEBeneficios.tsx:584: if (profSearchName.trim() !== '' && !p.name.toLowerCase().includes(profSearchName.toLowerCase())) {
+src/components/carreira/EducaCarreiraEBeneficios.tsx:631: if (!newProfForm.name) {
+src/components/carreira/EducaCarreiraEBeneficios.tsx:637: name: newProfForm.name,
+src/components/carreira/EducaCarreiraEBeneficios.tsx:686: const msg = encodeURIComponent(`Olá ${ad.name}, encontrei seu anúncio no *Classium Carreira & Benefícios* e gostaria de mais informações!`);
+src/components/carreira/EducaCarreiraEBeneficios.tsx:699: if (!anuncianteForm.name || !anuncianteForm.phone) {
+src/components/carreira/EducaCarreiraEBeneficios.tsx:706: name: anuncianteForm.name,
+src/components/carreira/EducaCarreiraEBeneficios.tsx:985: <img src={mentisAd.logo} alt={mentisAd.name} className="w-full h-full object-contain" />
+src/components/carreira/EducaCarreiraEBeneficios.tsx:989: <h2 className="font-serif text-2xl font-black text-white">{mentisAd.name}</h2>
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1025: Mensagem Oficial da Plataforma {mentisAd.name} para Educadores:
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1290: key={spec.name}
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1291: onClick={() => setProfSearchSpecialty(spec.name)}
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1293: profSearchSpecialty === spec.name
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1298: <span>{spec.emoji} {spec.name}</span>
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1334: <div className="text-white text-xs font-bold hover:text-blue-300 transition-colors">{prof.name}</div>
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1461: <img src={ad.logo} alt={ad.name} className="w-full h-full object-cover" />
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1465: {ad.name}
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1614: <h3 className="font-bold text-white text-sm">{sp.name}</h3>
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1662: {mentisAd.name} • Atualização em Tempo Real no Banner Principal
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1731: value={mentisAd.name}
+src/components/carreira/EducaCarreiraEBeneficios.tsx:1972: <span>{g.name}</span>
+src/components/carreira/EducaCarreiraEBeneficios.tsx:2106: <img src={mentisAd.logo} alt={mentisAd.name} className="w-full h-full object-contain" />
+src/components/carreira/EducaCarreiraEBeneficios.tsx:2109: <h2 className="font-serif text-xl font-bold text-white">{mentisAd.name}</h2>
+src/components/carreira/EducaCarreiraEBeneficios.tsx:2186: <h4 className="font-bold text-white text-xs">{ad.name}</h4>
+src/components/carreira/EducaCarreiraEBeneficios.tsx:2239: {selectedAdForDetail.name}
+src/components/carreira/EducaCarreiraEBeneficios.tsx:2324: value={newProfForm.name}
+src/components/carreira/EducaCarreiraEBeneficios.tsx:2456: value={editingProfessional.name}
+src/utils/sanitize.ts:55: const name = attr.name.toLowerCase();
+src/utils/sanitize.ts:60: el.removeAttribute(attr.name);
+src/utils/sanitize.ts:70: el.removeAttribute(attr.name);
+src/context/PlatformContext.tsx:605: name: schoolData.name || 'Escola Cadastrada',
+src/context/PlatformContext.tsx:606: razaoSocial: schoolData.razao_social || schoolData.name || '',
+src/context/PlatformContext.tsx:626: name: schoolData.name || 'Unidade Sede',
+src/context/PlatformContext.tsx:788: addAuditLog('BLOCKED_PARTNER_LOGIN_ATTEMPT', 'Portal do Parceiro', `Parceiro: ${partner.name}`, '403 — Acesso Negado (Conta Bloqueada)');
+src/context/PlatformContext.tsx:796: addAuditLog('FAILED_PARTNER_LOGIN', 'Portal do Parceiro', `Parceiro: ${partner.name}`, 'Senha Incorreta');
+src/context/PlatformContext.tsx:803: addAuditLog('FIRST_ACCESS_PARTNER', 'Portal do Parceiro', `Parceiro: ${partner.name}`, 'Redirecionando troca obrigatória de senha');
+src/context/PlatformContext.tsx:820: addAuditLog('PARTNER_LOGIN_SUCCESS', 'Portal do Parceiro', `Parceiro: ${partner.name}`, 'Sessão RBAC Iniciada');
+src/context/PlatformContext.tsx:846: addAuditLog('CHANGE_PARTNER_PASSWORD', 'Portal do Parceiro', `Parceiro: ${partner.name}`, 'Senha alterada com sucesso');
+src/context/PlatformContext.tsx:866: addAuditLog('RECOVERY_CODE_SENT', 'Portal do Parceiro', `Parceiro: ${partner.name}`, `Código enviado via ${channel.toUpperCase()}`);
+src/context/PlatformContext.tsx:890: addAuditLog('PARTNER_LOGOUT', 'Portal do Parceiro', `Parceiro: ${currentPartner.name}`, 'Sessão encerrada');
+src/context/PlatformContext.tsx:901: addAuditLog('TOGGLE_BLOCK_PARTNER', 'ClassiumAdmin', `Parceiro: ${p.name}`, nextState ? 'Bloqueado (403)' : 'Desbloqueado');
+src/context/PlatformContext.tsx:920: addAuditLog('RESET_PARTNER_PASS', 'ClassiumAdmin', `Parceiro: ${p.name}`, 'Senha resetada para CPF/CNPJ inicial');
+src/context/PlatformContext.tsx:938: addAuditLog('CHANGE_PARTNER_PLAN', 'ClassiumAdmin', `Parceiro: ${p.name}`, `Plano alterado para ${newPlan}`);
+src/context/PlatformContext.tsx:960: addAuditLog('ADD_PROFESSIONAL', 'Marketplace', '', `Profissional cadastrado: ${prof.name}`);
+src/context/PlatformContext.tsx:969: addAuditLog('UPDATE_PROFESSIONAL', 'Marketplace', '', `Profissional atualizado: ${prof.name}`);
+src/context/PlatformContext.tsx:976: addAuditLog('DELETE_PROFESSIONAL', 'Marketplace', `Profissional: ${target.name}`, 'Excluído');
+src/context/PlatformContext.tsx:1000: addAuditLog('ADD_ADVERTISER', 'Marketplace', '', `Anunciante cadastrado: ${ad.name}`);
+src/context/PlatformContext.tsx:1013: addAuditLog('UPDATE_ADVERTISER', 'Marketplace', '', `Anunciante atualizado: ${ad.name}`);
+src/context/PlatformContext.tsx:1020: addAuditLog('DELETE_ADVERTISER', 'Marketplace', `Anunciante: ${target.name}`, 'Excluído');
+src/context/PlatformContext.tsx:1043: addAuditLog('ADD_PROVIDER', 'Marketplace', '', `Prestador de Serviço cadastrado: ${provider.name}`);
+src/context/PlatformContext.tsx:1048: addAuditLog('UPDATE_PROVIDER', 'Marketplace', '', `Prestador de Serviço atualizado: ${provider.name}`);
+src/context/PlatformContext.tsx:1055: addAuditLog('DELETE_PROVIDER', 'Marketplace', `Prestador: ${target.name}`, 'Excluído');
+src/context/PlatformContext.tsx:1088: addAuditLog('IMPERSONATE_USER_START', 'Segurança & Impersonação', 'Nenhum impersonamento ativo', `Sessão assumida: ${user.name} (${user.role}) - ${user.schoolName || 'Global'}`);
+src/context/PlatformContext.tsx:1227: title: item.name,
+src/context/PlatformContext.tsx:1249: targetItemName = item.name;
+src/context/PlatformContext.tsx:1286: targetItemName = item.name;
+src/context/PlatformContext.tsx:1632: useEffect(() => { if (profile) setCurrentUser({ ...profile, name: profile.name, email: profile.email, role: authRole }); }, [profile, authRole]);
+src/context/PlatformContext.tsx:1643: name: t.name || 'Professor',
+src/context/PlatformContext.tsx:1646: email: t.email || `${(t.name || 'professor').toLowerCase().replace(/\s+/g, '.')}@educamais.edu`,
+src/context/PlatformContext.tsx:1679: name: staff.name,
+src/context/PlatformContext.tsx:1681: email: staff.email || `${(staff.name || 'staff').toLowerCase().replace(/\s+/g, '')}@educamais.edu`,
+src/context/PlatformContext.tsx:1691: name: t.name || 'Professor',
+src/context/PlatformContext.tsx:1694: email: t.email || `${(t.name || 'professor').toLowerCase().replace(/\s+/g, '.')}@educamais.edu`,
+src/context/PlatformContext.tsx:2158: const isThisStudent = isStudentMatch(occurrence.studentId, occurrence.studentName, s.id, s.name);
+src/context/PlatformContext.tsx:2203: const documentTitle = `Convocação Obrigatória — ${s.name}`;
+src/context/PlatformContext.tsx:2204: const alreadyHasConvocacao = authorizations.some(auth => String(auth.title || '').toLowerCase().includes('convocação') && String(auth.title || '').includes(s.name));
+src/context/PlatformContext.tsx:2224: const isThisStudent = isStudentMatch(occurrence.studentId, occurrence.studentName, prev.id, prev.name);
+src/context/PlansContext.tsx:588: name: `${existing.name} (Cópia)`,
+src/context/PlansContext.tsx:596: details: `Duplicado a partir do plano ${existing.name}`
+src/context/PlansContext.tsx:602: addAuditLog('DUPLICATE_PLAN', authorName, `Novo Plano: ${duplicated.name}`, `Clonado de ${existing.name}`);
+src/context/PlansContext.tsx:602: addAuditLog('DUPLICATE_PLAN', authorName, `Novo Plano: ${duplicated.name}`, `Clonado de ${existing.name}`);
+src/context/PlansContext.tsx:610: addAuditLog('TOGGLE_PLAN_STATUS', authorName, p.name, `Status alterado para ${nextStatus}`);
+src/context/PlansContext.tsx:620: addAuditLog('ARCHIVE_PLAN', authorName, p.name, 'Plano arquivado do ecossistema');
+src/contexts/FamilyContext.tsx:164: grade: cls.name,
+src/contexts/FamilyContext.tsx:165: classId: cls.name
+src/contexts/FamilyContext.tsx:189: school_name: sch.name || 'Organização Escolar',

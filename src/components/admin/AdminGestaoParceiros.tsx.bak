@@ -1,0 +1,2478 @@
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { supabase } from '../../lib/supabase';
+import { 
+  Building2, 
+  Users, 
+  ShieldCheck, 
+  CreditCard, 
+  TrendingUp, 
+  CheckCircle2, 
+  XCircle, 
+  AlertTriangle, 
+  Search, 
+  Filter, 
+  Plus, 
+  Download, 
+  Printer, 
+  ExternalLink, 
+  Eye, 
+  Edit, 
+  Trash2, 
+  Ban, 
+  Check, 
+  Clock, 
+  ArrowUpRight, 
+  Layers, 
+  Sparkles, 
+  MessageCircle, 
+  FileText, 
+  QrCode, 
+  Copy, 
+  RefreshCw, 
+  SlidersHorizontal, 
+  X, 
+  ChevronRight, 
+  BadgeCheck, 
+  Globe, 
+  Phone, 
+  Mail, 
+  MapPin, 
+  DollarSign, 
+  HelpCircle,
+  FileCheck,
+  AlertOctagon,
+  Award,
+  ArrowRightLeft,
+  ChevronDown
+} from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  Legend 
+} from 'recharts';
+import { usePlatform } from '../../context/PlatformContext';
+import { 
+  PartnerAdvertiser, 
+  PlanConfig, 
+  InvoiceItem, 
+  CuratedDocument, 
+  PlanChangeHistoryItem,
+  PlanType,
+  EntityType,
+  PartnerRegistrationStatus,
+  PublicationStatus,
+  FinancialStatus
+} from './parceiros/types';
+import { 
+  AdminPartnerService, 
+  DEFAULT_PLANS, 
+  INITIAL_INVOICES, 
+  INITIAL_DOCUMENTS, 
+  INITIAL_PLAN_HISTORY 
+} from '../../services/adminPartnerService';
+import { PartnerService, CanonicalPartner, CreatePartnerPayload, UpdatePartnerPayload, UpdatePartnerApprovalPayload } from '../../services/partnerService';
+import { maskCPF, maskCNPJ, maskCellPhone } from '../../utils/masks';
+
+type TabKey = 'overview' | 'directory' | 'moderation' | 'plans' | 'billing' | 'portals' | 'audit';
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+// ==============================================================================
+// CANONICAL PARTNER ADAPTER (public.partners -> UI PartnerAdvertiser)
+// ==============================================================================
+function mapCanonicalToPartnerAdvertiser(cp: CanonicalPartner): PartnerAdvertiser {
+  const meta = cp.metadata || {};
+
+  // Registration Status resolution
+  let regStatus: PartnerRegistrationStatus = 'pendente_analise';
+  if (cp.approval_status === 'approved') {
+    regStatus = 'aprovado';
+  } else if (cp.approval_status === 'rejected') {
+    regStatus = 'rejeitado';
+  } else if (cp.approval_status === 'in_review') {
+    regStatus = 'em_analise';
+  } else if (cp.status === 'suspended') {
+    regStatus = 'suspenso';
+  } else if (cp.status === 'cancelled') {
+    regStatus = 'cancelado';
+  }
+
+  // Publication Status resolution
+  let pubStatus: PublicationStatus = 'despublicado';
+  if (cp.status === 'suspended') {
+    pubStatus = 'bloqueado';
+  } else if (cp.status === 'draft') {
+    pubStatus = 'rascunho';
+  } else if (cp.is_active && cp.status === 'active') {
+    pubStatus = 'publicado';
+  } else if (cp.is_active) {
+    pubStatus = 'publicado';
+  }
+
+  // Entity Type resolution
+  let entityType: EntityType = 'pessoa_juridica';
+  if (meta.entityType === 'pessoa_fisica' || meta.entityType === 'pessoa_juridica' || meta.entityType === 'apoio_infra') {
+    entityType = meta.entityType;
+  } else if (cp.document_type === 'CPF') {
+    entityType = 'pessoa_fisica';
+  }
+
+  // Plan Type resolution
+  let planType: PlanType = 'ouro';
+  if (cp.plan_id && ['gratuito', 'prata', 'ouro', 'diamante', 'institucional'].includes(cp.plan_id)) {
+    planType = cp.plan_id as PlanType;
+  } else if (meta.plan && ['gratuito', 'prata', 'ouro', 'diamante', 'institucional'].includes(meta.plan)) {
+    planType = meta.plan as PlanType;
+  }
+
+  // Financial Status resolution
+  let finStatus: FinancialStatus = 'adimplente';
+  if (meta.financialStatus && ['adimplente', 'pendente', 'inadimplente', 'isento', 'cancelado'].includes(meta.financialStatus)) {
+    finStatus = meta.financialStatus as FinancialStatus;
+  }
+
+  return {
+    id: cp.id,
+    entityType,
+    name: cp.legal_name || cp.partner_name,
+    tradeName: cp.partner_name || cp.legal_name || '',
+    cpfCnpj: cp.document_number || '',
+    professionalReg: meta.professionalReg || undefined,
+    email: cp.email || '',
+    whatsapp: cp.phone || meta.whatsapp || '',
+    phone: cp.phone || meta.phone || undefined,
+    website: cp.website || '',
+    city: meta.city || 'Goiânia',
+    state: meta.state || 'GO',
+    category: cp.category || meta.category || 'Geral',
+    subCategory: meta.subCategory || 'Parceiro Homologado',
+    plan: planType,
+    planCustomName: meta.planCustomName,
+    registrationStatus: regStatus,
+    publicationStatus: pubStatus,
+    financialStatus: finStatus,
+    monthlyFee: typeof meta.monthlyFee === 'number' ? meta.monthlyFee : undefined,
+    rating: typeof meta.rating === 'number' ? meta.rating : undefined,
+    reviewCount: typeof meta.reviewCount === 'number' ? meta.reviewCount : undefined,
+    officialPartnerSeal: Boolean(meta.officialPartnerSeal ?? (cp.approval_status === 'approved')),
+    sealText: meta.sealText || (cp.approval_status === 'approved' ? 'Parceiro Aprovado' : undefined),
+    vipExclusive: Boolean(meta.vipExclusive),
+    isMentisTherapy: Boolean(meta.isMentisTherapy),
+    logo: meta.logo || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80',
+    banner: meta.banner,
+    catalogPdfUrl: meta.catalogPdfUrl,
+    colorGradient: meta.colorGradient,
+    description: cp.description || meta.description || '',
+    promoText: meta.promoText,
+    officialMessage: meta.officialMessage,
+    price: meta.price,
+    originalPrice: meta.originalPrice,
+    discountBadge: meta.discountBadge,
+    highlights: Array.isArray(meta.highlights) ? meta.highlights : [],
+    tags: Array.isArray(meta.tags) ? meta.tags : [],
+    primaryButtonText: meta.primaryButtonText,
+    primaryButtonLink: meta.primaryButtonLink,
+    secondaryButtonText: meta.secondaryButtonText,
+    secondaryButtonLink: meta.secondaryButtonLink,
+    visibility: meta.visibility || {
+      portalFamilia: true,
+      portalProfessor: true,
+      portalGestor: false,
+      portalEstudante: false,
+      highlightPosition: 'normal'
+    },
+    views: typeof meta.views === 'number' ? meta.views : undefined,
+    clicks: typeof meta.clicks === 'number' ? meta.clicks : undefined,
+    leadsGenerated: typeof meta.leadsGenerated === 'number' ? meta.leadsGenerated : undefined,
+    conversions: typeof meta.conversions === 'number' ? meta.conversions : undefined,
+    createdAt: cp.created_at,
+    updatedAt: cp.updated_at,
+    lastLogin: meta.lastLogin,
+    moderationNotes: meta.moderationNotes,
+    rejectionReason: meta.rejectionReason,
+    invoices: Array.isArray(meta.invoices) ? meta.invoices : undefined,
+    documents: Array.isArray(meta.documents) ? meta.documents : undefined
+  };
+}
+
+export function AdminGestaoParceiros() {
+  const { role, addAuditLog, updatePartnerAd, partnerAds } = usePlatform();
+
+  // Primary Data States - Partners strictly sourced from canonical PartnerService
+  const [partners, setPartners] = useState<PartnerAdvertiser[]>([]);
+  const [isLoadingPartners, setIsLoadingPartners] = useState<boolean>(true);
+  const [partnersLoadError, setPartnersLoadError] = useState<string | null>(null);
+
+  const [plans, setPlans] = useState<PlanConfig[]>(() => AdminPartnerService.loadPlans());
+  const [invoices, setInvoices] = useState<InvoiceItem[]>(() => AdminPartnerService.loadInvoices());
+  const [documents, setDocuments] = useState<CuratedDocument[]>(() => AdminPartnerService.loadDocuments());
+  const [planHistory, setPlanHistory] = useState<PlanChangeHistoryItem[]>(() => AdminPartnerService.loadPlanHistory());
+
+  // Active Navigation Tab
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+
+  // Observability State
+  const [syncStatus, setSyncStatus] = useState<'SINCRONIZADO' | 'SINCRONIZANDO' | 'ERRO DE SINCRONIZAÇÃO' | 'OFFLINE' | 'RECONEXÃO'>('SINCRONIZANDO');
+  const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString('pt-BR'));
+
+  // Canonical Loader Function (Used for initial mount & manual user refresh)
+  const loadCanonicalPartners = async (showLoadingState = true) => {
+    try {
+      if (showLoadingState) {
+        setIsLoadingPartners(true);
+        setSyncStatus('SINCRONIZANDO');
+      }
+      setPartnersLoadError(null);
+
+      const canonicalList = await PartnerService.listPartners();
+      const mapped = canonicalList.map(mapCanonicalToPartnerAdvertiser);
+      setPartners(mapped);
+      setSyncStatus('SINCRONIZADO');
+      setLastSyncTime(new Date().toLocaleTimeString('pt-BR'));
+    } catch (err: any) {
+      console.error('[AdminGestaoParceiros] Error fetching canonical partners:', err);
+      setPartnersLoadError(err.message || 'Falha ao carregar parceiros do servidor.');
+      setSyncStatus('ERRO DE SINCRONIZAÇÃO');
+    } finally {
+      if (showLoadingState) {
+        setIsLoadingPartners(false);
+      }
+    }
+  };
+
+  // Initial Fetch from Canonical API (/api/partners -> server.ts -> public.partners)
+  useEffect(() => {
+    loadCanonicalPartners(true);
+  }, []);
+
+  // Directory Filters
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedEntityFilter, setSelectedEntityFilter] = useState<string>('todos');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('todos');
+  const [selectedPlanFilter, setSelectedPlanFilter] = useState<string>('todos');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('todos');
+  const [selectedFinancialFilter, setSelectedFinancialFilter] = useState<string>('todos');
+
+  // Modals & Drawers State
+  const [selectedPartnerForDetail, setSelectedPartnerForDetail] = useState<PartnerAdvertiser | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<PartnerAdvertiser | null>(null);
+  const [isSubmittingPartner, setIsSubmittingPartner] = useState(false);
+  const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
+  const [isPlanChangeModalOpen, setIsPlanChangeModalOpen] = useState(false);
+  const [planChangePartner, setPlanChangePartner] = useState<PartnerAdvertiser | null>(null);
+  const [selectedNewPlan, setSelectedNewPlan] = useState<PlanType>('ouro');
+  const [planChangeReason, setPlanChangeReason] = useState('');
+  
+  // Invoice / Payment Modal
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceItem | null>(null);
+  const [isCreateInvoiceModalOpen, setIsCreateInvoiceModalOpen] = useState(false);
+
+  // Moderation Reject Dialog
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectingPartner, setRejectingPartner] = useState<PartnerAdvertiser | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  // Toast / Feedback State
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Helper: Persist Partners
+  const updatePartnersState = (updated: PartnerAdvertiser[]) => {
+    setPartners(updated);
+    AdminPartnerService.savePartners(updated);
+  };
+
+  // Helper: Persist Invoices
+  const updateInvoicesState = (updated: InvoiceItem[]) => {
+    setInvoices(updated);
+    AdminPartnerService.saveInvoices(updated);
+  };
+
+  // Helper: Persist Documents
+  const updateDocumentsState = (updated: CuratedDocument[]) => {
+    setDocuments(updated);
+    AdminPartnerService.saveDocuments(updated);
+  };
+
+  // Helper: Persist Plan History
+  const updatePlanHistoryState = (updated: PlanChangeHistoryItem[]) => {
+    setPlanHistory(updated);
+    AdminPartnerService.savePlanHistory(updated);
+  };
+
+  // ----------------------------------------------------
+  // METRICS CALCULATIONS
+  // ----------------------------------------------------
+  const metrics = useMemo(() => {
+    const total = partners.length;
+    const active = partners.filter(p => p.registrationStatus === 'aprovado' && p.publicationStatus === 'publicado').length;
+    const pendingModeration = partners.filter(p => p.registrationStatus === 'pendente_analise' || p.registrationStatus === 'em_analise').length;
+    const defaultRateCount = partners.filter(p => p.financialStatus === 'inadimplente').length;
+    
+    // MRR (Monthly Recurring Revenue)
+    const mrr = partners.reduce((acc, p) => {
+      if (p.registrationStatus === 'aprovado' && p.publicationStatus !== 'bloqueado') {
+        return acc + (p.monthlyFee || 0);
+      }
+      return acc;
+    }, 0);
+
+    const totalViews = partners.reduce((acc, p) => acc + (p.views || 0), 0);
+    const totalClicks = partners.reduce((acc, p) => acc + (p.clicks || 0), 0);
+    const totalLeads = partners.reduce((acc, p) => acc + (p.leadsGenerated || 0), 0);
+    const totalConversions = partners.reduce((acc, p) => acc + (p.conversions || 0), 0);
+    const ctrAvg = totalViews > 0 ? ((totalClicks / totalViews) * 100).toFixed(1) : '0';
+
+    // Invoices metrics
+    const totalPendingInvoicesAmount = invoices
+      .filter(i => i.status === 'pendente' || i.status === 'atrasado')
+      .reduce((acc, i) => acc + i.amount, 0);
+
+    return {
+      total,
+      active,
+      pendingModeration,
+      defaultRateCount,
+      mrr,
+      totalViews,
+      totalClicks,
+      totalLeads,
+      totalConversions,
+      ctrAvg,
+      totalPendingInvoicesAmount
+    };
+  }, [partners, invoices]);
+
+  // Chart Data: Revenue & Leads Trend
+  const monthlyTrendData = [
+    { month: 'Abr', receita: 9800, leads: 420, clicks: 1200 },
+    { month: 'Mai', receita: 11200, leads: 580, clicks: 1650 },
+    { month: 'Jun', receita: 12400, leads: 710, clicks: 1980 },
+    { month: 'Jul', receita: 13100, leads: 830, clicks: 2340 },
+    { month: 'Ago', receita: 14200, leads: 990, clicks: 2890 },
+    { month: 'Set (Atual)', receita: metrics.mrr, leads: metrics.totalLeads, clicks: metrics.totalClicks },
+  ];
+
+  // Chart Data: Plans Distribution
+  const planDistributionData = useMemo(() => {
+    const counts: Record<string, number> = { Prata: 0, Ouro: 0, Diamante: 0, Institucional: 0 };
+    partners.forEach(p => {
+      if (p.plan === 'prata') counts.Prata++;
+      else if (p.plan === 'ouro') counts.Ouro++;
+      else if (p.plan === 'diamante') counts.Diamante++;
+      else if (p.plan === 'institucional') counts.Institucional++;
+    });
+    return [
+      { name: 'Prata', value: counts.Prata, color: '#94a3b8' },
+      { name: 'Ouro', value: counts.Ouro, color: '#f59e0b' },
+      { name: 'Diamante', value: counts.Diamante, color: '#06b6d4' },
+      { name: 'Institucional', value: counts.Institucional, color: '#a855f7' },
+    ].filter(item => item.value > 0);
+  }, [partners]);
+
+  // Chart Data: Categories Distribution
+  const categoryDistributionData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    partners.forEach(p => {
+      counts[p.category] = (counts[p.category] || 0) + 1;
+    });
+    return Object.entries(counts).map(([name, value], idx) => ({
+      name,
+      value,
+      color: COLORS[idx % COLORS.length]
+    }));
+  }, [partners]);
+
+  // ----------------------------------------------------
+  // FILTERED PARTNERS LIST
+  // ----------------------------------------------------
+  const filteredPartners = useMemo(() => {
+    return partners.filter(p => {
+      const matchSearch = 
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.tradeName && p.tradeName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        p.cpfCnpj.includes(searchTerm) ||
+        p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.city.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchEntity = selectedEntityFilter === 'todos' || p.entityType === selectedEntityFilter;
+      const matchCategory = selectedCategoryFilter === 'todos' || p.category === selectedCategoryFilter;
+      const matchPlan = selectedPlanFilter === 'todos' || p.plan === selectedPlanFilter;
+      const matchStatus = selectedStatusFilter === 'todos' || p.registrationStatus === selectedStatusFilter;
+      const matchFinancial = selectedFinancialFilter === 'todos' || p.financialStatus === selectedFinancialFilter;
+
+      return matchSearch && matchEntity && matchCategory && matchPlan && matchStatus && matchFinancial;
+    });
+  }, [partners, searchTerm, selectedEntityFilter, selectedCategoryFilter, selectedPlanFilter, selectedStatusFilter, selectedFinancialFilter]);
+
+  // ----------------------------------------------------
+  // ACTIONS: APPROVE / REJECT / BLOCK / SUSPEND (CANONICAL API)
+  // ----------------------------------------------------
+  const handleApprovePartner = async (partner: PartnerAdvertiser) => {
+    try {
+      const payload: UpdatePartnerApprovalPayload = {
+        approval_status: 'approved',
+        status: 'active',
+        is_active: true
+      };
+
+      await PartnerService.updatePartnerApproval(partner.id, payload);
+
+      addAuditLog(
+        'APPROVE_PARTNER',
+        'Gestão de Parceiros',
+        `Parceiro: ${partner.name}`,
+        `Homologação aprovada e vitrine publicada com sucesso pelo perfil ${role}.`
+      );
+      showToast(`✅ Parceiro "${partner.name}" aprovado e publicado com sucesso!`);
+      await loadCanonicalPartners(true);
+    } catch (err: any) {
+      console.error('[AdminGestaoParceiros] Erro ao aprovar parceiro:', err);
+      showToast(`❌ Falha ao aprovar parceiro: ${err.message || 'Erro no servidor'}`);
+    }
+  };
+
+  const handleOpenRejectModal = (partner: PartnerAdvertiser) => {
+    setRejectingPartner(partner);
+    setRejectionReason('');
+    setIsRejectModalOpen(true);
+  };
+
+  const handleConfirmRejection = async () => {
+    if (!rejectingPartner) return;
+    try {
+      const payload: UpdatePartnerApprovalPayload = {
+        approval_status: 'rejected',
+        status: 'inactive',
+        is_active: false
+      };
+
+      await PartnerService.updatePartnerApproval(rejectingPartner.id, payload);
+
+      addAuditLog(
+        'REJECT_PARTNER',
+        'Gestão de Parceiros',
+        `Parceiro: ${rejectingPartner.name}`,
+        `Cadastro rejeitado. Motivo: ${rejectionReason || 'Não informado'}.`
+      );
+      setIsRejectModalOpen(false);
+      setRejectingPartner(null);
+      showToast(`❌ Cadastro de "${rejectingPartner.name}" rejeitado com justificativa gravada.`);
+      await loadCanonicalPartners(true);
+    } catch (err: any) {
+      console.error('[AdminGestaoParceiros] Erro ao rejeitar parceiro:', err);
+      showToast(`❌ Falha ao rejeitar parceiro: ${err.message || 'Erro no servidor'}`);
+    }
+  };
+
+  const handleToggleBlockPartner = async (partner: PartnerAdvertiser) => {
+    const willBlock = partner.publicationStatus !== 'bloqueado';
+    try {
+      const payload: UpdatePartnerApprovalPayload = willBlock
+        ? { status: 'suspended', is_active: false }
+        : { approval_status: 'approved', status: 'active', is_active: true };
+
+      await PartnerService.updatePartnerApproval(partner.id, payload);
+
+      addAuditLog(
+        willBlock ? 'BLOCK_PARTNER' : 'UNBLOCK_PARTNER',
+        'Gestão de Parceiros',
+        `Parceiro: ${partner.name}`,
+        `Status alterado para ${willBlock ? 'BLOQUEADO' : 'LIBERADO'} pela administração.`
+      );
+      showToast(willBlock ? `🚫 Parceiro "${partner.name}" bloqueado.` : `✅ Parceiro "${partner.name}" desbloqueado.`);
+      await loadCanonicalPartners(true);
+    } catch (err: any) {
+      console.error('[AdminGestaoParceiros] Erro ao alterar status do parceiro:', err);
+      showToast(`❌ Falha ao alterar status: ${err.message || 'Erro no servidor'}`);
+    }
+  };
+
+  const handleDeletePartner = async (id: string, name: string) => {
+    if (confirm(`Deseja excluir permanentemente o cadastro do parceiro "${name}"?\nEsta ação executará a exclusão física do registro no banco de dados e registrará a operação nos logs de auditoria.`)) {
+      try {
+        await PartnerService.deletePartner(id);
+
+        addAuditLog(
+          'DELETE_PARTNER',
+          'Gestão de Parceiros',
+          `Parceiro: ${name}`,
+          `Cadastro excluído fisicamente do banco canônico (ID: ${id}).`
+        );
+        showToast(`🗑️ Parceiro "${name}" excluído com sucesso.`);
+        await loadCanonicalPartners(true);
+      } catch (err: any) {
+        console.error('[AdminGestaoParceiros] Erro ao excluir parceiro:', err);
+        showToast(`❌ Falha ao excluir parceiro: ${err.message || 'Erro no servidor'}`);
+      }
+    }
+  };
+
+  // ----------------------------------------------------
+  // ACTION: CHANGE PLAN
+  // ----------------------------------------------------
+  const handleOpenPlanChange = (partner: PartnerAdvertiser) => {
+    setPlanChangePartner(partner);
+    setSelectedNewPlan(partner.plan);
+    setPlanChangeReason('');
+    setIsPlanChangeModalOpen(true);
+  };
+
+  const handleConfirmPlanChange = async () => {
+    if (!planChangePartner) return;
+
+    const isUUID = (val?: string): boolean =>
+      Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
+    if (!isUUID(planChangePartner.id)) {
+      showToast('❌ Não foi possível alterar o plano: ID do parceiro não é um UUID canônico válido.');
+      return;
+    }
+
+    try {
+      const targetPlanConfig = plans.find(pl => pl.id === selectedNewPlan) || DEFAULT_PLANS[0];
+      const prevPlanName = planChangePartner.plan.toUpperCase();
+      const nextPlanName = selectedNewPlan.toUpperCase();
+
+      // Persistir alteração de plano exclusivamente no banco canônico (public.partners.plan_id)
+      await PartnerService.updatePartner(planChangePartner.id, {
+        plan_id: selectedNewPlan
+      });
+
+      // Registrar histórico administrativo
+      const newHistoryItem: PlanChangeHistoryItem = {
+        id: `hist-${Date.now()}`,
+        partnerId: planChangePartner.id,
+        partnerName: planChangePartner.name,
+        previousPlan: prevPlanName,
+        newPlan: nextPlanName,
+        changedBy: `Administrador (${role})`,
+        changedAt: new Date().toISOString(),
+        reason: planChangeReason || 'Ajuste de plano solicitado pelo anunciante/gestão.'
+      };
+      updatePlanHistoryState([newHistoryItem, ...planHistory]);
+
+      addAuditLog(
+        'CHANGE_PARTNER_PLAN',
+        'Gestão de Parceiros',
+        `Parceiro: ${planChangePartner.name}`,
+        `Plano alterado de ${prevPlanName} para ${nextPlanName}. Mensalidade ajustada para R$ ${targetPlanConfig.monthlyPrice.toFixed(2)}.`
+      );
+
+      // Recarregar os parceiros da fonte de verdade canônica
+      await loadCanonicalPartners(true);
+
+      setIsPlanChangeModalOpen(false);
+      setPlanChangePartner(null);
+      showToast(`🔄 Plano de "${planChangePartner.name}" atualizado para ${nextPlanName}!`);
+    } catch (err: any) {
+      console.error('[AdminGestaoParceiros] Erro ao alterar plano do parceiro:', err);
+      showToast(`❌ Falha ao alterar plano: ${err?.message || 'Erro no servidor'}`);
+    }
+  };
+
+  // ----------------------------------------------------
+  // ACTION: SAVE PARTNER EDIT / NEW (CANONICAL)
+  // ----------------------------------------------------
+  const handleSavePartner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPartner) return;
+    setFormErrorMessage(null);
+
+    const isNew = !partners.some(p => p.id === editingPartner.id);
+
+    if (isNew) {
+      setIsSubmittingPartner(true);
+      try {
+        const cleanDoc = editingPartner.cpfCnpj ? editingPartner.cpfCnpj.replace(/\D/g, '') : '';
+        const docType = cleanDoc.length === 11 ? 'CPF' : cleanDoc.length === 14 ? 'CNPJ' : (editingPartner.entityType === 'pessoa_fisica' ? 'CPF' : 'CNPJ');
+
+        const payload: CreatePartnerPayload = {
+          partner_name: editingPartner.tradeName?.trim() || editingPartner.name.trim(),
+          legal_name: editingPartner.name.trim(),
+          document_type: docType,
+          document_number: editingPartner.cpfCnpj.trim() || null,
+          email: editingPartner.email?.trim() || null,
+          phone: editingPartner.whatsapp?.trim() || editingPartner.phone?.trim() || null,
+          website: editingPartner.website?.trim() || null,
+          description: editingPartner.description?.trim() || null,
+          category: editingPartner.category || 'Geral',
+          plan_id: editingPartner.plan || 'ouro',
+          metadata: {
+            entityType: editingPartner.entityType,
+            city: editingPartner.city,
+            state: editingPartner.state,
+            monthlyFee: editingPartner.monthlyFee,
+            whatsapp: editingPartner.whatsapp,
+            professionalReg: editingPartner.professionalReg || undefined,
+            visibility: editingPartner.visibility
+          }
+        };
+
+        const created = await PartnerService.createPartner(payload);
+
+        addAuditLog(
+          'CREATE_PARTNER',
+          'Gestão de Parceiros',
+          `Parceiro: ${created.partner_name}`,
+          `Novo anunciante/profissional cadastrado via endpoint canônico (ID: ${created.id}).`
+        );
+        showToast(`✨ Parceiro "${created.partner_name}" cadastrado com sucesso!`);
+
+        setIsEditModalOpen(false);
+        setEditingPartner(null);
+
+        // Update list strictly from server canonical source
+        await loadCanonicalPartners(true);
+      } catch (err: any) {
+        console.error('[AdminGestaoParceiros] Erro ao cadastrar parceiro:', err);
+        const msg = err.message || 'Falha ao cadastrar parceiro no servidor.';
+        setFormErrorMessage(msg);
+      } finally {
+        setIsSubmittingPartner(false);
+      }
+    } else {
+      // Editing existing partner (Canonical PUT /api/partners/:id)
+      setIsSubmittingPartner(true);
+      try {
+        // 1. Obter o registro canônico real do banco de dados imediatamente antes de montar o payload
+        const canonical = await PartnerService.getPartnerById(editingPartner.id);
+
+        // 2. Base de preservação integral do metadata canônico existente
+        const baseMetadata: Record<string, unknown> = {
+          ...(canonical.metadata || {})
+        };
+
+        const cleanDoc = editingPartner.cpfCnpj ? editingPartner.cpfCnpj.replace(/\D/g, '') : '';
+        const docType = cleanDoc.length === 11 ? 'CPF' : cleanDoc.length === 14 ? 'CNPJ' : (editingPartner.entityType === 'pessoa_fisica' ? 'CPF' : 'CNPJ');
+
+        const updatedMetadata: Record<string, unknown> = {
+          ...baseMetadata,
+          entityType: editingPartner.entityType,
+          city: editingPartner.city,
+          state: editingPartner.state,
+          monthlyFee: editingPartner.monthlyFee,
+          whatsapp: editingPartner.whatsapp,
+          professionalReg: editingPartner.professionalReg || undefined,
+          visibility: editingPartner.visibility
+        };
+
+        const updatePayload: UpdatePartnerPayload = {
+          partner_name: editingPartner.tradeName?.trim() || editingPartner.name.trim(),
+          legal_name: editingPartner.name.trim(),
+          document_type: docType,
+          document_number: editingPartner.cpfCnpj.trim() || null,
+          email: editingPartner.email?.trim() || null,
+          phone: editingPartner.whatsapp?.trim() || editingPartner.phone?.trim() || null,
+          website: editingPartner.website?.trim() || null,
+          description: editingPartner.description?.trim() || null,
+          category: editingPartner.category || 'Geral',
+          plan_id: editingPartner.plan || 'ouro',
+          metadata: updatedMetadata
+        };
+
+        const updated = await PartnerService.updatePartner(editingPartner.id, updatePayload);
+
+        addAuditLog(
+          'UPDATE_PARTNER',
+          'Gestão de Parceiros',
+          `Parceiro: ${updated.partner_name}`,
+          `Dados cadastrais atualizados no banco canônico (ID: ${updated.id}).`
+        );
+        showToast(`💾 Alterações de "${updated.partner_name}" salvas com sucesso!`);
+
+        setIsEditModalOpen(false);
+        setEditingPartner(null);
+
+        // Update list strictly from server canonical source
+        await loadCanonicalPartners(true);
+      } catch (err: any) {
+        console.error('[AdminGestaoParceiros] Erro ao atualizar parceiro:', err);
+        const msg = err.message || 'Falha ao atualizar parceiro no servidor.';
+        setFormErrorMessage(msg);
+      } finally {
+        setIsSubmittingPartner(false);
+      }
+    }
+  };
+
+  const handleOpenNewPartner = () => {
+    setFormErrorMessage(null);
+    const newId = `new-partner-${Date.now()}`;
+    const newEmpty: PartnerAdvertiser = {
+      id: newId,
+      entityType: 'pessoa_juridica',
+      name: '',
+      tradeName: '',
+      cpfCnpj: '',
+      email: '',
+      whatsapp: '',
+      website: '',
+      city: 'Goiânia',
+      state: 'GO',
+      category: 'Saúde & Psicopedagogia',
+      subCategory: 'Parceiro Homologado',
+      plan: 'ouro',
+      registrationStatus: 'pendente_analise',
+      publicationStatus: 'despublicado',
+      financialStatus: 'adimplente',
+      monthlyFee: 249.00,
+      officialPartnerSeal: false,
+      logo: '',
+      description: '',
+      highlights: [],
+      visibility: {
+        portalFamilia: true,
+        portalProfessor: true,
+        portalGestor: false,
+        portalEstudante: false,
+        highlightPosition: 'normal'
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    setEditingPartner(newEmpty);
+    setIsEditModalOpen(true);
+  };
+
+  // ----------------------------------------------------
+  // ACTION: INVOICE LIQUIDATION / STATUS
+  // ----------------------------------------------------
+  const handleMarkInvoicePaid = (invId: string) => {
+    const updated = invoices.map(i => {
+      if (i.id === invId) {
+        return {
+          ...i,
+          status: 'pago' as const,
+          paymentDate: new Date().toISOString().split('T')[0]
+        };
+      }
+      return i;
+    });
+    updateInvoicesState(updated);
+    addAuditLog('MARK_INVOICE_PAID', 'Faturamento Parceiros', `Fatura: ${invId}`, 'Baixa manual confirmada pelo gestor.');
+    showToast('💵 Fatura liquidada e marcada como Paga!');
+  };
+
+  // ----------------------------------------------------
+  // ACTION: EXPORT CSV
+  // ----------------------------------------------------
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Nome', 'Razao_Social', 'CPF_CNPJ', 'Tipo', 'Categoria', 'Plano', 'Status_Cadastro', 'Status_Publicacao', 'Status_Financeiro', 'Mensalidade', 'Views', 'Clicks', 'Leads', 'Email', 'WhatsApp'];
+    const rows = partners.map(p => [
+      `"${p.id}"`,
+      `"${p.name}"`,
+      `"${p.tradeName || p.name}"`,
+      `"${p.cpfCnpj}"`,
+      `"${p.entityType}"`,
+      `"${p.category}"`,
+      `"${p.plan}"`,
+      `"${p.registrationStatus}"`,
+      `"${p.publicationStatus}"`,
+      `"${p.financialStatus}"`,
+      p.monthlyFee,
+      p.views,
+      p.clicks,
+      p.leadsGenerated,
+      `"${p.email}"`,
+      `"${p.whatsapp}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `relatorio_gestao_parceiros_classium_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('📥 Relatório CSV gerado e baixado com sucesso!');
+  };
+
+  // Distinct Categories for Filter Dropdown
+  const uniqueCategories = useMemo(() => {
+    return Array.from(new Set(partners.map(p => p.category)));
+  }, [partners]);
+
+  return (
+    <div className="space-y-6 text-left animate-fade-in">
+      
+      {/* 1. INSTITUTIONAL HEADER & COMMAND BAR */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-blue-600/10 via-amber-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                Módulo Administrativo & Governança Comercial
+              </span>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono flex items-center gap-1.5 border ${
+                syncStatus === 'SINCRONIZADO' 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                  : syncStatus === 'SINCRONIZANDO'
+                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 animate-pulse'
+                  : syncStatus === 'ERRO DE SINCRONIZAÇÃO'
+                  ? 'bg-red-500/10 text-red-400 border-red-500/30'
+                  : syncStatus === 'RECONEXÃO'
+                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  syncStatus === 'SINCRONIZADO' ? 'bg-emerald-400' :
+                  syncStatus === 'SINCRONIZANDO' ? 'bg-amber-400 animate-ping' :
+                  syncStatus === 'ERRO DE SINCRONIZAÇÃO' ? 'bg-red-400' : 'bg-slate-400'
+                }`} />
+                <span>{syncStatus}</span>
+                <span className="text-[9px] text-slate-500 ml-1">({lastSyncTime})</span>
+                <button 
+                  onClick={() => loadCanonicalPartners(true)}
+                  disabled={isLoadingPartners}
+                  className="ml-1 p-0.5 hover:text-white text-slate-400 disabled:opacity-50 transition-colors"
+                  title="Atualizar dados do servidor"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isLoadingPartners ? 'animate-spin' : ''}`} />
+                </button>
+              </span>
+            </div>
+
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+              <Building2 className="w-7 h-7 text-gold shrink-0" />
+              Gestão de Profissionais, Empresas e Parceiros
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 max-w-3xl leading-relaxed">
+              Supervisão de anunciantes conveniados, homologação de profissionais autônomos, 
+              controle de planos, faturamento de assinaturas e acompanhamento de métricas de receita recorrente (MRR).
+            </p>
+          </div>
+
+          {/* Quick Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              onClick={handleOpenNewPartner}
+              className="px-4 py-2.5 bg-gradient-to-r from-gold via-amber-400 to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl hover:brightness-110 transition-all shadow-lg flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Novo Parceiro</span>
+            </button>
+
+            <button
+              onClick={handleExportCSV}
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition-all flex items-center gap-2"
+              title="Exportar base completa em CSV"
+            >
+              <Download className="w-4 h-4 text-blue-400" />
+              <span>Exportar CSV</span>
+            </button>
+
+            <button
+              onClick={() => window.print()}
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-all"
+              title="Imprimir relatório"
+            >
+              <Printer className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Navigation Tabs Bar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pt-6 mt-6 border-t border-slate-800/80">
+          {[
+            { key: 'overview', label: 'Visão Geral & MRR', icon: TrendingUp },
+            { key: 'directory', label: `Diretório Completo (${partners.length})`, icon: Users },
+            { key: 'moderation', label: `Curadoria & Docs (${metrics.pendingModeration})`, icon: FileCheck, badge: metrics.pendingModeration > 0 ? metrics.pendingModeration : undefined },
+            { key: 'plans', label: 'Planos & Preços', icon: Layers },
+            { key: 'billing', label: `Faturas & Cobranças (${invoices.length})`, icon: CreditCard },
+            { key: 'portals', label: 'Matriz de Visibilidade', icon: Globe },
+            { key: 'audit', label: `Histórico & Auditoria (${planHistory.length})`, icon: FileText }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as TabKey)}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 shrink-0 ${
+                  isActive
+                    ? 'bg-gold/15 text-gold border border-gold/30 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'text-gold' : 'text-slate-400'}`} />
+                <span>{tab.label}</span>
+                {tab.badge !== undefined && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500 text-slate-950 font-mono">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* TOAST ALERT */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border-2 border-emerald-500 text-emerald-300 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce max-w-md">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold leading-relaxed">{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="ml-auto text-slate-400 hover:text-white p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB 1: VISÃO GERAL & ANALYTICS MRR                   */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* Card 1: MRR */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 relative overflow-hidden group hover:border-gold/30 transition-all">
+              <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
+                <span>Receita Mensal (MRR)</span>
+                <div className="p-2 rounded-xl bg-gold/10 text-gold">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl sm:text-3xl font-serif font-bold text-white">
+                R$ {metrics.mrr.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-400 font-bold">
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>+12.4% vs mês anterior</span>
+              </div>
+            </div>
+
+            {/* Card 2: Parceiros Ativos */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 relative overflow-hidden group hover:border-blue-500/30 transition-all">
+              <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
+                <span>Parceiros Homologados</span>
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+                  <Building2 className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl sm:text-3xl font-serif font-bold text-white">
+                {metrics.active} <span className="text-xs font-normal text-slate-500">/ {metrics.total} total</span>
+              </p>
+              <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-400">
+                <span className="text-amber-400 font-bold">{metrics.pendingModeration} pendentes</span>
+                <span>•</span>
+                <span className="text-red-400 font-bold">{metrics.defaultRateCount} atrasados</span>
+              </div>
+            </div>
+
+            {/* Card 3: Leads & Conversões */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 relative overflow-hidden group hover:border-emerald-500/30 transition-all">
+              <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
+                <span>Leads & Contatos</span>
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <MessageCircle className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl sm:text-3xl font-serif font-bold text-emerald-400 font-mono">
+                {metrics.totalLeads.toLocaleString('pt-BR')}
+              </p>
+              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-400 font-mono">
+                <span>{metrics.totalConversions} conversões confirmadas</span>
+              </div>
+            </div>
+
+            {/* Card 4: Cliques & CTR Médio */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 relative overflow-hidden group hover:border-purple-500/30 transition-all">
+              <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
+                <span>Cliques & CTR Médio</span>
+                <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl sm:text-3xl font-serif font-bold text-white">
+                {metrics.totalClicks.toLocaleString('pt-BR')}
+              </p>
+              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-cyan-400 font-mono">
+                <span>CTR médio: {metrics.ctrAvg}% em {metrics.totalViews.toLocaleString('pt-BR')} views</span>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Main Area Chart: Receita Recorrente & Leads */}
+            <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-gold" />
+                    Evolução de Receita & Geração de Leads (Últimos 6 Meses)
+                  </h3>
+                  <p className="text-xs text-slate-400">Desempenho financeiro e engajamento da rede de parceiros</p>
+                </div>
+              </div>
+
+              <div className="h-64 sm:h-72 w-full pt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={monthlyTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0}/>
+                      </linearGradient>
+                      <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                      itemStyle={{ color: '#fff' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                    <Area type="monotone" dataKey="receita" name="Receita (R$)" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorReceita)" />
+                    <Area type="monotone" dataKey="leads" name="Leads Gerados" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorLeads)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Donut Chart: Distribuição por Planos */}
+            <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <div>
+                <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-cyan-400" />
+                  Composição dos Planos
+                </h3>
+                <p className="text-xs text-slate-400">Distribuição da carteira de anunciantes</p>
+              </div>
+
+              <div className="h-60 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={planDistributionData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {planDistributionData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-[11px]">
+                {plans.map(pl => {
+                  const count = partners.filter(p => p.plan === pl.id).length;
+                  return (
+                    <div key={pl.id} className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80">
+                      <span className="text-slate-400 block">{pl.name}</span>
+                      <span className="text-white font-bold">{count} parceiros (R$ {pl.monthlyPrice}/mês)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Pending Alerts Banner */}
+          {metrics.pendingModeration > 0 && (
+            <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-amber-200">
+                    Existem {metrics.pendingModeration} novo(s) parceiro(s) aguardando homologação e análise documental.
+                  </p>
+                  <p className="text-[11px] text-amber-400/80">
+                    Revise os dados de conselho profissional e documentos para liberação nos portais.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveTab('moderation')}
+                className="px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl hover:bg-amber-400 transition-colors shrink-0"
+              >
+                Abrir Central de Curadoria →
+              </button>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB 2: DIRETÓRIO COMPLETO DE PARCEIROS               */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'directory' && (
+        <div className="space-y-4">
+          
+          {/* Search & Multi-Filters Toolbar */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              
+              {/* Search Bar */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome, razão social, CPF/CNPJ, e-mail ou cidade..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-gold/50"
+                />
+                {searchTerm && (
+                  <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-slate-500 hover:text-white">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Counter Indicator */}
+              <div className="text-xs text-slate-400 shrink-0 font-medium">
+                Mostrando <strong className="text-white">{filteredPartners.length}</strong> de <strong className="text-white">{partners.length}</strong> parceiros
+              </div>
+            </div>
+
+            {/* Filter Dropdowns Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-2 border-t border-slate-800/80">
+              
+              {/* Entity Type */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tipo</label>
+                <select
+                  value={selectedEntityFilter}
+                  onChange={(e) => setSelectedEntityFilter(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-gold/50"
+                >
+                  <option value="todos">Todos os Tipos</option>
+                  <option value="pessoa_fisica">Pessoa Física (Autônomo)</option>
+                  <option value="pessoa_juridica">Pessoa Jurídica (Empresa)</option>
+                  <option value="apoio_infra">Apoio & Infraestrutura</option>
+                </select>
+              </div>
+
+              {/* Category */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Categoria</label>
+                <select
+                  value={selectedCategoryFilter}
+                  onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-gold/50"
+                >
+                  <option value="todos">Todas as Categorias</option>
+                  {uniqueCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Plan */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Plano</label>
+                <select
+                  value={selectedPlanFilter}
+                  onChange={(e) => setSelectedPlanFilter(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-gold/50"
+                >
+                  <option value="todos">Todos os Planos</option>
+                  <option value="prata">Plano Prata</option>
+                  <option value="ouro">Plano Ouro</option>
+                  <option value="diamante">Plano Diamante VIP</option>
+                  <option value="institucional">Institucional</option>
+                </select>
+              </div>
+
+              {/* Registration Status */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Status Cadastro</label>
+                <select
+                  value={selectedStatusFilter}
+                  onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-gold/50"
+                >
+                  <option value="todos">Todos os Status</option>
+                  <option value="aprovado">Aprovado</option>
+                  <option value="pendente_analise">Pendente Análise</option>
+                  <option value="em_analise">Em Análise</option>
+                  <option value="rejeitado">Rejeitado</option>
+                  <option value="suspenso">Suspenso</option>
+                </select>
+              </div>
+
+              {/* Financial Status */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Financeiro</label>
+                <select
+                  value={selectedFinancialFilter}
+                  onChange={(e) => setSelectedFinancialFilter(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-gold/50"
+                >
+                  <option value="todos">Todos Financeiro</option>
+                  <option value="adimplente">Adimplente (Pago)</option>
+                  <option value="pendente">Pendente de Pagamento</option>
+                  <option value="inadimplente">Inadimplente (Atrasado)</option>
+                </select>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Directory Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px] font-bold tracking-wider">
+                    <th className="py-3.5 px-4">Parceiro / Entidade</th>
+                    <th className="py-3.5 px-3">Categoria & Cidade</th>
+                    <th className="py-3.5 px-3">Plano & Valor</th>
+                    <th className="py-3.5 px-3">Status Cadastro</th>
+                    <th className="py-3.5 px-3">Publicação</th>
+                    <th className="py-3.5 px-3 text-center">Métricas</th>
+                    <th className="py-3.5 px-4 text-right">Ações de Gestão</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/80">
+                  {isLoadingPartners ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <RefreshCw className="w-6 h-6 text-gold animate-spin" />
+                          <span className="text-xs font-medium">Carregando parceiros da base corporativa...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : partnersLoadError ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-red-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <AlertTriangle className="w-6 h-6 text-red-400" />
+                          <span className="text-xs font-medium">{partnersLoadError}</span>
+                          <button
+                            onClick={() => loadCanonicalPartners(true)}
+                            className="mt-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-all border border-slate-700"
+                          >
+                            Tentar novamente
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredPartners.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-500">
+                        Nenhum parceiro encontrado com os filtros selecionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPartners.map(p => {
+                      const isBlocked = p.publicationStatus === 'bloqueado';
+                      const isPending = p.registrationStatus === 'pendente_analise' || p.registrationStatus === 'em_analise';
+                      
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
+                          
+                          {/* Col 1: Name & Entity */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={p.logo || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80'}
+                                alt=""
+                                className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
+                              />
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-white text-xs">{p.tradeName || p.name}</span>
+                                  {p.officialPartnerSeal && (
+                                    <BadgeCheck className="w-3.5 h-3.5 text-gold shrink-0" title={p.sealText || "Parceiro Aprovado"} />
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                  <span className="font-mono text-slate-300" title="Visualização completa protegida">{p.cpfCnpj ? (p.cpfCnpj.length > 14 ? p.cpfCnpj.slice(0, 6) + '••.•••/••••-••' : p.cpfCnpj.slice(0, 3) + '.•••.•••-••') : 'Documento Protegido'}</span>
+                                  {p.professionalReg && (
+                                    <span className="px-1.5 py-0.2 bg-blue-950/60 text-blue-300 rounded border border-blue-800/50">
+                                      {p.professionalReg}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Col 2: Category & City */}
+                          <td className="py-3.5 px-3">
+                            <span className="font-medium text-slate-200 block">{p.category}</span>
+                            <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3 text-slate-500" />
+                              {p.city}/{p.state}
+                            </span>
+                          </td>
+
+                          {/* Col 3: Plan & Monthly Fee */}
+                          <td className="py-3.5 px-3">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider inline-block ${
+                              p.plan === 'diamante' 
+                                ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/30'
+                                : p.plan === 'ouro'
+                                ? 'bg-amber-950/60 text-amber-400 border border-amber-500/30'
+                                : p.plan === 'institucional'
+                                ? 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
+                                : 'bg-slate-800 text-slate-300 border border-slate-700'
+                            }`}>
+                              {p.plan}
+                            </span>
+                            <span className="text-[11px] text-emerald-400 font-mono font-bold block mt-1">
+                              {typeof p.monthlyFee === 'number' && p.monthlyFee > 0 ? `R$ ${p.monthlyFee.toFixed(2)}/mês` : 'Não informado'}
+                            </span>
+                          </td>
+
+                          {/* Col 4: Registration Status */}
+                          <td className="py-3.5 px-3">
+                            {p.registrationStatus === 'aprovado' && (
+                              <span className="px-2 py-1 bg-emerald-950/60 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 w-fit">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                Aprovado
+                              </span>
+                            )}
+                            {p.registrationStatus === 'pendente_analise' && (
+                              <span className="px-2 py-1 bg-amber-950/60 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 w-fit">
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                Pendente
+                              </span>
+                            )}
+                            {p.registrationStatus === 'em_analise' && (
+                              <span className="px-2 py-1 bg-blue-950/60 text-blue-300 border border-blue-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 w-fit">
+                                <Search className="w-3 h-3 text-blue-400" />
+                                Em Análise
+                              </span>
+                            )}
+                            {p.registrationStatus === 'rejeitado' && (
+                              <span className="px-2 py-1 bg-red-950/60 text-red-300 border border-red-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 w-fit">
+                                <XCircle className="w-3 h-3 text-red-400" />
+                                Rejeitado
+                              </span>
+                            )}
+                            {p.registrationStatus === 'suspenso' && (
+                              <span className="px-2 py-1 bg-slate-800 text-slate-300 border border-slate-700 rounded-lg text-[10px] font-bold flex items-center gap-1 w-fit">
+                                <Ban className="w-3 h-3 text-slate-400" />
+                                Suspenso
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Col 5: Publication Status */}
+                          <td className="py-3.5 px-3">
+                            {isBlocked ? (
+                              <span className="text-[10px] text-red-400 font-bold flex items-center gap-1">
+                                <Ban className="w-3 h-3" /> Bloqueado
+                              </span>
+                            ) : p.publicationStatus === 'publicado' ? (
+                              <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                <Check className="w-3 h-3" /> No Ar
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> Rascunho
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Col 6: Metrics summary */}
+                          <td className="py-3.5 px-3 text-center">
+                            <div className="text-[10px] text-slate-300 font-mono space-y-0.5">
+                              <div>{typeof p.views === 'number' ? `${p.views.toLocaleString('pt-BR')} views` : 'Views: N/A'}</div>
+                              <div className="text-emerald-400 font-bold">{typeof p.leadsGenerated === 'number' ? `${p.leadsGenerated} leads` : 'Leads: N/A'}</div>
+                            </div>
+                          </td>
+
+                          {/* Col 7: Action Buttons */}
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              
+                              {/* Details Button */}
+                              <button
+                                onClick={() => setSelectedPartnerForDetail(p)}
+                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                                title="Ver Ficha Completa 360°"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Edit Button */}
+                              <button
+                                onClick={() => {
+                                  setEditingPartner({ ...p });
+                                  setIsEditModalOpen(true);
+                                }}
+                                className="p-1.5 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white rounded-lg transition-colors"
+                                title="Editar dados cadastrais e CTAs"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Change Plan Button */}
+                              <button
+                                onClick={() => handleOpenPlanChange(p)}
+                                className="p-1.5 bg-slate-800 hover:bg-amber-600 text-slate-300 hover:text-white rounded-lg transition-colors"
+                                title="Alterar Plano (Upgrade / Downgrade)"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Approve Button if Pending */}
+                              {isPending && (
+                                <button
+                                  onClick={() => handleApprovePartner(p)}
+                                  className="p-1.5 bg-emerald-950/80 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg transition-colors"
+                                  title="Aprovar e Publicar Imediatamente"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
+                              {/* Block / Unblock Toggle */}
+                              <button
+                                onClick={() => handleToggleBlockPartner(p)}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  isBlocked
+                                    ? 'bg-emerald-950/80 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30'
+                                    : 'bg-slate-800 hover:bg-amber-600 text-slate-400 hover:text-white'
+                                }`}
+                                title={isBlocked ? 'Desbloquear parceiro' : 'Bloquear parceiro'}
+                              >
+                                <Ban className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Delete Button */}
+                              <button
+                                onClick={() => handleDeletePartner(p.id, p.name)}
+                                className="p-1.5 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white rounded-lg transition-colors"
+                                title="Excluir parceiro"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+
+                            </div>
+                          </td>
+
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB 3: CENTRAL DE CURADORIA & MODERAÇÃO DE DOCUMENTOS */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'moderation' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <div>
+              <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-gold" />
+                Fila de Curadoria & Validação Documental
+              </h3>
+              <p className="text-xs text-slate-400">
+                Homologação de registros profissionais (CRP, CRM, MEC, Alvarás) para liberação nos portais.
+              </p>
+            </div>
+
+            {/* Pending Partners List */}
+            <div className="space-y-4 pt-2">
+              {partners.filter(p => p.registrationStatus === 'pendente_analise' || p.registrationStatus === 'em_analise').length === 0 ? (
+                <div className="p-8 text-center bg-slate-950/60 rounded-2xl border border-slate-800 space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                  <p className="text-sm font-bold text-white">Fila de moderação 100% em dia!</p>
+                  <p className="text-xs text-slate-400">Não há cadastros pendentes de validação no momento.</p>
+                </div>
+              ) : (
+                partners
+                  .filter(p => p.registrationStatus === 'pendente_analise' || p.registrationStatus === 'em_analise')
+                  .map(p => (
+                    <div key={p.id} className="bg-slate-950 border border-amber-500/30 rounded-2xl p-5 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                        <div className="flex items-center gap-3">
+                          <img src={p.logo} alt="" className="w-12 h-12 rounded-xl object-cover border border-slate-700" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-white text-sm">{p.name}</h4>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                {p.entityType === 'pessoa_fisica' ? 'Profissional Autônomo' : 'Empresa / Instituição'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-400">
+                              {p.category} • {p.city}/{p.state} • Cadastrado em: {new Date(p.createdAt).toLocaleDateString('pt-BR')}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Direct Action Group */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleApprovePartner(p)}
+                            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-md"
+                          >
+                            <Check className="w-4 h-4" />
+                            <span>Aprovar Cadastro</span>
+                          </button>
+                          
+                          <button
+                            onClick={() => handleOpenRejectModal(p)}
+                            className="px-4 py-2 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/30 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all"
+                          >
+                            <X className="w-4 h-4" />
+                            <span>Recusar</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Technical Details Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                        <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                          <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Identificação Fiscal</span>
+                          <span className="text-white font-mono">{p.cpfCnpj}</span>
+                          {p.professionalReg && (
+                            <span className="text-blue-400 font-mono block text-[11px] mt-0.5">
+                              Reg: {p.professionalReg}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                          <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Canais de Contato</span>
+                          <span className="text-white block">{p.email}</span>
+                          <span className="text-emerald-400 font-mono">{p.whatsapp}</span>
+                        </div>
+
+                        <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                          <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Plano Solicitado</span>
+                          <span className="text-gold font-bold uppercase">{p.plan}</span>
+                          <span className="text-slate-400 block text-[11px]">R$ {p.monthlyFee.toFixed(2)}/mês</span>
+                        </div>
+                      </div>
+
+                      {/* Description / Summary */}
+                      <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800/80 text-xs text-slate-300">
+                        <strong className="text-slate-200">Descrição Comercial:</strong> {p.description || 'Nenhuma descrição fornecida.'}
+                      </div>
+
+                      {/* Moderation Notes Field */}
+                      {p.moderationNotes && (
+                        <div className="text-[11px] text-amber-300/90 bg-amber-950/20 p-2.5 rounded-lg border border-amber-500/20">
+                          <strong>Observação da Equipe:</strong> {p.moderationNotes}
+                        </div>
+                      )}
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+
+          {/* Document Verification Section */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+              <Award className="w-5 h-5 text-blue-400" />
+              Documentos & Certidões Anexadas ({documents.length})
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {documents.map(doc => {
+                const docPartner = partners.find(p => p.id === doc.partnerId);
+                return (
+                  <div key={doc.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-blue-400" />
+                        <div>
+                          <h4 className="font-bold text-white text-xs leading-snug">{doc.title}</h4>
+                          <span className="text-[10px] text-slate-400">{docPartner?.name || 'Parceiro'}</span>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                        doc.status === 'aprovado'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                          : doc.status === 'pendente'
+                          ? 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                          : 'bg-red-950 text-red-300 border border-red-500/30'
+                      }`}>
+                        {doc.status}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 space-y-1">
+                      <div>Arquivo: <span className="text-slate-200 font-mono">{doc.fileName}</span> ({doc.fileSize})</div>
+                      <div>Enviado em: {new Date(doc.uploadedAt).toLocaleDateString('pt-BR')}</div>
+                      {doc.notes && <div className="text-amber-400/90 text-[10px] pt-1">{doc.notes}</div>}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                      <a
+                        href={doc.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-center text-[10px] font-bold transition-colors flex items-center justify-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Visualizar Arquivo</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB 4: PLANOS DE ASSINATURA & PRECIFICAÇÃO          */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'plans' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <div>
+              <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                <Layers className="w-5 h-5 text-gold" />
+                Matriz de Planos & Recursos Comerciais
+              </h3>
+              <p className="text-xs text-slate-400">
+                Configuração dos pacotes de contratação para anunciantes do ecossistema Classium.
+              </p>
+            </div>
+
+            {/* Plans Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
+              {plans.map(pl => {
+                const activePartnersCount = partners.filter(p => p.plan === pl.id && p.publicationStatus === 'publicado').length;
+                const totalRevenueForPlan = activePartnersCount * pl.monthlyPrice;
+
+                return (
+                  <div 
+                    key={pl.id} 
+                    className="bg-slate-950 border border-slate-800 hover:border-gold/40 rounded-3xl p-6 space-y-6 flex flex-col justify-between transition-all"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${pl.badgeColor}`}>
+                          {pl.name}
+                        </span>
+                        {pl.officialSeal && (
+                          <BadgeCheck className="w-5 h-5 text-gold" title="Inclui Selo Oficial" />
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-2xl font-serif font-bold text-white">
+                          R$ {pl.monthlyPrice.toFixed(2)}
+                          <span className="text-xs text-slate-400 font-sans font-normal"> /mês</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">R$ {pl.annualPrice.toFixed(2)} no plano anual</span>
+                      </div>
+
+                      <p className="text-xs text-slate-400 leading-relaxed">{pl.description}</p>
+
+                      {/* Feature Checklist */}
+                      <div className="space-y-2 pt-2 border-t border-slate-800 text-xs">
+                        <div className="flex items-center gap-2 text-slate-300">
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Até {pl.maxPhotos} fotos no catálogo</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-300">
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Até {pl.maxBanners} banners promocionais</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-300">
+                          {pl.whatsappDirect ? (
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : (
+                            <X className="w-4 h-4 text-slate-600 shrink-0" />
+                          )}
+                          <span className={pl.whatsappDirect ? '' : 'text-slate-500'}>Botão WhatsApp Direto</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-300">
+                          {pl.aiIntegration ? (
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : (
+                            <X className="w-4 h-4 text-slate-600 shrink-0" />
+                          )}
+                          <span className={pl.aiIntegration ? '' : 'text-slate-500'}>Integração com IA Classium</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-300">
+                          {pl.detailedReports ? (
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : (
+                            <X className="w-4 h-4 text-slate-600 shrink-0" />
+                          )}
+                          <span className={pl.detailedReports ? '' : 'text-slate-500'}>Relatório Avançado de Leads</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Plan Metric Footer */}
+                    <div className="p-3 bg-slate-900/80 rounded-2xl border border-slate-800 text-xs space-y-1">
+                      <div className="flex justify-between text-slate-400 text-[11px]">
+                        <span>Parceiros Ativos:</span>
+                        <strong className="text-white">{activePartnersCount}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400 text-[11px]">
+                        <span>Faturamento Mensal:</span>
+                        <strong className="text-emerald-400 font-mono">R$ {totalRevenueForPlan.toFixed(2)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB 5: FATURAS, COBRANÇAS & INADIMPLÊNCIA             */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'billing' && (
+        <div className="space-y-6">
+          
+          {/* Billing Quick Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+              <span className="text-xs text-slate-400 font-bold uppercase">Total Emitido no Mês</span>
+              <p className="text-2xl font-serif font-bold text-white mt-1">
+                R$ {invoices.reduce((acc, i) => acc + i.amount, 0).toFixed(2)}
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+              <span className="text-xs text-slate-400 font-bold uppercase">Faturas Pendentes</span>
+              <p className="text-2xl font-serif font-bold text-amber-400 mt-1 font-mono">
+                R$ {metrics.totalPendingInvoicesAmount.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+              <span className="text-xs text-slate-400 font-bold uppercase">Taxa de Inadimplência</span>
+              <p className="text-2xl font-serif font-bold text-red-400 mt-1 font-mono">
+                {((metrics.defaultRateCount / (metrics.total || 1)) * 100).toFixed(1)}%
+              </p>
+            </div>
+          </div>
+
+          {/* Invoices Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl space-y-4 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-400" />
+                  Controle de Faturas & Recebimentos Pix / Cartão
+                </h3>
+                <p className="text-xs text-slate-400">Histórico de cobranças e conciliação de pagamentos dos parceiros</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px] font-bold tracking-wider">
+                    <th className="py-3 px-4">Número Fatura</th>
+                    <th className="py-3 px-3">Parceiro / Anunciante</th>
+                    <th className="py-3 px-3">Valor</th>
+                    <th className="py-3 px-3">Vencimento</th>
+                    <th className="py-3 px-3">Método</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/80">
+                  {invoices.map(inv => (
+                    <tr key={inv.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-white">{inv.invoiceNumber}</td>
+                      <td className="py-3 px-3 font-medium text-slate-200">{inv.partnerName}</td>
+                      <td className="py-3 px-3 font-mono font-bold text-emerald-400">R$ {inv.amount.toFixed(2)}</td>
+                      <td className="py-3 px-3 text-slate-300 font-mono">{new Date(inv.dueDate).toLocaleDateString('pt-BR')}</td>
+                      <td className="py-3 px-3 uppercase text-[10px] font-bold text-slate-400">{inv.method.replace('_', ' ')}</td>
+                      <td className="py-3 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          inv.status === 'pago'
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                            : inv.status === 'pendente'
+                            ? 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                            : 'bg-red-950 text-red-300 border border-red-500/30'
+                        }`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {inv.status !== 'pago' && (
+                            <button
+                              onClick={() => handleMarkInvoicePaid(inv.id)}
+                              className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] rounded-lg transition-colors"
+                              title="Confirmar recebimento / Baixa manual"
+                            >
+                              Dar Baixa (Pago)
+                            </button>
+                          )}
+                          {inv.pixCode && (
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(inv.pixCode || '');
+                                showToast('📋 Código Pix Copia e Cola copiado para a área de transferência!');
+                              }}
+                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                              title="Copiar Pix Copia e Cola"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-blue-400" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB 6: MATRIZ DE VISIBILIDADE NOS PORTAIS            */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'portals' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <div>
+              <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                <Globe className="w-5 h-5 text-blue-400" />
+                Matriz de Publicação e Segmentação por Portal
+              </h3>
+              <p className="text-xs text-slate-400">
+                Defina em quais telas da plataforma cada anúncio deve ser renderizado para maximizar a conversão.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px] font-bold tracking-wider">
+                    <th className="py-3 px-4">Parceiro</th>
+                    <th className="py-3 px-3 text-center">Portal Família</th>
+                    <th className="py-3 px-3 text-center">Portal Docente</th>
+                    <th className="py-3 px-3 text-center">Portal Gestor</th>
+                    <th className="py-3 px-3">Destaque na Vitrine</th>
+                    <th className="py-3 px-4 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/80">
+                  {partners.map(p => (
+                    <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4">
+                        <span className="font-bold text-white">{p.name}</span>
+                        <span className="text-[10px] text-slate-400 block">{p.category}</span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.visibility.portalFamilia ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-500'}`}>
+                          {p.visibility.portalFamilia ? 'Ativo' : 'Oculto'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.visibility.portalProfessor ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-500'}`}>
+                          {p.visibility.portalProfessor ? 'Ativo' : 'Oculto'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.visibility.portalGestor ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-500'}`}>
+                          {p.visibility.portalGestor ? 'Ativo' : 'Oculto'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 bg-slate-800 text-gold rounded font-mono text-[10px] uppercase">
+                          {p.visibility.highlightPosition.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          onClick={() => {
+                            setEditingPartner({ ...p });
+                            setIsEditModalOpen(true);
+                          }}
+                          className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[10px] font-bold transition-colors"
+                        >
+                          Configurar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* TAB 7: HISTÓRICO & AUDITORIA DE ALTERAÇÕES           */}
+      {/* ---------------------------------------------------- */}
+      {activeTab === 'audit' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <div>
+              <h3 className="font-serif text-base font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gold" />
+                Histórico de Alterações de Planos & Decisões Administrativas
+              </h3>
+              <p className="text-xs text-slate-400">Rastreabilidade completa de upgrades, downgrades e moderações.</p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              {planHistory.map(item => (
+                <div key={item.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-xs">{item.partnerName}</span>
+                      <span className="text-[10px] text-slate-400">•</span>
+                      <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded">
+                        De {item.previousPlan} → Para <strong className="text-gold">{item.newPlan}</strong>
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">Motivo: {item.reason}</p>
+                  </div>
+                  <div className="text-[10px] text-slate-500 text-right font-mono shrink-0">
+                    <div>Por: {item.changedBy}</div>
+                    <div>{new Date(item.changedAt).toLocaleString('pt-BR')}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: FICHA COMPLETA 360° DO PARCEIRO               */}
+      {/* ---------------------------------------------------- */}
+      {selectedPartnerForDetail && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in text-left">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-3xl max-h-[90vh] rounded-3xl p-6 sm:p-8 shadow-2xl overflow-y-auto space-y-6">
+            
+            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-4">
+                <img src={selectedPartnerForDetail.logo} alt="" className="w-16 h-16 rounded-2xl object-cover border border-slate-700" />
+                <div>
+                  <h3 className="font-serif text-xl font-bold text-white flex items-center gap-2">
+                    {selectedPartnerForDetail.name}
+                    {selectedPartnerForDetail.officialPartnerSeal && <BadgeCheck className="w-5 h-5 text-gold" />}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {selectedPartnerForDetail.category} • {selectedPartnerForDetail.city}/{selectedPartnerForDetail.state}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPartnerForDetail(null)}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Metrics Snapshot */}
+            <div className="grid grid-cols-4 gap-2 bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center font-mono">
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase block">Visualizações</span>
+                <span className="text-base font-bold text-white">
+                  {typeof selectedPartnerForDetail.views === 'number' ? selectedPartnerForDetail.views.toLocaleString('pt-BR') : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase block">Cliques</span>
+                <span className="text-base font-bold text-blue-400">
+                  {typeof selectedPartnerForDetail.clicks === 'number' ? selectedPartnerForDetail.clicks.toLocaleString('pt-BR') : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase block">Leads</span>
+                <span className="text-base font-bold text-emerald-400">
+                  {typeof selectedPartnerForDetail.leadsGenerated === 'number' ? selectedPartnerForDetail.leadsGenerated : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase block">Conversões</span>
+                <span className="text-base font-bold text-gold">
+                  {typeof selectedPartnerForDetail.conversions === 'number' ? selectedPartnerForDetail.conversions : 'N/A'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+                <h4 className="font-bold text-gold uppercase text-[11px] tracking-wider">Descrição Comercial & Proposta de Valor</h4>
+                <p className="text-slate-300 leading-relaxed">{selectedPartnerForDetail.description || 'Nenhuma descrição fornecida.'}</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-1.5">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Informações Fiscais & Contato</span>
+                  <div>CPF/CNPJ: <span className="text-white font-mono">{selectedPartnerForDetail.cpfCnpj}</span></div>
+                  <div>E-mail: <span className="text-white">{selectedPartnerForDetail.email}</span></div>
+                  <div>WhatsApp: <span className="text-emerald-400 font-mono">{selectedPartnerForDetail.whatsapp}</span></div>
+                  <div>Site: <a href={selectedPartnerForDetail.website} target="_blank" rel="noreferrer" className="text-blue-400 underline">{selectedPartnerForDetail.website}</a></div>
+                </div>
+
+                <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-1.5">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Parâmetros Comerciais</span>
+                  <div>Plano Atual: <strong className="text-gold uppercase">{selectedPartnerForDetail.plan}</strong></div>
+                  <div>Mensalidade: <strong className="text-emerald-400 font-mono">{typeof selectedPartnerForDetail.monthlyFee === 'number' && selectedPartnerForDetail.monthlyFee > 0 ? `R$ ${selectedPartnerForDetail.monthlyFee.toFixed(2)}/mês` : 'Não informado'}</strong></div>
+                  <div>Status Cadastro: <span className="text-white">{selectedPartnerForDetail.registrationStatus}</span></div>
+                  <div>Status Publicação: <span className="text-white">{selectedPartnerForDetail.publicationStatus}</span></div>
+                </div>
+              </div>
+
+              {/* Highlights */}
+              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Diferenciais & Destaques</span>
+                <div className="flex flex-wrap gap-2">
+                  {selectedPartnerForDetail.highlights && selectedPartnerForDetail.highlights.length > 0 ? (
+                    selectedPartnerForDetail.highlights.map((h, i) => (
+                      <span key={i} className="px-3 py-1 bg-slate-900 border border-slate-700 text-slate-200 rounded-lg text-xs">
+                        ✓ {h}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500 text-xs italic">Nenhum diferencial cadastrado.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-4">
+              <button
+                onClick={() => {
+                  setEditingPartner({ ...selectedPartnerForDetail });
+                  setSelectedPartnerForDetail(null);
+                  setIsEditModalOpen(true);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-all"
+              >
+                Editar Informações
+              </button>
+              <button
+                onClick={() => setSelectedPartnerForDetail(null)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 hover:text-white font-bold text-xs rounded-xl"
+              >
+                Fechar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: EDIÇÃO / CADASTRO DE PARCEIRO                 */}
+      {/* ---------------------------------------------------- */}
+      {isEditModalOpen && editingPartner && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in text-left">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl max-h-[90vh] rounded-3xl p-6 sm:p-8 shadow-2xl overflow-y-auto space-y-6">
+            
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="font-serif text-xl font-bold text-white">
+                  {partners.some(p => p.id === editingPartner.id) ? 'Editar Parceiro / Anunciante' : 'Novo Cadastro de Parceiro'}
+                </h3>
+                <p className="text-xs text-slate-400">Preencha as informações cadastrais, plano e regras de visibilidade</p>
+              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePartner} className="space-y-6">
+              
+              {formErrorMessage && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{formErrorMessage}</span>
+                </div>
+              )}
+              
+              {/* Entity Type & Name */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Tipo de Entidade *</label>
+                  <select
+                    value={editingPartner.entityType}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, entityType: e.target.value as EntityType })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  >
+                    <option value="pessoa_juridica">Pessoa Jurídica (Empresa/Instituição)</option>
+                    <option value="pessoa_fisica">Pessoa Física (Profissional Autônomo)</option>
+                    <option value="apoio_infra">Apoio & Infraestrutura</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs text-slate-300 font-bold">Razão Social / Nome Completo *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPartner.name}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, name: e.target.value })}
+                    placeholder="Ex: Mentis Therapy Soluções em Saúde Ltda"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+              </div>
+
+              {/* Trade Name & Tax Doc */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Nome Fantasia (Exibição) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPartner.tradeName || ''}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, tradeName: e.target.value })}
+                    placeholder="Ex: Mentis Therapy"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">CPF / CNPJ *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPartner.cpfCnpj}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const formatted = val.length > 14 ? maskCNPJ(val) : maskCPF(val);
+                      setEditingPartner({ ...editingPartner, cpfCnpj: formatted });
+                    }}
+                    placeholder="Ex: 00.000.000/0001-00"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Registro Profissional (Opcional)</label>
+                  <input
+                    type="text"
+                    value={editingPartner.professionalReg || ''}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, professionalReg: e.target.value })}
+                    placeholder="Ex: CRP 06/12345 ou MEC"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+              </div>
+
+              {/* Contacts & Location */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">E-mail Comercial *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editingPartner.email}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, email: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">WhatsApp Direto *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPartner.whatsapp}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, whatsapp: e.target.value })}
+                    placeholder="Ex: 5511999998888"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Cidade *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPartner.city}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, city: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Estado (UF) *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={2}
+                    value={editingPartner.state}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, state: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  />
+                </div>
+              </div>
+
+              {/* Plan & Pricing */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Plano de Assinatura *</label>
+                  <select
+                    value={editingPartner.plan}
+                    onChange={(e) => {
+                      const newPl = e.target.value as PlanType;
+                      const plConfig = plans.find(p => p.id === newPl);
+                      setEditingPartner({
+                        ...editingPartner,
+                        plan: newPl,
+                        monthlyFee: plConfig ? plConfig.monthlyPrice : editingPartner.monthlyFee,
+                        officialPartnerSeal: plConfig ? plConfig.officialSeal : editingPartner.officialPartnerSeal
+                      });
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  >
+                    <option value="prata">Plano Prata (R$ 99/mês)</option>
+                    <option value="ouro">Plano Ouro (R$ 249/mês)</option>
+                    <option value="diamante">Plano Diamante VIP (R$ 499/mês)</option>
+                    <option value="institucional">Institucional (R$ 850/mês)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Valor Mensal (R$) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editingPartner.monthlyFee ?? ''}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, monthlyFee: parseFloat(e.target.value) || undefined })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-emerald-400 font-mono font-bold focus:outline-none focus:border-gold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-bold">Status do Cadastro *</label>
+                  <select
+                    value={editingPartner.registrationStatus}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, registrationStatus: e.target.value as PartnerRegistrationStatus })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                  >
+                    <option value="aprovado">Aprovado</option>
+                    <option value="pendente_analise">Pendente Análise</option>
+                    <option value="em_analise">Em Análise</option>
+                    <option value="suspenso">Suspenso</option>
+                    <option value="rejeitado">Rejeitado</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-300 font-bold">Descrição Comercial Completa *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={editingPartner.description}
+                  onChange={(e) => setEditingPartner({ ...editingPartner, description: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                />
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-4">
+                <button
+                  type="button"
+                  disabled={isSubmittingPartner}
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2.5 bg-slate-800 text-slate-300 hover:text-white disabled:opacity-50 rounded-xl text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingPartner}
+                  className="px-6 py-2.5 bg-gold hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center gap-2"
+                >
+                  {isSubmittingPartner ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Cadastrando...</span>
+                    </>
+                  ) : (
+                    <span>Salvar Parceiro</span>
+                  )}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: ALTERAÇÃO DE PLANO COM AUDITORIA              */}
+      {/* ---------------------------------------------------- */}
+      {isPlanChangeModalOpen && planChangePartner && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in text-left">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-gold" />
+                <h3 className="font-serif text-lg font-bold text-white">Alteração de Plano de Assinatura</h3>
+              </div>
+              <button onClick={() => setIsPlanChangeModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800">
+                <span className="text-slate-400 block">Parceiro Selecionado:</span>
+                <span className="text-white font-bold text-sm">{planChangePartner.name}</span>
+                <span className="text-gold block font-mono text-[11px] mt-1">Plano Atual: {planChangePartner.plan.toUpperCase()} (R$ {planChangePartner.monthlyFee.toFixed(2)}/mês)</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold">Novo Plano Desejado *</label>
+                <select
+                  value={selectedNewPlan}
+                  onChange={(e) => setSelectedNewPlan(e.target.value as PlanType)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                >
+                  {plans.map(pl => (
+                    <option key={pl.id} value={pl.id}>
+                      {pl.name} — R$ {pl.monthlyPrice.toFixed(2)}/mês ({pl.description.slice(0, 50)}...)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold">Justificativa / Motivo da Alteração (Gravado em Auditoria) *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={planChangeReason}
+                  onChange={(e) => setPlanChangeReason(e.target.value)}
+                  placeholder="Ex: Upgrade anual aprovado pelo anunciante para inclusão de banner rotativo."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-gold"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-4">
+              <button
+                onClick={() => setIsPlanChangeModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 hover:text-white font-bold text-xs rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmPlanChange}
+                className="px-5 py-2 bg-gold text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl hover:bg-amber-400 transition-all"
+              >
+                Confirmar Mudança
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: RECUSAR CADASTRO (COM MOTIVO)                 */}
+      {/* ---------------------------------------------------- */}
+      {isRejectModalOpen && rejectingPartner && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in text-left">
+          <div className="bg-slate-900 border border-red-500/40 w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-red-500/20 pb-4">
+              <div className="flex items-center gap-2">
+                <AlertOctagon className="w-5 h-5 text-red-400" />
+                <h3 className="font-serif text-lg font-bold text-white">Recusa de Homologação</h3>
+              </div>
+              <button onClick={() => setIsRejectModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <p className="text-slate-300">
+                Você está recusando a homologação de <strong className="text-white">{rejectingPartner.name}</strong>.
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold">Motivo da Recusa (Notificado ao Anunciante) *</label>
+                <textarea
+                  rows={4}
+                  required
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Ex: Registro no Conselho de Fonoaudiologia inativo ou documentação fiscal pendente de envio."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-red-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-4">
+              <button
+                onClick={() => setIsRejectModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 hover:text-white font-bold text-xs rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmRejection}
+                className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition-all"
+              >
+                Confirmar Recusa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

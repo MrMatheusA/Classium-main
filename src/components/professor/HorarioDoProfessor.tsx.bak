@@ -1,0 +1,895 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  Clock, Calendar, BookOpen, MapPin, Users, CheckCircle2, 
+  AlertCircle, ShieldAlert, RefreshCw, LogOut, Wifi, WifiOff,
+  ChevronRight, AlertTriangle, ShieldCheck, UserX
+} from 'lucide-react';
+import { usePlatform } from '../../context/PlatformContext';
+import { useAuth } from '../../hooks/useAuth';
+import { supabase } from '../../lib/supabase';
+import { AttendanceDiary } from './AttendanceDiary';
+
+export interface ClassScheduleItem {
+  id: string;
+  class_id: string;
+  class_name: string;
+  subject_name: string;
+  room_name: string;
+  day_of_week: number; // 1 = Segunda, 2 = Terça, 3 = Quarta, 4 = Quinta, 5 = Sexta
+  day_name: string;
+  period_number: number;
+  time_slot: string;
+  start_time: string;
+  end_time: string;
+  is_interval: boolean;
+  status: 'Agendada' | 'Próxima Aula' | 'Em Andamento' | 'Finalizada' | 'Intervalo';
+  status_color: string;
+  status_icon: string;
+  teacher_name?: string;
+}
+
+interface HorarioDoProfessorProps {
+  className?: string;
+  teacherId?: string;
+  teacherName?: string;
+  teacherSubject?: string;
+  onSelectClass?: (classId: string) => void;
+  classes?: Record<string, any> | any[];
+  selectedClass?: string;
+  onLogout?: () => void;
+  minhasTurmasSlot?: React.ReactNode;
+}
+
+const DAY_NUMBER_TO_NAME: Record<number, string> = {
+  1: 'Segunda',
+  2: 'Terça',
+  3: 'Quarta',
+  4: 'Quinta',
+  5: 'Sexta',
+  6: 'Sábado',
+  7: 'Domingo'
+};
+
+const DAY_NAME_TO_NUMBER: Record<string, number> = {
+  'Segunda': 1,
+  'Terça': 2,
+  'Quarta': 3,
+  'Quinta': 4,
+  'Sexta': 5,
+  'Sábado': 6,
+  'Domingo': 7
+};
+
+export function HorarioDoProfessor({ 
+  className = '', 
+  teacherId: propTeacherId,
+  teacherName: propTeacherName,
+  teacherSubject: propTeacherSubject,
+  onSelectClass,
+  classes,
+  selectedClass,
+  onLogout
+}: HorarioDoProfessorProps) {
+  const { profile } = useAuth();
+
+  // Mobile day selection for week view on small screens
+  const [selectedDayMobile, setSelectedDayMobile] = useState<string>('Segunda');
+
+  // Network / Cache state
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
+
+  // Live Clock (Horário de Brasília)
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Database schedules state & distinct UI states
+  const [teacherSchedules, setTeacherSchedules] = useState<ClassScheduleItem[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<{ type: 'network' | 'rls' | 'generic'; message: string } | null>(null);
+  const [isUnlinkedTeacher, setIsUnlinkedTeacher] = useState<boolean>(false);
+  const [resolvedTeacher, setResolvedTeacher] = useState<{ id: string; name: string; subject?: string } | null>(null);
+  const [selectedClassForAttendance, setSelectedClassForAttendance] = useState<string | null>(null);
+
+  // Brasília Timezone clock ticker
+  useEffect(() => {
+    const updateTime = () => {
+      const spDateStr = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
+      const spDate = new Date(spDateStr);
+      setCurrentTime(spDate);
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Online / Offline listener
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Determine today's day number and name in Portuguese (Brasília time)
+  const getTodayDayNumber = useCallback((): number => {
+    const dayIndex = currentTime.getDay(); // 0 = Domingo, 1 = Segunda, 2 = Terça, 3 = Quarta, 4 = Quinta, 5 = Sexta, 6 = Sábado
+    if (dayIndex === 0) return 7; // Domingo
+    return dayIndex;
+  }, [currentTime]);
+
+  const todayDayNumber = getTodayDayNumber();
+  const todayDayName = DAY_NUMBER_TO_NAME[todayDayNumber] || 'Segunda';
+
+  // Calculate dynamic status of an allocation based on Brasília time
+  const calculateClassStatus = useCallback((dayNum: number, startTimeStr: string, endTimeStr: string, isInterval?: boolean) => {
+    if (isInterval) {
+      return { status: 'Intervalo' as const, color: 'text-amber-400 bg-amber-950/40 border-amber-500/30', icon: '🟡' };
+    }
+
+    if (dayNum !== todayDayNumber) {
+      return { status: 'Agendada' as const, color: 'text-slate-400 bg-slate-800/60 border-slate-700', icon: '⚪' };
+    }
+
+    const startParts = (startTimeStr || '07:30').split(':').map(Number);
+    const endParts = (endTimeStr || '08:15').split(':').map(Number);
+
+    const startMinutes = startParts[0] * 60 + (startParts[1] || 0);
+    const endMinutes = endParts[0] * 60 + (endParts[1] || 0);
+    const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+
+    if (currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+      return { status: 'Em Andamento' as const, color: 'text-emerald-400 bg-emerald-950/80 border-emerald-500/80 animate-pulse font-extrabold', icon: '🟢' };
+    } else if (currentMinutes < startMinutes && currentMinutes >= startMinutes - 60) {
+      return { status: 'Próxima Aula' as const, color: 'text-sky-400 bg-sky-950/60 border-sky-500/50', icon: '🔵' };
+    } else if (currentMinutes >= endMinutes) {
+      return { status: 'Finalizada' as const, color: 'text-slate-400 bg-slate-900/60 border-slate-800 opacity-80', icon: '⚪' };
+    } else {
+      return { status: 'Agendada' as const, color: 'text-slate-300 bg-slate-800/60 border-slate-700', icon: '⚪' };
+    }
+  }, [todayDayNumber, currentTime]);
+
+  /**
+   * Safe fetch: strictly binds class_schedules to the authenticated teacher
+   * Uses schema-accurate columns: class_id, teacher_name, discipline_name, day_of_week, period_number, start_time, end_time, room, organization_id
+   */
+  const fetchTeacherSchedulesSafely = useCallback(async () => {
+    setLoadingSchedules(true);
+    setFetchError(null);
+    setIsUnlinkedTeacher(false);
+
+    try {
+      const orgId = profile?.organization_id || profile?.school_id || '';
+      const userId = profile?.user_id || profile?.id || '';
+      const profileEmail = profile?.email || '';
+
+      // 1. Resolve authentic teacher record from teachers table
+      let officialTeacher: { id: string; name: string; subject?: string } | null = null;
+
+      if (profile) {
+        try {
+          // Look up by profile_id, user_id or email
+          const { data: tData, error: tErr } = await supabase
+            .from('teachers')
+            .select('id, name, full_name, subject, email')
+            .or(`profile_id.eq.${profile.id},user_id.eq.${userId},email.eq.${profileEmail}`)
+            .maybeSingle();
+
+          if (!tErr && tData) {
+            officialTeacher = {
+              id: tData.id,
+              name: tData.name || tData.full_name || profile.name || 'Professor',
+              subject: tData.subject
+            };
+          }
+        } catch (tLookupErr) {
+          console.warn('[Docente] Teachers table lookup notice:', tLookupErr);
+        }
+      }
+
+      // If not resolved from teachers table, check if profile is a professor
+      if (!officialTeacher) {
+        if (profile?.role === 'professor' || profile?.rawRole === 'professor' || propTeacherName || propTeacherId) {
+          officialTeacher = {
+            id: propTeacherId || profile?.id || 'prof-session',
+            name: profile?.name || propTeacherName || 'Professor',
+            subject: propTeacherSubject
+          };
+        } else {
+          // Unlinked profile - do not run broad query
+          setIsUnlinkedTeacher(true);
+          setTeacherSchedules([]);
+          setResolvedTeacher(null);
+          setLoadingSchedules(false);
+          return;
+        }
+      }
+
+      setResolvedTeacher(officialTeacher);
+
+      // 2. Fetch classes linked to this teacher from class_teachers and classes
+      let teacherLinkedClassIds: string[] = [];
+      let teacherLinkedSubjects: string[] = [];
+
+      try {
+        const { data: ctData, error: ctErr } = await supabase
+          .from('class_teachers')
+          .select('class_id, grade, subject, discipline')
+          .eq('teacher_id', officialTeacher.id);
+
+        if (!ctErr && ctData && ctData.length > 0) {
+          ctData.forEach((ct: any) => {
+            if (ct.class_id) teacherLinkedClassIds.push(ct.class_id);
+            if (ct.subject) teacherLinkedSubjects.push(ct.subject.trim().toLowerCase());
+            if (ct.discipline) teacherLinkedSubjects.push(ct.discipline.trim().toLowerCase());
+          });
+        }
+      } catch (ctErr) {
+        console.warn('[Docente] class_teachers query notice:', ctErr);
+      }
+
+      // 3. Fetch all classes for name resolution (id -> name)
+      const classesNameMap: Record<string, string> = {};
+      try {
+        let classQuery = supabase.from('classes').select('id, name, grade, room, teacher_id');
+        if (orgId) {
+          classQuery = classQuery.eq('organization_id', orgId);
+        }
+        const { data: clsList, error: clsErr } = await classQuery;
+        if (!clsErr && clsList) {
+          clsList.forEach((c: any) => {
+            classesNameMap[c.id] = c.name || c.grade || 'Turma Regular';
+            if (c.teacher_id === officialTeacher?.id && !teacherLinkedClassIds.includes(c.id)) {
+              teacherLinkedClassIds.push(c.id);
+            }
+          });
+        }
+      } catch (clsErr) {
+        console.warn('[Docente] classes query notice:', clsErr);
+      }
+
+      // 4. Fetch time slots for break verification
+      const breakSlotsMap: Record<number, boolean> = {};
+      try {
+        const { data: slotsData } = await supabase
+          .from('schedule_time_slots')
+          .select('period_number, is_break');
+
+        if (slotsData) {
+          slotsData.forEach((slot: any) => {
+            if (slot.period_number && slot.is_break) {
+              breakSlotsMap[slot.period_number] = true;
+            }
+          });
+        }
+      } catch (_) {}
+
+      // 5. Query class_schedules using ONLY confirmed columns
+      let schedulesQuery = supabase
+        .from('class_schedules')
+        .select('id, class_id, teacher_name, discipline_name, day_of_week, period_number, start_time, end_time, room, organization_id, created_at')
+        .order('period_number', { ascending: true });
+
+      if (orgId) {
+        schedulesQuery = schedulesQuery.eq('organization_id', orgId);
+      }
+
+      const { data: rawSchedules, error: schedError } = await schedulesQuery;
+
+      if (schedError) {
+        if (schedError.code === '42501' || schedError.message?.toLowerCase().includes('permission') || schedError.message?.toLowerCase().includes('policy')) {
+          setFetchError({ type: 'rls', message: 'Restrição de acesso (RLS): Apenas docentes vinculados à organização podem consultar a grade.' });
+        } else {
+          setFetchError({ type: 'network', message: `Erro ao carregar horários: ${schedError.message}` });
+        }
+        setTeacherSchedules([]);
+        setLoadingSchedules(false);
+        return;
+      }
+
+      if (!rawSchedules || rawSchedules.length === 0) {
+        // Teacher has no schedules - show clean empty state (never show third-party data)
+        setTeacherSchedules([]);
+        setLastSyncedTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }));
+        setLoadingSchedules(false);
+        return;
+      }
+
+      // 6. STRICT ISOLATION FILTERING:
+      // An item belongs to this teacher if:
+      // a) teacher_name exactly matches teacher's name (case-insensitive trim), OR
+      // b) class_id is in teacherLinkedClassIds AND (discipline_name matches teacherLinkedSubjects or no teacher_name is assigned)
+      const officialNameLower = officialTeacher.name.trim().toLowerCase();
+
+      const filtered = rawSchedules.filter((item: any) => {
+        const itemTeacherLower = (item.teacher_name || '').trim().toLowerCase();
+        
+        // Exact name match
+        if (itemTeacherLower && itemTeacherLower === officialNameLower) {
+          return true;
+        }
+
+        // Relation via class_teachers link
+        if (item.class_id && teacherLinkedClassIds.includes(item.class_id)) {
+          // If schedule has a specific teacher name belonging to someone else, reject
+          if (itemTeacherLower && itemTeacherLower !== officialNameLower && !officialNameLower.includes(itemTeacherLower)) {
+            return false;
+          }
+          // If discipline matches
+          const itemDiscLower = (item.discipline_name || '').trim().toLowerCase();
+          if (teacherLinkedSubjects.length === 0 || teacherLinkedSubjects.includes(itemDiscLower)) {
+            return true;
+          }
+        }
+
+        return false;
+      });
+
+      // Map to strictly typed ClassScheduleItem
+      const mapped: ClassScheduleItem[] = filtered.map((item: any) => {
+        const dayNum = typeof item.day_of_week === 'number' 
+          ? item.day_of_week 
+          : (DAY_NAME_TO_NUMBER[item.day_of_week] || 1);
+        const dayName = DAY_NUMBER_TO_NAME[dayNum] || 'Segunda';
+        const startFormatted = item.start_time ? item.start_time.slice(0, 5) : '07:30';
+        const endFormatted = item.end_time ? item.end_time.slice(0, 5) : '08:15';
+        const isInterval = Boolean(breakSlotsMap[item.period_number] || item.discipline_name?.toLowerCase().includes('intervalo') || item.discipline_name?.toLowerCase().includes('recreio'));
+
+        const statusInfo = calculateClassStatus(dayNum, startFormatted, endFormatted, isInterval);
+
+        return {
+          id: item.id || `sched-${item.class_id}-${dayNum}-${item.period_number}`,
+          class_id: item.class_id,
+          class_name: classesNameMap[item.class_id] || 'Turma Regular',
+          subject_name: item.discipline_name || 'Sem disciplina',
+          room_name: item.room || 'Sala de Aula',
+          day_of_week: dayNum,
+          day_name: dayName,
+          period_number: item.period_number || 1,
+          time_slot: `${startFormatted} - ${endFormatted}`,
+          start_time: item.start_time || '07:30:00',
+          end_time: item.end_time || '08:15:00',
+          is_interval: isInterval,
+          status: statusInfo.status,
+          status_color: statusInfo.color,
+          status_icon: statusInfo.icon,
+          teacher_name: item.teacher_name
+        };
+      });
+
+      // Sort by day_of_week and period_number
+      mapped.sort((a, b) => {
+        if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
+        return a.period_number - b.period_number;
+      });
+
+      setTeacherSchedules(mapped);
+      setLastSyncedTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }));
+    } catch (err: any) {
+      console.warn('[Docente] Class schedule fetch exception:', err);
+      setFetchError({ type: 'generic', message: err?.message || 'Falha ao processar os dados da grade.' });
+      setTeacherSchedules([]);
+    } finally {
+      setLoadingSchedules(false);
+    }
+  }, [profile, propTeacherId, propTeacherName, propTeacherSubject, calculateClassStatus]);
+
+  // Initial load and Realtime setup
+  useEffect(() => {
+    fetchTeacherSchedulesSafely();
+
+    const channel = supabase
+      .channel('teacher_dashboard_schedules_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'class_schedules' }, () => {
+        fetchTeacherSchedulesSafely();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'class_teachers' }, () => {
+        fetchTeacherSchedulesSafely();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, () => {
+        fetchTeacherSchedulesSafely();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchTeacherSchedulesSafely]);
+
+  // Today's allocations (Brasília Time)
+  const todayAllocations = useMemo(() => {
+    return teacherSchedules.filter(s => s.day_of_week === todayDayNumber && !s.is_interval);
+  }, [teacherSchedules, todayDayNumber]);
+
+  // Weekly total classes (excluding breaks)
+  const weeklyTotalCount = useMemo(() => {
+    return teacherSchedules.filter(s => !s.is_interval).length;
+  }, [teacherSchedules]);
+
+  const daysList = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
+
+  const periodsList = [
+    { id: 'p1', periodNumber: 1, start: '07:30', end: '08:15', name: '1º Horário' },
+    { id: 'p2', periodNumber: 2, start: '08:15', end: '09:00', name: '2º Horário' },
+    { id: 'p3', periodNumber: 3, start: '09:15', end: '10:00', name: '3º Horário' },
+    { id: 'p4', periodNumber: 4, start: '10:00', end: '10:45', name: '4º Horário' },
+    { id: 'p5', periodNumber: 5, start: '10:45', end: '11:30', name: '5º Horário' },
+    { id: 'p6', periodNumber: 6, start: '11:30', end: '12:15', name: '6º Horário' }
+  ];
+
+  const getSubjectColorStyles = (subjectName: string) => {
+    const sub = subjectName?.toLowerCase() || '';
+    if (sub.includes('portug')) return 'bg-blue-600/20 border-blue-500/40 text-blue-300';
+    if (sub.includes('robót') || sub.includes('ia') || sub.includes('tec')) return 'bg-amber-600/20 border-amber-500/40 text-amber-300';
+    if (sub.includes('histór')) return 'bg-purple-600/20 border-purple-500/40 text-purple-300';
+    if (sub.includes('matem')) return 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300';
+    if (sub.includes('ciênc') || sub.includes('físic') || sub.includes('quím') || sub.includes('biol')) return 'bg-teal-600/20 border-teal-500/40 text-teal-300';
+    if (sub.includes('geogr')) return 'bg-sky-600/20 border-sky-500/40 text-sky-300';
+    if (sub.includes('artes') || sub.includes('músic')) return 'bg-pink-600/20 border-pink-500/40 text-pink-300';
+    if (sub.includes('educa') || sub.includes('físic')) return 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300';
+    return 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300';
+  };
+
+  // Helper to format class cycle
+  const formatClassCycle = (className: string) => {
+    if (!className) return 'Turma Regular';
+    if (className.toLowerCase().includes('fundamental') || className.toLowerCase().includes('médio')) return className;
+
+    const numMatch = className.match(/([1-9])\s*º?/);
+    if (numMatch) {
+      const num = parseInt(numMatch[1], 10);
+      const cycle = num <= 5 ? 'Fundamental I' : 'Fundamental II';
+      return `${className} - ${cycle}`;
+    }
+    return className;
+  };
+
+  // Normalize classes list
+  const classList = useMemo(() => {
+    if (Array.isArray(classes) && classes.length > 0) return classes.filter(Boolean);
+    if (classes && typeof classes === 'object' && Object.keys(classes).length > 0) {
+      return Object.values(classes).filter(Boolean);
+    }
+    return [];
+  }, [classes]);
+
+  // Dynamic greeting based on time of day
+  const getGreeting = () => {
+    const hour = currentTime.getHours();
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
+
+  // Format full date in Portuguese
+  const formattedDateString = currentTime.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const activeTeacherDisplayName = resolvedTeacher?.name || profile?.name || 'Docente';
+  const activeTeacherSubject = resolvedTeacher?.subject || propTeacherSubject || 'Docência Geral';
+
+  return (
+    <div className={`space-y-6 text-left ${className}`}>
+
+      {/* Connection & Sync status indicator */}
+      <div className="flex items-center justify-between text-[11px] text-gray-400 px-1 font-mono">
+        <div className="flex items-center gap-2">
+          {isOnline ? (
+            <span className="flex items-center gap-1 text-emerald-400">
+              <Wifi className="w-3.5 h-3.5" />
+              <span>Conectado ao Supabase</span>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-amber-400">
+              <WifiOff className="w-3.5 h-3.5" />
+              <span>Modo Offline</span>
+            </span>
+          )}
+          {lastSyncedTime && (
+            <span className="text-gray-500">| Sincronizado às {lastSyncedTime}</span>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => fetchTeacherSchedulesSafely()}
+          disabled={loadingSchedules}
+          className="flex items-center gap-1 hover:text-gold transition-colors cursor-pointer disabled:opacity-50"
+          title="Atualizar dados agora"
+        >
+          <RefreshCw className={`w-3 h-3 ${loadingSchedules ? 'animate-spin text-gold' : ''}`} />
+          <span>Atualizar</span>
+        </button>
+      </div>
+
+      {/* RLS or Network Error Notice */}
+      {fetchError && (
+        <div className={`p-4 rounded-2xl border flex items-start gap-3 text-left ${
+          fetchError.type === 'rls' 
+            ? 'bg-amber-950/40 border-amber-500/40 text-amber-200' 
+            : 'bg-red-950/40 border-red-500/40 text-red-200'
+        }`}>
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="font-bold text-sm">
+              {fetchError.type === 'rls' ? 'Política de Segurança Ativa (RLS)' : 'Aviso de Conexão'}
+            </h4>
+            <p className="text-xs opacity-90">{fetchError.message}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Unlinked Teacher State Notice */}
+      {isUnlinkedTeacher && (
+        <div className="p-5 bg-[#0e2149] border border-amber-500/30 rounded-3xl space-y-2 text-left">
+          <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+            <UserX className="w-5 h-5" />
+            <span>Perfil Docente Não Vinculado</span>
+          </div>
+          <p className="text-xs text-gray-300 leading-relaxed">
+            Seu usuário autenticado não possui vínculo com o registro de professores desta instituição. Solicite à coordenação ou secretaria pedagógica a vinculação do seu perfil às turmas correspondentes.
+          </p>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 1. ABA ÚNICA E UNIFICADA: PAINEL PRINCIPAL DO DASHBOARD (TOP SECTION)     */}
+      {/* ========================================================================= */}
+      <div 
+        id="dashboard-greeting-panel"
+        className="bg-[#0e2149] border border-gold/20 rounded-3xl p-6 sm:p-7 shadow-xl relative overflow-hidden space-y-6 text-left"
+      >
+        {/* Glow de ambientação dourado sutil */}
+        <div className="absolute right-0 top-0 w-96 h-96 bg-gold/5 rounded-full blur-3xl pointer-events-none"></div>
+
+        {/* 1.1 Barra Superior Integrada: Saudação + Badges + Relógio Digital + Sair */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/10 pb-5 relative z-10">
+          
+          {/* Lado Esquerdo: Saudação, Avatar & Perfil */}
+          <div className="flex items-center gap-3.5 flex-wrap">
+            <div className="w-10 h-10 rounded-2xl bg-gold/20 border border-gold/40 flex items-center justify-center font-bold text-gold text-base shrink-0 shadow-inner">
+              {activeTeacherDisplayName.charAt(0)}
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-serif font-bold text-white tracking-tight">
+                  {getGreeting()}, {activeTeacherDisplayName}.
+                </h2>
+                <span className="px-2.5 py-0.5 bg-gold/15 border border-gold/30 text-gold rounded-full text-xs font-bold font-mono">
+                  {activeTeacherSubject}
+                </span>
+                <span className="px-2.5 py-0.5 bg-emerald-950/70 border border-emerald-500/40 text-emerald-400 rounded-full text-xs font-semibold">
+                  {weeklyTotalCount} {weeklyTotalCount === 1 ? 'aula / semana' : 'aulas / semana'}
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-300 font-light capitalize">
+                {formattedDateString}
+              </p>
+            </div>
+          </div>
+
+          {/* Lado Direito: Relógio Digital em Tempo Real + Botão Sair */}
+          <div className="flex items-center gap-3 shrink-0 self-stretch lg:self-auto justify-between lg:justify-end">
+            <div 
+              id="dashboard-live-clock"
+              className="flex items-center gap-2.5 bg-[#08142d] border border-gold/30 px-4 py-2.5 rounded-2xl shadow-inner"
+              title="Horário Oficial em Tempo Real (Brasília)"
+            >
+              <Clock className="w-4 h-4 text-gold shrink-0 animate-pulse" />
+              <div className="font-mono text-xl sm:text-2xl font-extrabold text-gold tracking-widest leading-none">
+                {currentTime.toLocaleTimeString('pt-BR', { hour12: false })}
+              </div>
+            </div>
+
+            {onLogout && (
+              <button 
+                type="button"
+                onClick={onLogout}
+                className="p-2.5 bg-[#08142d] hover:bg-red-950/40 hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-2xl text-gray-300 transition-all shadow-sm shrink-0 cursor-pointer"
+                title="Sair do Portal Docente"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+        </div>
+
+        {/* 1.2 Corpo Unificado: [Minhas Turmas] + [Cronograma de Hoje] */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 relative z-10">
+          
+          {/* Coluna 1 (7 cols): Minhas Turmas */}
+          <div 
+            id="dashboard-minhas-turmas"
+            className="lg:col-span-7 space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold uppercase tracking-widest text-gold flex items-center gap-2">
+                <Users className="w-4 h-4 text-gold" />
+                <span>Minhas Turmas</span>
+              </h3>
+              <span className="text-[10px] text-gray-400 font-mono">
+                {classList.length} {classList.length === 1 ? 'turma vinculada' : 'turmas vinculadas'}
+              </span>
+            </div>
+
+            {/* Grid dos Cards de Turma */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {classList.length === 0 ? (
+                <div className="sm:col-span-3 p-4 text-center bg-[#08142d] rounded-2xl border border-white/5 space-y-1">
+                  <p className="text-xs text-gray-400">Nenhuma turma vinculada a este docente no momento.</p>
+                </div>
+              ) : (
+                classList.filter(Boolean).map((cls) => {
+                  if (!cls) return null;
+                  const classId = cls.id || cls.class_id || 'turma';
+                  const isSelected = selectedClass === classId;
+                  const displayName = formatClassCycle(cls.name || cls.class_name || 'Turma');
+                  const roomName = cls.room || cls.room_name || 'Sala de Aula';
+                  const studentsCount = typeof cls.students_count === 'number' 
+                    ? cls.students_count 
+                    : (cls.studentsCount || (Array.isArray(cls.students) ? cls.students.length : 0));
+
+                  return (
+                    <div
+                      key={classId}
+                      id={`class-card-${classId}`}
+                      onClick={() => onSelectClass && onSelectClass(classId)}
+                      className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all duration-200 flex flex-col justify-between gap-3 ${
+                        isSelected
+                          ? 'bg-[#132c61] border-gold text-white shadow-md ring-1 ring-gold/50'
+                          : 'bg-[#08142d] border-white/10 text-gray-300 hover:border-gold/40 hover:bg-[#0c1e42]'
+                      }`}
+                    >
+                      <h4 className="font-serif font-bold text-xs text-white leading-snug">
+                        {displayName}
+                      </h4>
+
+                      <div className="flex items-center justify-between text-[11px] text-gray-300 font-light pt-2 border-t border-white/5">
+                        <span className="text-gray-400 text-[10px] truncate max-w-[90px]">
+                          {roomName}
+                        </span>
+                        <span className="font-mono font-bold text-gold text-[11px] shrink-0">
+                          {studentsCount} alunos
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Coluna 2 (5 cols): Cronograma de Hoje (Aulas do Dia em Brasília) */}
+          <div className="lg:col-span-5 space-y-3 lg:border-l lg:border-white/10 lg:pl-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold uppercase tracking-widest text-gold flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gold" />
+                <span>Cronograma de Hoje</span>
+              </h3>
+              <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                {todayAllocations.length} {todayAllocations.length === 1 ? 'aula hoje' : 'aulas hoje'}
+              </span>
+            </div>
+
+            {/* Lista compacta e elegante das aulas do dia */}
+            <div className="space-y-2.5 max-h-[170px] overflow-y-auto pr-1 custom-scrollbar">
+              {todayAllocations.length === 0 ? (
+                <div className="p-4 text-center bg-[#08142d] rounded-2xl border border-white/5 space-y-1">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 mx-auto" />
+                  <p className="text-xs font-bold text-white">Sem aulas agendadas hoje!</p>
+                  <p className="text-[10px] text-gray-400">Horário livre para planejamentos e diários.</p>
+                </div>
+              ) : (
+                todayAllocations.map((alloc) => {
+                  return (
+                    <div 
+                      key={alloc.id}
+                      className="p-2.5 rounded-2xl bg-[#08142d] border border-white/10 hover:border-gold/30 transition-all flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="font-mono text-xs font-bold text-gold bg-[#0e2149] px-2 py-1 rounded-xl border border-gold/15 shrink-0">
+                          {alloc.time_slot}
+                        </div>
+
+                        <div className="min-w-0 space-y-0.5">
+                          <span className="text-xs font-bold text-white block truncate leading-tight">
+                            {alloc.subject_name}
+                          </span>
+                          <div className="text-[10px] text-gray-400 flex items-center gap-1 font-mono truncate">
+                            <MapPin className="w-3 h-3 text-gold shrink-0" />
+                            <span className="truncate">{alloc.room_name} • {alloc.class_name}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex flex-col gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${alloc.status_color}`}>
+                          <span>{alloc.status_icon}</span>
+                          <span>{alloc.status}</span>
+                        </span>
+                        <button 
+                          onClick={() => setSelectedClassForAttendance(alloc.class_id)}
+                          className="text-[10px] bg-gold text-oxford px-2 py-1 rounded-lg font-bold"
+                        >
+                          Frequência
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 2. GRADE HORÁRIA OFICIAL (SEMANAL) COM ISOLAMENTO RIGOROSO               */}
+      {/* ========================================================================= */}
+      <div className="bg-[#0e2149] border border-gold/15 p-6 rounded-3xl shadow-xl relative overflow-hidden space-y-5">
+        <div className="absolute right-0 top-0 w-64 h-64 bg-gold/5 rounded-full blur-3xl pointer-events-none"></div>
+
+        {/* Header da Grade */}
+        <div className="flex flex-wrap justify-between items-center gap-3 relative z-10 border-b border-white/10 pb-4">
+          <h2 className="text-xl sm:text-2xl font-serif font-bold text-white tracking-tight flex items-center gap-3">
+            <Calendar className="w-6 h-6 text-gold" />
+            <span>Grade Horária Oficial (Semanal)</span>
+          </h2>
+
+          <div className="flex items-center gap-2">
+            <div className="px-3.5 py-1.5 bg-gold text-oxford rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-gold/20">
+              <Calendar className="w-3.5 h-3.5 text-oxford" />
+              <span>Visão Semanal</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Full Week Grid (Desktop) */}
+        <div className="hidden lg:block bg-[#08142d] border border-gold/10 rounded-2xl p-4 shadow-inner overflow-x-auto relative z-10">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="p-3 text-left font-mono text-[10px] text-gold uppercase tracking-wider w-28">
+                  Horário
+                </th>
+                {daysList.map(day => (
+                  <th key={day} className={`p-3 text-center font-serif text-sm font-bold ${day === todayDayName ? 'text-gold bg-white/5 rounded-t-xl' : 'text-white'}`}>
+                    {day}
+                    {day === todayDayName && <span className="block text-[9px] font-mono font-normal text-emerald-400">(Hoje)</span>}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {periodsList.map((period) => {
+                const slotString = `${period.start} - ${period.end}`;
+
+                return (
+                  <tr key={period.id} className="hover:bg-white/[0.02]">
+                    <td className="p-3 font-mono text-xs text-gray-300 font-bold align-top pt-4">
+                      {slotString}
+                      <span className="block text-[9px] text-gray-500 font-normal">{period.name}</span>
+                    </td>
+
+                    {daysList.map(day => {
+                      const dayNum = DAY_NAME_TO_NUMBER[day] || 1;
+                      const alloc = teacherSchedules.find(a => 
+                        a.day_of_week === dayNum && 
+                        (a.period_number === period.periodNumber || a.start_time?.slice(0, 5) === period.start)
+                      );
+
+                      if (!alloc) {
+                        return (
+                          <td key={day} className={`p-2 align-top ${day === todayDayName ? 'bg-white/[0.02]' : ''}`}>
+                            <div className="p-3 min-h-[70px] border border-dashed border-white/5 rounded-2xl flex items-center justify-center text-[10px] text-gray-600 font-mono italic">
+                              Livre
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      return (
+                        <td key={day} className={`p-2 align-top ${day === todayDayName ? 'bg-white/[0.02]' : ''}`}>
+                          <div className={`p-3 rounded-2xl border transition-all space-y-2 relative group ${getSubjectColorStyles(alloc.subject_name)}`}>
+                            
+                            <div className="flex justify-between items-start gap-1">
+                              <span className="font-bold text-xs text-white leading-tight block">
+                                {alloc.subject_name}
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#08142d] text-white font-bold shrink-0 border border-white/10">
+                                {alloc.class_name}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] pt-1 border-t border-white/10 text-gray-300">
+                              <span className="flex items-center gap-1 font-mono">
+                                <MapPin className="w-3 h-3 text-gold" /> {alloc.room_name}
+                              </span>
+                              <span className="text-[9px] font-extrabold">{alloc.status_icon}</span>
+                            </div>
+
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile View */}
+        <div className="lg:hidden space-y-3 relative z-10">
+          {/* Mobile Day Switcher */}
+          <div className="flex overflow-x-auto gap-2 pb-1">
+            {daysList.map(d => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setSelectedDayMobile(d)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
+                  selectedDayMobile === d
+                    ? 'bg-gold text-oxford shadow-md font-extrabold'
+                    : 'bg-[#08142d] border border-gold/10 text-gray-400'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+
+          <h4 className="font-serif text-sm font-bold text-white flex items-center gap-2 pt-1">
+            <span>Timeline: {selectedDayMobile}</span>
+          </h4>
+
+          {periodsList.map(period => {
+            const dayNum = DAY_NAME_TO_NUMBER[selectedDayMobile] || 1;
+            const slotString = `${period.start} - ${period.end}`;
+            const alloc = teacherSchedules.find(a => 
+              a.day_of_week === dayNum && 
+              (a.period_number === period.periodNumber || a.start_time?.slice(0, 5) === period.start)
+            );
+
+            if (!alloc) {
+              return (
+                <div key={period.id} className="p-3 bg-[#08142d] border border-white/5 rounded-2xl text-xs text-gray-500 font-mono flex justify-between">
+                  <span>{slotString}</span>
+                  <span className="italic text-gray-600">Sem aula alocada</span>
+                </div>
+              );
+            }
+
+            return (
+              <div key={period.id} className={`p-4 rounded-2xl border space-y-2 ${getSubjectColorStyles(alloc.subject_name)}`}>
+                <div className="flex justify-between items-center text-xs font-mono font-bold text-gray-300">
+                  <span>{slotString}</span>
+                  <span className="bg-[#08142d] px-2 py-0.5 rounded text-white">{alloc.class_name}</span>
+                </div>
+                <h4 className="font-bold text-sm text-white">{alloc.subject_name}</h4>
+                <div className="text-xs text-gray-300 flex items-center gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-gold" />
+                  <span>{alloc.room_name}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+      </div>
+
+    </div>
+  );
+}

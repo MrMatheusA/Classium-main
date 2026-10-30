@@ -1,0 +1,60 @@
+{
+  "retentionThreshold": 51,
+  "buscativaList": [],
+  "disciplinaryList": [],
+  "classRadarList": [
+    {
+      "id": "c1",
+      "grade": "8º Ano A",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c2",
+      "grade": "8º Ano B",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c3",
+      "grade": "9º Ano A",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c4",
+      "grade": "9º Ano B",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    },
+    {
+      "id": "c5",
+      "grade": "7º Ano 522",
+      "studentsCount": 25,
+      "occurrencesCount": 0,
+      "occurrencesPerStudent": 0,
+      "trendPercentage": 0,
+      "level": "verde",
+      "colorHex": "#22C55E"
+    }
+  ],
+  "substituteTeachers": [],
+  "pendingSubstitutions": [],
+  "substitutionHistory": []
+}

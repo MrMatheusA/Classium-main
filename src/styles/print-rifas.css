@@ -1,0 +1,100 @@
+/* print-rifas.css: Print isolation rules for Rifas & Ações Entre Amigos */
+
+@media screen {
+  /* Hide the print-only container on screens */
+  #print-area-rifas {
+    display: none !important;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  @page rifa-landscape {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* When printing rifas, hide ALL application shell elements (#root) */
+  body.printing-rifas > #root,
+  body.printing-rifas > .app-container,
+  body.printing-rifas nav,
+  body.printing-rifas header,
+  body.printing-rifas aside {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Display ONLY the print-area-rifas container as a direct child of document.body */
+  body.printing-rifas #print-area-rifas {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+  }
+
+  body.printing-rifas #print-area-rifas * {
+    visibility: visible !important;
+  }
+
+  /* Each sheet of paper is an exact A4 page */
+  .print-page-rifas {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    box-sizing: border-box !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: 297mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 auto !important;
+    padding: 8mm 10mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .print-page-rifas.page-landscape {
+    page: rifa-landscape;
+    width: 297mm !important;
+    max-width: 297mm !important;
+    min-height: 210mm !important;
+    height: 210mm !important;
+    max-height: 210mm !important;
+  }
+
+  .print-page-rifas:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+

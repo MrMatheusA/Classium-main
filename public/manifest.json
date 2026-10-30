@@ -1,0 +1,22 @@
+{
+  "short_name": "CLASSIUM",
+  "name": "CLASSIUM — Plataforma Educacional Integrada",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#050b1a",
+  "theme_color": "#0B1B3D",
+  "display": "standalone",
+  "orientation": "portrait",
+  "description": "Plataforma Educacional Inteligente CLASSIUM para Gestão, Famílias, Docentes e Alunos."
+}

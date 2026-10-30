@@ -1,0 +1,62 @@
+{
+  "adjustments": {
+    "3514e46b-077c-4ead-9183-63f12ef2a50a": {
+      "studentId": "3514e46b-077c-4ead-9183-63f12ef2a50a",
+      "canonicalId": "3514e46b-077c-4ead-9183-63f12ef2a50a",
+      "studentName": "Roberth Henrique Alves",
+      "ra": "RA-2026-320",
+      "year": 2026,
+      "organizationId": "11111111-1111-1111-1111-111111111111",
+      "justifiedCount": 0,
+      "unjustifiedCount": 17,
+      "totalAbsences": 17,
+      "reason": "Ajuste e consolidação de faltas do 1º período letivo — Secretaria Escolar",
+      "authorName": "Gestão Escolar / Secretaria",
+      "updatedAt": "2026-10-26T20:00:00.000Z",
+      "history": [
+        {
+          "previousJustified": 0,
+          "previousUnjustified": 0,
+          "previousTotal": 0,
+          "newJustified": 0,
+          "newUnjustified": 17,
+          "newTotal": 17,
+          "diff": 17,
+          "reason": "Ajuste e consolidação de faltas do 1º período letivo — Secretaria Escolar",
+          "authorName": "Gestão Escolar / Secretaria",
+          "timestamp": "2026-10-26T20:00:00.000Z"
+        }
+      ]
+    },
+    "00000000-0000-0000-0000-000000000001": {
+      "studentId": "3514e46b-077c-4ead-9183-63f12ef2a50a",
+      "canonicalId": "3514e46b-077c-4ead-9183-63f12ef2a50a",
+      "studentName": "Roberth Henrique Alves",
+      "ra": "RA-2026-320",
+      "year": 2026,
+      "organizationId": "11111111-1111-1111-1111-111111111111",
+      "justifiedCount": 0,
+      "unjustifiedCount": 17,
+      "totalAbsences": 17,
+      "reason": "Ajuste e consolidação de faltas do 1º período letivo — Secretaria Escolar",
+      "authorName": "Gestão Escolar / Secretaria",
+      "updatedAt": "2026-10-26T20:00:00.000Z",
+      "history": [
+        {
+          "previousJustified": 0,
+          "previousUnjustified": 0,
+          "previousTotal": 0,
+          "newJustified": 0,
+          "newUnjustified": 17,
+          "newTotal": 17,
+          "diff": 17,
+          "reason": "Ajuste e consolidação de faltas do 1º período letivo — Secretaria Escolar",
+          "authorName": "Gestão Escolar / Secretaria",
+          "timestamp": "2026-10-26T20:00:00.000Z"
+        }
+      ]
+    }
+  },
+  "records": [],
+  "cases": {}
+}

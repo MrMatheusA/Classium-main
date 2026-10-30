@@ -1,0 +1,202 @@
+{
+  "retentionThreshold": 51,
+  "lessonsPerDayConfig": 5,
+  "buscativaList": [
+    {
+      "id": "b-1",
+      "name": "João da Silva Santos",
+      "grade": "8º Ano A",
+      "type": "critical",
+      "absencesCount": 53,
+      "consecutiveCount": 5,
+      "justifiedCount": 4,
+      "unjustifiedCount": 49,
+      "attendanceRate": 74.2,
+      "birthDate": "14/05/2012",
+      "guardianName": "Maria da Silva Santos",
+      "guardianPhone": "(11) 98765-4321",
+      "address": "Rua das Flores, 120 - Bairro Centro",
+      "registrationCode": "2026-8041",
+      "lastContact": "08/08/2026 - Ligação não atendida",
+      "actionsLog": [
+        { "date": "01/08/2026", "action": "Notificação do Sistema", "user": "Sistema", "notes": "Identificadas 5 faltas consecutivas" },
+        { "date": "05/08/2026", "action": "Ligar para Família", "user": "Profa. Helena (Pedagoga)", "notes": "Recado deixado com a mãe" }
+      ]
+    },
+    {
+      "id": "b-2",
+      "name": "Maria Clara de Oliveira",
+      "grade": "7º Ano B",
+      "type": "critical",
+      "absencesCount": 51,
+      "consecutiveCount": 2,
+      "justifiedCount": 2,
+      "unjustifiedCount": 49,
+      "attendanceRate": 75.0,
+      "birthDate": "20/10/2013",
+      "guardianName": "Carlos Eduardo de Oliveira",
+      "guardianPhone": "(11) 97654-3210",
+      "address": "Av. Brasil, 450 - Jd. Alvorada",
+      "registrationCode": "2026-7012",
+      "lastContact": "02/08/2026 - Mensagem enviada",
+      "actionsLog": [
+        { "date": "28/07/2026", "action": "Comunicado Enviado", "user": "Secretaria", "notes": "Aviso de infrequência escolar" }
+      ]
+    },
+    {
+      "id": "b-3",
+      "name": "Lucas Mendes Costa",
+      "grade": "6º Ano C",
+      "type": "consecutive",
+      "absencesCount": 12,
+      "consecutiveCount": 5,
+      "justifiedCount": 0,
+      "unjustifiedCount": 12,
+      "attendanceRate": 91.5,
+      "birthDate": "03/02/2014",
+      "guardianName": "Ana Paula Mendes",
+      "guardianPhone": "(11) 96543-2109",
+      "address": "Rua Ipê Amarelo, 88 - Vila Nova",
+      "registrationCode": "2026-6088",
+      "lastContact": "10/08/2026 - Família contatada",
+      "actionsLog": [
+        { "date": "10/08/2026", "action": "Ligar para Família", "user": "Pedagogo(a)", "notes": "Mãe relatou gripe forte do estudante" }
+      ]
+    },
+    {
+      "id": "b-4",
+      "name": "Gabriel Costa Ribeiro",
+      "grade": "8º Ano A",
+      "type": "alternated",
+      "absencesCount": 10,
+      "consecutiveCount": 1,
+      "justifiedCount": 1,
+      "unjustifiedCount": 9,
+      "attendanceRate": 92.8,
+      "birthDate": "11/11/2012",
+      "guardianName": "Roberto Ribeiro",
+      "guardianPhone": "(11) 95432-1098",
+      "address": "Rua São Paulo, 312",
+      "registrationCode": "2026-8099",
+      "actionsLog": []
+    },
+    {
+      "id": "b-5",
+      "name": "Beatriz Lima Pereira",
+      "grade": "9º Ano B",
+      "type": "year",
+      "absencesCount": 16,
+      "consecutiveCount": 3,
+      "justifiedCount": 3,
+      "unjustifiedCount": 13,
+      "attendanceRate": 88.5,
+      "birthDate": "05/04/2011",
+      "guardianName": "Fernanda Lima Pereira",
+      "guardianPhone": "(11) 94321-0987",
+      "address": "Rua Amazonas, 55",
+      "registrationCode": "2026-9044",
+      "actionsLog": []
+    }
+  ],
+  "disciplinaryList": [
+    {
+      "id": "d-1",
+      "name": "Enzo Gabriel Ferreira",
+      "grade": "8º Ano A",
+      "occurrencesCount": 20,
+      "level": "grave",
+      "monthlyEvolution": { "jan": 2, "fev": 3, "mar": 5, "abr": 7, "mai": 3 },
+      "actionsLog": [
+        { "date": "10/03/2026", "title": "Uso indevido de celular na aula", "type": "Advertência Verbal" },
+        { "date": "15/04/2026", "title": "Desrespeito ao colega de classe", "type": "Advertência Escrita" },
+        { "date": "02/05/2026", "title": "Reincidência em indisciplina", "type": "Termo de Atendimento" }
+      ]
+    },
+    {
+      "id": "d-2",
+      "name": "Guilherme Augusto Matos",
+      "grade": "8º Ano A",
+      "occurrencesCount": 15,
+      "level": "critico",
+      "monthlyEvolution": { "jan": 1, "fev": 2, "mar": 4, "abr": 5, "mai": 3 },
+      "actionsLog": [
+        { "date": "20/04/2026", "title": "Atraso recorrente nas aulas", "type": "Conversa Pedagógica" }
+      ]
+    },
+    {
+      "id": "d-3",
+      "name": "Leticia Souza Prado",
+      "grade": "7º Ano B",
+      "occurrencesCount": 10,
+      "level": "atencao",
+      "monthlyEvolution": { "jan": 1, "fev": 2, "mar": 3, "abr": 2, "mai": 2 },
+      "actionsLog": []
+    },
+    {
+      "id": "d-4",
+      "name": "Matheus Henrique Silva",
+      "grade": "6º Ano C",
+      "occurrencesCount": 5,
+      "level": "atento",
+      "monthlyEvolution": { "jan": 0, "fev": 1, "mar": 2, "abr": 1, "mai": 1 },
+      "actionsLog": []
+    }
+  ],
+  "classRadarList": [
+    { "grade": "8º Ano A", "studentsCount": 32, "occurrencesCount": 47, "occurrencesPerStudent": 1.47, "trendPercentage": 38, "level": "vermelho" },
+    { "grade": "7º Ano B", "studentsCount": 28, "occurrencesCount": 31, "occurrencesPerStudent": 1.10, "trendPercentage": 15, "level": "laranja" },
+    { "grade": "6º Ano C", "studentsCount": 30, "occurrencesCount": 18, "occurrencesPerStudent": 0.60, "trendPercentage": 5, "level": "amarelo" },
+    { "grade": "9º Ano A", "studentsCount": 25, "occurrencesCount": 7, "occurrencesPerStudent": 0.28, "trendPercentage": -10, "level": "verde" }
+  ],
+  "substituteTeachers": [
+    {
+      "id": "t-1",
+      "name": "Profa. Ana Souza",
+      "subject": "Matemática / Física",
+      "residualClasses": 5,
+      "availability": {
+        "seg": ["A1", "A2", "A5"],
+        "ter": ["A3"],
+        "qua": [],
+        "qui": ["A2"],
+        "sex": ["A1"]
+      }
+    },
+    {
+      "id": "t-2",
+      "name": "Prof. Carlos Silva",
+      "subject": "História / Geografia",
+      "residualClasses": 3,
+      "availability": {
+        "seg": [],
+        "ter": ["A4", "A5"],
+        "qua": ["A2"],
+        "qui": [],
+        "sex": ["A3"]
+      }
+    },
+    {
+      "id": "t-3",
+      "name": "Profa. Maria Santos",
+      "subject": "Língua Portuguesa",
+      "residualClasses": 4,
+      "availability": {
+        "seg": ["A3"],
+        "ter": [],
+        "qua": ["A1"],
+        "qui": ["A4"],
+        "sex": ["A5"]
+      }
+    }
+  ],
+  "pendingSubstitutions": [
+    { "id": "ps-1", "day": "Segunda", "absentTeacher": "Prof. João Silva", "grade": "8º Ano A", "subject": "Matemática", "classHour": "2ª Aula", "status": "pending" },
+    { "id": "ps-2", "day": "Segunda", "absentTeacher": "Profa. Maria Santos", "grade": "7º Ano B", "subject": "Português", "classHour": "3ª Aula", "status": "pending" },
+    { "id": "ps-3", "day": "Segunda", "absentTeacher": "Prof. Carlos Oliveira", "grade": "9º Ano A", "subject": "Ciências", "classHour": "5ª Aula", "status": "pending" }
+  ],
+  "substitutionHistory": [
+    { "id": "sh-1", "date": "05/08/2026", "absentTeacher": "Prof. João Silva", "substituteTeacher": "Profa. Ana Souza", "grade": "8º Ano A", "classHour": "2ª Aula", "approvedBy": "Helena Souza (Pedagoga)", "status": "Executada" },
+    { "id": "sh-2", "date": "06/08/2026", "absentTeacher": "Prof. Carlos Oliveira", "substituteTeacher": "Profa. Maria Santos", "grade": "7º Ano B", "classHour": "4ª Aula", "approvedBy": "Helena Souza (Pedagoga)", "status": "Executada" }
+  ],
+  "collectiveInterventions": []
+}

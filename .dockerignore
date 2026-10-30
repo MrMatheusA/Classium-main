@@ -1,0 +1,45 @@
+# Versionamento
+.git/
+.github/
+.gitignore
+
+# Segredos e arquivos de ambiente
+.env
+.env.*
+!.env.example
+
+# Dependências locais do host
+node_modules/
+
+# Logs e diagnósticos
+*.log
+npm-debug.log*
+
+# Sistema operacional e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Artefatos do Frontend (não pertencem ao backend conteinerizado)
+src/
+public/
+index.html
+vite.config.ts
+vercel.json
+
+# Dados e uploads locais do host (não poluir a imagem de produção)
+data/
+uploads/
+build/
+dist/
+dist-server/
+
+# Documentação, scripts de teste e auditorias
+tests/
+*.md
+*.sql
+*.txt
+*.js
+!server/
+query-schema.js

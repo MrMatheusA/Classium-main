@@ -1,0 +1,2826 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { usePlatform } from '../context/PlatformContext';
+import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
+import { OccurrenceType, StudentData } from '../types';
+import { Logo } from './Logo';
+import { DashboardTab } from './DashboardTab';
+import { ClassesTab } from './ClassesTab';
+import { LogbookTab } from './LogbookTab';
+import { EducaSharedCalendar } from './common/EducaSharedCalendar';
+import { RelatoriosTab } from './RelatoriosTab';
+import { EducaStudio } from './EducaStudio';
+import { EducaCarreiraEBeneficios } from './carreira/EducaCarreiraEBeneficios';
+import { StudentDossierModal } from './professor/StudentDossierModal';
+import { ClassroomStudentActionModal } from './professor/ClassroomStudentActionModal';
+import { TeacherSettingsTab } from './professor/TeacherSettingsTab';
+import { 
+  Users, BookOpen, Clock, Calendar, CheckSquare, Award, AlertTriangle, AlertCircle,
+  User, CheckCircle2, ChevronDown, ListPlus, Send, Activity, Plus,
+  Sparkles, ShieldAlert, Check, HelpCircle, LogOut, Lock, Search, FileText,
+  Bookmark, ArrowRight, UserCheck, Trash2, Settings, RefreshCw, X, Star, Layers, Shield
+} from 'lucide-react';
+
+interface ClassroomStudent {
+  id: string;
+  student_id?: string;
+  name: string;
+  full_name?: string;
+  ra?: string;
+  registrationNumber?: string;
+  photoUrl: string;
+  attendance: 'P' | 'F' | 'A';
+  points: number;
+  attendanceRate?: string;
+  status?: string;
+}
+
+export function ProfessorDashboard() {
+  const { 
+    student, 
+    setStudent, 
+    addOccurrence, 
+    updateGrade,
+    activeProfessorTab: activeTab,
+    setActiveProfessorTab: setActiveTab,
+    premiumEvents,
+    legendCategories
+  } = usePlatform();
+
+  // Professor Calendar Month/Year states
+  const [currentYear, setCurrentYear] = useState<number>(2026);
+  const [currentMonth, setCurrentMonth] = useState<number>(6); // July 2026 (0-indexed)
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>('2026-07-22');
+
+  // Real Database integration state
+  const { profile, logout } = useAuth();
+  const [loadingData, setLoadingData] = useState(true);
+  const [teacherRecord, setTeacherRecord] = useState<any | null>(null);
+  const [classesInfo, setClassesInfo] = useState<Record<string, any>>({});
+  const [shiftTurmasList, setShiftTurmasList] = useState<any[]>([]);
+  const [counts, setCounts] = useState({
+    lessons: 0,
+    students: 0,
+    diarios: 0,
+    events: 0,
+    announcements: 0,
+    unreadNotifications: 0
+  });
+
+  // Login state for credentials rule
+  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [loginEmail, setLoginEmail] = useState('carlos.eduardo@educamais.edu');
+  const [loginPassword, setLoginPassword] = useState('educa123');
+  const [loginError, setLoginError] = useState('');
+
+  // Active Class selection (dynamic string ID)
+  const [selectedClass, setSelectedClass] = useState<string>('');
+
+  // Substitution Mode & Shift Turmas State
+  const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  const [substitutionMode, setSubstitutionMode] = useState<null | { classId: string; className: string; room: string; shift: string }>(null);
+  const [activeShiftFilter, setActiveShiftFilter] = useState<'Matutino' | 'Vespertino'>('Matutino');
+
+  // Load real Supabase data
+  useEffect(() => {
+    async function fetchTeacherData() {
+      setLoadingData(true);
+      try {
+        let rawClasses: any[] = [];
+        const orgId = profile?.organization_id || profile?.school_id || '';
+        const userId = profile?.user_id || profile?.id || '';
+        const userEmail = profile?.email || '';
+
+        // 1. Fetch teacher record from teachers table
+        let resolvedTeacherRecord: any = null;
+        if (profile) {
+          try {
+            const { data: teacher } = await supabase
+              .from('teachers')
+              .select('*')
+              .or(`profile_id.eq.${profile.id},user_id.eq.${userId},email.eq.${userEmail}`)
+              .maybeSingle();
+
+            if (teacher) {
+              resolvedTeacherRecord = teacher;
+              setTeacherRecord(teacher);
+            }
+          } catch (tErr) {
+            console.warn('[Docente] Error fetching teacher record:', tErr);
+          }
+        }
+
+        // 2. Fetch classes linked to this teacher via class_teachers or classes table
+        let teacherClassIds: string[] = [];
+        if (resolvedTeacherRecord?.id) {
+          try {
+            const { data: ctLinks } = await supabase
+              .from('class_teachers')
+              .select('class_id, grade, subject')
+              .eq('teacher_id', resolvedTeacherRecord.id);
+
+            if (ctLinks && ctLinks.length > 0) {
+              teacherClassIds = ctLinks.map((ct: any) => ct.class_id).filter(Boolean);
+            }
+          } catch (ctErr) {
+            console.warn('[Docente] class_teachers link lookup notice:', ctErr);
+          }
+        }
+
+        // 3. Query classes directly
+        try {
+          let classQuery = supabase.from('classes').select('*, students:students(*)');
+          if (orgId) {
+            classQuery = classQuery.eq('organization_id', orgId);
+          }
+
+          const { data: dbClasses, error: dbErr } = await classQuery;
+
+          if (!dbErr && Array.isArray(dbClasses) && dbClasses.length > 0) {
+            // Filter classes strictly if teacher is resolved
+            let teacherClasses: any[] = [];
+            if (resolvedTeacherRecord?.id) {
+              teacherClasses = dbClasses.filter(c => 
+                teacherClassIds.includes(c.id) || 
+                c.teacher_id === resolvedTeacherRecord.id
+              );
+            } else if (profile?.role === 'admin' || profile?.role === 'admin_master') {
+              // Administrators viewing portal can view organization classes
+              teacherClasses = dbClasses;
+            }
+
+            rawClasses = teacherClasses.map((c, idx) => ({
+              id: c.id,
+              class_id: c.id,
+              name: c.name || `Turma ${c.grade || idx + 1}`,
+              class_name: c.name || `Turma ${c.grade || idx + 1}`,
+              grade: c.grade || c.name || 'Geral',
+              shift: c.shift || 'Matutino',
+              room: c.room || 'Sala de Aula',
+              subject: c.subject || resolvedTeacherRecord?.subject || 'Docência Geral',
+              subject_name: c.subject || resolvedTeacherRecord?.subject || 'Docência Geral',
+              is_main: idx === 0,
+              students_count: Array.isArray(c.students) ? c.students.length : 0,
+              students: Array.isArray(c.students) ? c.students : []
+            }));
+          }
+        } catch (dbFallbackErr) {
+          console.warn('[Docente] Direct classes query error:', dbFallbackErr);
+        }
+
+        // 4. Query Real Students directly from Supabase for authorized classes
+        let allDbStudents: any[] = [];
+        try {
+          let studentsQuery = supabase
+            .from('students')
+            .select('id, name, full_name, ra, registration_code, registration_number, photo_url, avatar_url, class_id, grade, conduct_points, attendance_rate, status, organization_id')
+            .order('name', { ascending: true });
+
+          if (orgId) {
+            studentsQuery = studentsQuery.eq('organization_id', orgId);
+          }
+
+          const { data: dbStudents, error: studentsErr } = await studentsQuery;
+
+          if (!studentsErr && Array.isArray(dbStudents) && dbStudents.length > 0) {
+            allDbStudents = dbStudents;
+          }
+        } catch (stErr) {
+          console.warn('[Docente] Direct students query notice:', stErr);
+        }
+
+        // 5. Query Class Students seat allocations
+        let allClassStudentsLinks: any[] = [];
+        try {
+          const { data: csLinks, error: csErr } = await supabase
+            .from('class_students')
+            .select('class_id, student_id, seat_number, status');
+
+          if (!csErr && Array.isArray(csLinks)) {
+            allClassStudentsLinks = csLinks;
+          }
+        } catch (csErr) {
+          console.warn('[Docente] Class students links notice:', csErr);
+        }
+
+        // 6. Query Real Seat Assignments from Supabase
+        let allSeatAssignments: any[] = [];
+        try {
+          const { data: seatRows, error: seatErr } = await supabase
+            .from('seat_assignments')
+            .select('*');
+
+          if (!seatErr && Array.isArray(seatRows)) {
+            allSeatAssignments = seatRows;
+          }
+        } catch (sErr) {
+          console.warn('[Docente] Seat assignments query notice:', sErr);
+        }
+
+        // 7. Query Real Quarterly Conduct Scores
+        const conductScoresMap: Record<string, number> = {};
+        try {
+          const { data: scoresRows } = await supabase
+            .from('student_conduct_quarterly_scores')
+            .select('student_id, current_balance')
+            .eq('quarter', 1)
+            .eq('year', 2026);
+
+          if (scoresRows && Array.isArray(scoresRows)) {
+            scoresRows.forEach((row: any) => {
+              if (row.student_id && typeof row.current_balance === 'number') {
+                conductScoresMap[row.student_id] = Number(row.current_balance);
+              }
+            });
+          }
+        } catch (scErr) {
+          console.warn('[Docente] Conduct scores query notice:', scErr);
+        }
+
+        const dynamicClassesMap: Record<string, any> = {};
+        const dynamicStudentsMap: Record<string, ClassroomStudent[]> = {};
+        const dynamicSeatingMap: Record<string, Record<number, string>> = {};
+        const dynamicSupervisedMap: Record<string, Record<number, boolean>> = {};
+        let totalStudentsCount = 0;
+
+        for (let index = 0; index < rawClasses.length; index++) {
+          const cls = rawClasses[index];
+          const classId = cls.class_id || cls.id || `cls-${index}`;
+          const className = cls.class_name || cls.name || `Turma ${classId}`;
+          const shift = cls.shift || 'Matutino';
+          const room = cls.room || 'Sala de Aula';
+          const subjectName = cls.subject_name || cls.subject || 'Docência Geral';
+          const isMain = Boolean(cls.is_main || cls.isMain || cls.is_reference || index === 0);
+
+          // Find students strictly belonging to this class from database (no leak across classes)
+          const classSpecificStudents = allDbStudents.filter(s => 
+            s.class_id === classId || 
+            allClassStudentsLinks.some(link => link.class_id === classId && link.student_id === s.id)
+          );
+
+          // Use strictly the students allocated to this class
+          const resolvedStudentsSource = classSpecificStudents.length > 0 
+            ? classSpecificStudents 
+            : (Array.isArray(cls.students) && cls.students.length > 0 ? cls.students : []);
+
+          // Map student roster strictly from real database entities
+          const mappedStudents: ClassroomStudent[] = resolvedStudentsSource.map((st: any, sIdx: number) => {
+            const studentId = st.student_id || st.id || `st-${classId}-${sIdx + 1}`;
+            const studentName = st.full_name || st.name || `Estudante ${sIdx + 1}`;
+            const studentPhoto = st.photo_url || st.photoUrl || st.avatar_url || `https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&fit=crop`;
+            const studentRa = st.ra || st.registration_code || st.registration_number || `RA • 2026.09A.${String(sIdx + 1).padStart(3, '0')}`;
+            
+            // Resolve official conduct score from student_conduct_quarterly_scores or student record
+            let studentPoints = 20.0;
+            if (conductScoresMap[studentId] !== undefined) {
+              studentPoints = conductScoresMap[studentId];
+            } else if (conductScoresMap[st.id] !== undefined) {
+              studentPoints = conductScoresMap[st.id];
+            } else if (typeof st.conduct_points === 'number') {
+              studentPoints = st.conduct_points;
+            } else if (typeof st.points === 'number' && st.points <= 20.0) {
+              studentPoints = st.points;
+            }
+            
+            const studentAttendance = st.attendance_rate ? `${st.attendance_rate}%` : (st.attendanceRate || '98.0%');
+
+            // Find seat number from class_students
+            const seatLink = allClassStudentsLinks.find(link => link.class_id === classId && (link.student_id === st.id || link.student_id === studentId));
+            if (seatLink && seatLink.seat_number) {
+              if (!dynamicSeatingMap[classId]) dynamicSeatingMap[classId] = {};
+              dynamicSeatingMap[classId][seatLink.seat_number] = studentId;
+            }
+
+            return {
+              id: studentId,
+              student_id: studentId,
+              name: studentName,
+              full_name: studentName,
+              ra: studentRa,
+              registrationNumber: studentRa.replace('RA • ', ''),
+              photoUrl: studentPhoto,
+              attendance: 'P',
+              points: studentPoints,
+              attendanceRate: studentAttendance,
+              status: st.status || 'active'
+            };
+          });
+
+          // Check seat_assignments table for explicit spatial placement and supervision
+          const classSeatRows = allSeatAssignments.filter(sa => sa.class_id === classId);
+          if (classSeatRows.length > 0) {
+            if (!dynamicSeatingMap[classId]) dynamicSeatingMap[classId] = {};
+            if (!dynamicSupervisedMap[classId]) dynamicSupervisedMap[classId] = {};
+            classSeatRows.forEach(row => {
+              if (row.student_id) {
+                dynamicSeatingMap[classId][row.seat_number] = row.student_id;
+              }
+              if (row.is_supervised) {
+                dynamicSupervisedMap[classId][row.seat_number] = true;
+              }
+            });
+          }
+
+          const studentsCount = mappedStudents.length > 0 ? mappedStudents.length : (typeof cls.students_count === 'number' ? cls.students_count : 10);
+          totalStudentsCount += studentsCount;
+
+          dynamicClassesMap[classId] = {
+            id: classId,
+            class_id: classId,
+            name: className,
+            class_name: className,
+            grade: className,
+            room: room,
+            shift: shift,
+            subject: subjectName,
+            subject_name: subjectName,
+            studentsCount: studentsCount,
+            students_count: studentsCount,
+            is_main: isMain,
+            isMain: isMain,
+            isReference: isMain,
+            students: mappedStudents
+          };
+
+          dynamicStudentsMap[classId] = mappedStudents;
+        }
+
+        setClassesInfo(dynamicClassesMap);
+        setClassStudentsMap(dynamicStudentsMap);
+        if (Object.keys(dynamicSeatingMap).length > 0) {
+          setClassSeatingMaps(dynamicSeatingMap);
+        }
+        if (Object.keys(dynamicSupervisedMap).length > 0) {
+          setClassSupervisedMaps(dynamicSupervisedMap);
+        }
+
+        const classIds = Object.keys(dynamicClassesMap);
+        if (classIds.length > 0) {
+          setSelectedClass(classIds[0]);
+        } else {
+          setSelectedClass('');
+        }
+
+        setCounts(prev => ({
+          ...prev,
+          students: totalStudentsCount,
+          diarios: classIds.length
+        }));
+
+      } catch (err) {
+        console.error('Error in fetchTeacherData:', err);
+      } finally {
+        setLoadingData(false);
+      }
+    }
+
+    fetchTeacherData();
+
+    // Supabase Realtime subscription for automatic synchronization of "Minhas Turmas", students, grades, occurrences and seating map
+    const channel = supabase
+      .channel('portal_docente_classes_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'class_teachers' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teachers_classes' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'class_students' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'seat_assignments' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'classroom_layouts' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'occurrences' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_conduct_quarterly_scores' }, () => {
+        fetchTeacherData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_conduct_movements' }, () => {
+        fetchTeacherData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.id]);
+
+  const currentTeacher = {
+    id: teacherRecord?.id || profile?.id || '',
+    name: teacherRecord?.name || teacherRecord?.full_name || profile?.name || 'Professor',
+    subject: teacherRecord?.subject || 'Docência Geral',
+    weeklyClasses: counts.lessons,
+    shift: teacherRecord?.shift || 'Matutino'
+  };
+
+  // Class-based state mapping
+  const [classStudentsMap, setClassStudentsMap] = useState<Record<string, ClassroomStudent[]>>({});
+  const [classSeatingMaps, setClassSeatingMaps] = useState<Record<string, Record<number, string>>>({});
+  const [classSupervisedMaps, setClassSupervisedMaps] = useState<Record<string, Record<number, boolean>>>({});
+
+  // Determine active class ID
+  const activeClassId = substitutionMode ? substitutionMode.classId : selectedClass;
+
+  // Retrieve student list for current active class
+  const studentsList = useMemo(() => {
+    if (classStudentsMap[activeClassId]) {
+      return classStudentsMap[activeClassId];
+    }
+    const currentCls = classesInfo[activeClassId];
+    if (currentCls?.students && Array.isArray(currentCls.students) && currentCls.students.length > 0) {
+      return currentCls.students.map((st: any, sIdx: number) => ({
+        id: st.student_id || st.id || `st-${activeClassId}-${sIdx}`,
+        student_id: st.student_id || st.id,
+        name: st.full_name || st.name || 'Estudante',
+        full_name: st.full_name || st.name || 'Estudante',
+        photoUrl: st.photoUrl || st.photo_url || `https://i.pravatar.cc/150?u=${st.student_id || st.id || sIdx}`,
+        attendance: 'P',
+        points: 20.0,
+        attendanceRate: '100%',
+        status: st.status || 'active'
+      }));
+    }
+    return [];
+  }, [activeClassId, classStudentsMap, classesInfo]);
+
+  // Retrieve seating map and supervised map for current active class
+  const seatingMap = classSeatingMaps[activeClassId] || {};
+  const supervisedMap = classSupervisedMaps[activeClassId] || {};
+
+  // Setter wrapper for studentsList to update class-specific state
+  const setStudentsList = (newValOrFn: ClassroomStudent[] | ((prev: ClassroomStudent[]) => ClassroomStudent[])) => {
+    setClassStudentsMap(prevMap => {
+      const currentList = prevMap[activeClassId] || studentsList;
+      const newList = typeof newValOrFn === 'function' ? newValOrFn(currentList) : newValOrFn;
+      return { ...prevMap, [activeClassId]: newList };
+    });
+  };
+
+  // Setter wrapper for seatingMap to update class-specific state
+  const setSeatingMap = (newValOrFn: Record<number, string> | ((prev: Record<number, string>) => Record<number, string>)) => {
+    setClassSeatingMaps(prevMap => {
+      const currentMap = prevMap[activeClassId] || seatingMap;
+      const newMap = typeof newValOrFn === 'function' ? newValOrFn(currentMap) : newValOrFn;
+      return { ...prevMap, [activeClassId]: newMap };
+    });
+  };
+
+  // Selected student for placing on a desk and drag-and-drop state
+  const [selectedStudentForSeat, setSelectedStudentForSeat] = useState<string | null>(null);
+  const [draggingStudentId, setDraggingStudentId] = useState<string | null>(null);
+  const [activeProfileStudentId, setActiveProfileStudentId] = useState<string | null>(null);
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
+
+  // Active detail student for right-side quick card
+  const activeDetailStudent = useMemo(() => {
+    if (activeProfileStudentId) {
+      const found = studentsList.find(s => s.id === activeProfileStudentId);
+      if (found) return found;
+    }
+    return studentsList[0] || null;
+  }, [activeProfileStudentId, studentsList]);
+
+  // Attendance states
+  const [attendanceSaved, setAttendanceSaved] = useState(false);
+  const [attendanceSaveTime, setAttendanceSaveTime] = useState('');
+
+  // Occurrence Log Form states
+  const [selectedOccStudentId, setSelectedOccStudentId] = useState('st-801a-001');
+  const [selectedNegatives, setSelectedNegatives] = useState<Record<string, boolean>>({});
+  const [selectedPositives, setSelectedPositives] = useState<Record<string, boolean>>({});
+  const [detailedDescription, setDetailedDescription] = useState('');
+  const [isResponsibleNotified, setIsResponsibleNotified] = useState(true);
+  const [notificationFrequency, setNotificationFrequency] = useState<'immediate' | 'shift_end' | 'weekly'>('immediate');
+  const [occurrenceSuccessMessage, setOccurrenceSuccessMessage] = useState('');
+  const [isCoordinationAlerted, setIsCoordinationAlerted] = useState(false);
+
+  // Grade state
+  const [selectedGradeStudentId, setSelectedGradeStudentId] = useState('st-801a-001');
+  const [selectedGradeSubject, setSelectedGradeSubject] = useState('História');
+  const [selectedGradeBimester, setSelectedGradeBimester] = useState<'b1' | 'b2' | 'b3' | 'b4'>('b3');
+  const [gradeValue, setGradeValue] = useState('8.5');
+  const [gradeSuccessMessage, setGradeSuccessMessage] = useState('');
+
+  // AI Report State
+  const [selectedReportStudentId, setSelectedReportStudentId] = useState('st-801a-001');
+  const [reportTemplate, setReportTemplate] = useState<'trimestral' | 'psicologo' | 'psicopedagogo' | 'desenvolvimento'>('trimestral');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [generatedReportText, setGeneratedReportText] = useState('');
+  const [coordinationShared, setCoordinationShared] = useState(false);
+
+  // Interactive Modals for Student Cards: Ocorrência Rápida
+  const [isOccQuickModalOpen, setIsOccQuickModalOpen] = useState(false);
+  const [selectedStudentForOcc, setSelectedStudentForOcc] = useState<ClassroomStudent | null>(null);
+  const [quickOccType, setQuickOccType] = useState<string>('pedagogica');
+  const [quickOccDesc, setQuickOccDesc] = useState<string>('');
+  const [quickOccPoints, setQuickOccPoints] = useState<number>(0.0);
+  const [quickOccNotify, setQuickOccNotify] = useState<boolean>(true);
+  const [isSavingOcc, setIsSavingOcc] = useState<boolean>(false);
+  const [occModalSuccessMsg, setOccModalSuccessMsg] = useState<string>('');
+
+  // Classroom Seating Student Action Modal state (Visão da Sala)
+  const [isClassroomActionModalOpen, setIsClassroomActionModalOpen] = useState(false);
+  const [selectedStudentForClassroomAction, setSelectedStudentForClassroomAction] = useState<ClassroomStudent | null>(null);
+  const [selectedSeatForClassroomAction, setSelectedSeatForClassroomAction] = useState<number | null>(null);
+
+  // Classroom Live Metrics (Alunos Presentes, Ausentes, Ocorrências Hoje, Média da Turma)
+  const [classroomMetrics, setClassroomMetrics] = useState<{
+    presentStudents: number;
+    absentStudents: number;
+    occurrencesToday: number;
+    classAverage: number;
+    totalStudents: number;
+  }>({
+    presentStudents: 10,
+    absentStudents: 0,
+    occurrencesToday: 0,
+    classAverage: 9.2,
+    totalStudents: 10
+  });
+
+  const handleOpenClassroomActionModal = (st: ClassroomStudent, seatNum?: number) => {
+    setSelectedStudentForClassroomAction(st);
+    setSelectedSeatForClassroomAction(seatNum || null);
+    setIsClassroomActionModalOpen(true);
+  };
+
+  // Student Dossier (Ficha Completa do Aluno) state
+  const [isDossierModalOpen, setIsDossierModalOpen] = useState(false);
+  const [selectedStudentForDossier, setSelectedStudentForDossier] = useState<ClassroomStudent | null>(null);
+
+  const handleOpenDossierModal = (st: ClassroomStudent) => {
+    setSelectedStudentForDossier(st);
+    setIsDossierModalOpen(true);
+  };
+
+  // Effect to fetch classroom metrics whenever activeClassId changes
+  useEffect(() => {
+    async function fetchClassMetrics() {
+      try {
+        const res = await fetch(`/api/teacher/classes/${activeClassId}/metrics/classroom`);
+        const json = await res.json();
+        if (json?.metrics) {
+          setClassroomMetrics(json.metrics);
+        }
+      } catch (err) {
+        console.warn('Error fetching classroom metrics:', err);
+      }
+    }
+
+    fetchClassMetrics();
+  }, [activeClassId]);
+
+  const handleOpenOccModal = (st: ClassroomStudent) => {
+    setSelectedStudentForOcc(st);
+    setQuickOccType('pedagogica');
+    setQuickOccDesc('');
+    setQuickOccPoints(0.0);
+    setQuickOccNotify(true);
+    setOccModalSuccessMsg('');
+    setIsOccQuickModalOpen(true);
+  };
+
+  const handleSaveOccModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudentForOcc) return;
+    setIsSavingOcc(true);
+    try {
+      try {
+        await supabase.from('occurrences').insert({
+          student_id: selectedStudentForOcc.id,
+          class_id: activeClassId,
+          teacher_id: currentTeacher.id,
+          occurrence_type: quickOccType,
+          description: quickOccDesc || `Registro ${quickOccType} para ${selectedStudentForOcc.name}`,
+          points_deducted: quickOccPoints,
+          is_positive: quickOccType === 'elogio',
+          responsible_notified: quickOccNotify,
+          occurrence_date: new Date().toISOString().split('T')[0],
+          status: 'resolved'
+        });
+      } catch (dbErr) {
+        console.warn('[Docente] Occurrences direct insert notice:', dbErr);
+      }
+
+      setStudentsList(prev => prev.map(s => {
+        if (s.id === selectedStudentForOcc.id) {
+          const newPoints = Number(Math.min(20, Math.max(0, s.points - quickOccPoints + (quickOccType === 'elogio' ? 0.5 : 0))).toFixed(1));
+          return {
+            ...s,
+            points: newPoints
+          };
+        }
+        return s;
+      }));
+
+      setOccModalSuccessMsg(`Ocorrência registrada e sincronizada no diário com sucesso!`);
+      setTimeout(() => {
+        setOccModalSuccessMsg('');
+        setIsOccQuickModalOpen(false);
+        setQuickOccDesc('');
+      }, 1400);
+    } catch (err) {
+      console.error('Error saving occurrence:', err);
+    } finally {
+      setIsSavingOcc(false);
+    }
+  };
+
+  // Auto-synchronize target student selections when class changes
+  useEffect(() => {
+    if (studentsList && studentsList.length > 0) {
+      if (!studentsList.some(s => s.id === selectedOccStudentId)) {
+        setSelectedOccStudentId(studentsList[0].id);
+      }
+      if (!studentsList.some(s => s.id === selectedGradeStudentId)) {
+        setSelectedGradeStudentId(studentsList[0].id);
+      }
+      if (!studentsList.some(s => s.id === selectedReportStudentId)) {
+        setSelectedReportStudentId(studentsList[0].id);
+      }
+    }
+  }, [activeClassId, studentsList]);
+
+  // Pre-configured lists of items for Occurrence Tab
+  const negativeItems = {
+    leve: [
+      'Conversa excessiva',
+      'Não trouxe material',
+      'Não fez atividade',
+      'Não fez dever de casa',
+      'Levantou sem autorização',
+      'Chegou atrasado',
+      'Não participou',
+      'Não respeitou fila'
+    ],
+    media: [
+      'Atrapalhou a aula',
+      'Dormiu durante a aula',
+      'Uso indevido do celular',
+      'Saiu da sala sem autorização',
+      'Desobedeceu orientação',
+      'Linguagem inadequada',
+      'Faltou sem justificativa',
+      'Advertência verbal'
+    ],
+    gravissima: [
+      'Desrespeito ao professor',
+      'Desrespeito ao colega',
+      'Briga',
+      'Agressão física',
+      'Agressão verbal',
+      'Bullying',
+      'Racismo',
+      'Homofobia',
+      'Xenofobia',
+      'Danificou patrimônio',
+      'Jogou objetos',
+      'Colocou colegas em risco',
+      'Cola em prova',
+      'Plágio',
+      'Uso de objeto perigoso',
+      'Advertência escrita',
+      'Encaminhado à coordenação'
+    ]
+  };
+
+  const positiveItems = [
+    'Participação excelente',
+    'Ajudou colegas',
+    'Comportamento exemplar',
+    'Liderança',
+    'Criatividade',
+    'Respeito',
+    'Organização',
+    'Melhora significativa',
+    'Superação de dificuldades',
+    'Excelente desempenho',
+    'Solidariedade',
+    'Boa convivência'
+  ];
+
+  // Form Submission Handlers
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginEmail.trim() && loginPassword === 'educa123') {
+      setIsLoggedIn(true);
+      setLoginError('');
+    } else {
+      setLoginError('Senha incorreta ou e-mail inválido. A senha padrão do portal é educa123.');
+    }
+  };
+
+  const handleSeatPlacement = async (deskNumber: number, studentIdToPlace?: string) => {
+    const targetStudentId = studentIdToPlace || selectedStudentForSeat;
+    if (!targetStudentId) return;
+
+    // Optimistic UI update
+    setSeatingMap(prev => {
+      const updated = { ...prev };
+      
+      // Remove the student from any other desk they might currently occupy
+      Object.keys(updated).forEach(key => {
+        const numKey = parseInt(key);
+        if (updated[numKey] === targetStudentId) {
+          delete updated[numKey];
+        }
+      });
+
+      // Place student on the new desk
+      updated[deskNumber] = targetStudentId;
+      return updated;
+    });
+
+    setSelectedStudentForSeat(null);
+    setDraggingStudentId(null);
+    setActiveProfileStudentId(targetStudentId);
+
+    // Database persistence via Supabase RPC and fallback upsert
+    try {
+      const { error } = await supabase.rpc('assign_or_move_student_seat', {
+        p_class_id: activeClassId,
+        p_student_id: targetStudentId,
+        p_seat_number: deskNumber,
+        p_is_supervised: Boolean(supervisedMap[deskNumber])
+      });
+
+      if (error) {
+        await supabase.from('seat_assignments').upsert({
+          class_id: activeClassId,
+          student_id: targetStudentId,
+          seat_number: deskNumber,
+          row_index: Math.floor((deskNumber - 1) / 6) + 1,
+          col_index: ((deskNumber - 1) % 6) + 1,
+          is_supervised: Boolean(supervisedMap[deskNumber]),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'class_id,seat_number' });
+      }
+    } catch (err) {
+      console.warn('[Docente] Seat assignment persist notice:', err);
+    }
+  };
+
+  const handleClearSeat = async (deskNumber: number) => {
+    setSeatingMap(prev => {
+      const updated = { ...prev };
+      delete updated[deskNumber];
+      return updated;
+    });
+
+    setClassSupervisedMaps(prev => {
+      const current = prev[activeClassId] || {};
+      const updated = { ...current };
+      delete updated[deskNumber];
+      return { ...prev, [activeClassId]: updated };
+    });
+
+    try {
+      const { error } = await supabase.rpc('clear_seat_assignment', {
+        p_class_id: activeClassId,
+        p_seat_number: deskNumber
+      });
+
+      if (error) {
+        await supabase.from('seat_assignments')
+          .update({ student_id: null, is_supervised: false, updated_at: new Date().toISOString() })
+          .eq('class_id', activeClassId)
+          .eq('seat_number', deskNumber);
+      }
+    } catch (err) {
+      console.warn('[Docente] Clear seat persist notice:', err);
+    }
+  };
+
+  const handleToggleSupervision = async (deskNumber: number) => {
+    const currentState = Boolean(supervisedMap[deskNumber]);
+    const nextState = !currentState;
+
+    setClassSupervisedMaps(prev => {
+      const current = prev[activeClassId] || {};
+      return { ...prev, [activeClassId]: { ...current, [deskNumber]: nextState } };
+    });
+
+    try {
+      const { error } = await supabase.rpc('toggle_seat_supervision', {
+        p_class_id: activeClassId,
+        p_seat_number: deskNumber
+      });
+
+      if (error) {
+        await supabase.from('seat_assignments')
+          .update({ is_supervised: nextState, updated_at: new Date().toISOString() })
+          .eq('class_id', activeClassId)
+          .eq('seat_number', deskNumber);
+      }
+    } catch (err) {
+      console.warn('[Docente] Toggle supervision notice:', err);
+    }
+  };
+
+  const handleAutoAssignSeats = async () => {
+    if (!studentsList || studentsList.length === 0) return;
+    const newMap: Record<number, string> = {};
+    studentsList.forEach((st, idx) => {
+      if (idx < 36) {
+        newMap[idx + 1] = st.id;
+      }
+    });
+    setSeatingMap(newMap);
+
+    for (const [deskStr, stId] of Object.entries(newMap)) {
+      const deskNum = parseInt(deskStr);
+      try {
+        await supabase.rpc('assign_or_move_student_seat', {
+          p_class_id: activeClassId,
+          p_student_id: stId,
+          p_seat_number: deskNum,
+          p_is_supervised: Boolean(supervisedMap[deskNum])
+        });
+      } catch (e) {
+        // silent
+      }
+    }
+  };
+
+  const handleClearAllSeats = async () => {
+    setSeatingMap({});
+    setClassSupervisedMaps(prev => ({ ...prev, [activeClassId]: {} }));
+    try {
+      await supabase.from('seat_assignments')
+        .update({ student_id: null, is_supervised: false, updated_at: new Date().toISOString() })
+        .eq('class_id', activeClassId);
+    } catch (e) {
+      // silent
+    }
+  };
+
+  // Drag and drop events for spatial seating
+  const handleDragStart = (e: React.DragEvent, studentId: string) => {
+    setDraggingStudentId(studentId);
+    e.dataTransfer.setData('text/plain', studentId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropOnSeat = (e: React.DragEvent, deskNumber: number) => {
+    e.preventDefault();
+    const studentId = e.dataTransfer.getData('text/plain') || draggingStudentId;
+    if (studentId) {
+      handleSeatPlacement(deskNumber, studentId);
+    }
+  };
+
+  const toggleAttendance = (studentId: string) => {
+    setStudentsList(prev => prev.map(st => {
+      if (st.id === studentId) {
+        const next: Record<'P' | 'F' | 'A', 'P' | 'F' | 'A'> = {
+          'P': 'F',
+          'F': 'A',
+          'A': 'P'
+        };
+        return { ...st, attendance: next[st.attendance] };
+      }
+      return st;
+    }));
+  };
+
+  const saveRollCall = () => {
+    setAttendanceSaved(true);
+    const now = new Date();
+    setAttendanceSaveTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    
+    // Simulate updating back to platform context for João Pedro
+    const jp = studentsList.find(s => s.id === 'st-001');
+    if (jp && jp.attendance !== 'P') {
+      addOccurrence({
+        type: jp.attendance === 'F' ? 'negative' : 'negative',
+        title: jp.attendance === 'F' ? 'Ausência não justificada' : 'Atraso na entrada',
+        description: `Registro automático gerado pelo lançamento de chamada unificada do(a) ${currentTeacher.name}.`,
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        reporter: `${currentTeacher.name} (${currentTeacher.subject || 'Docência'})`,
+        severity: jp.attendance === 'F' ? 'medium' : 'low'
+      });
+    }
+  };
+
+  const handleOccurrenceSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const studentObj = studentsList.find(s => s.id === selectedOccStudentId);
+    if (!studentObj) return;
+
+    // Calculate points deduction
+    let totalDeduction = 0;
+    let hasGravissima = false;
+
+    Object.keys(selectedNegatives).forEach(key => {
+      if (selectedNegatives[key]) {
+        if (negativeItems.leve.includes(key)) totalDeduction += 0.5;
+        else if (negativeItems.media.includes(key)) totalDeduction += 1.0;
+        else if (negativeItems.gravissima.includes(key)) {
+          totalDeduction += 2.0;
+        }
+      }
+    });
+
+    const finalPoints = Math.max(0, studentObj.points - totalDeduction);
+
+    // Update locally
+    setStudentsList(prev => prev.map(s => {
+      if (s.id === selectedOccStudentId) {
+        return { ...s, points: finalPoints };
+      }
+      return s;
+    }));
+
+    // Trigger state in platform for any student
+    const activeNegatives = Object.keys(selectedNegatives).filter(k => selectedNegatives[k]);
+    const activePositives = Object.keys(selectedPositives).filter(k => selectedPositives[k]);
+    
+    const title = activeNegatives.length > 0 
+      ? `Diário de Bordo: ${activeNegatives.join(', ')}` 
+      : activePositives.length > 0 
+      ? `Agradecimento e Elogio: ${activePositives.join(', ')}`
+      : 'Registro de Atividade Comportamental';
+
+    const type = activeNegatives.length > 0 ? 'negative' : 'positive';
+    const severity = hasGravissima ? 'high' : activeNegatives.length > 0 ? 'medium' : 'low';
+
+    // Map student ID to grade & class for analytics
+    const studentGrades: Record<string, { grade: string; classId: string }> = {
+      'st-001': { grade: '8º Ano', classId: '8º Ano A' },
+      'st-002': { grade: '7º Ano', classId: '7º Ano A' },
+      'st-003': { grade: '6º Ano', classId: '6º Ano C' },
+      'st-004': { grade: '9º Ano', classId: '9º Ano B' },
+      'st-005': { grade: '5º Ano', classId: '5º Ano A' },
+      'st-006': { grade: '8º Ano', classId: '8º Ano A' },
+      'st-007': { grade: '7º Ano', classId: '7º Ano A' },
+      'st-008': { grade: '6º Ano', classId: '6º Ano C' },
+      'st-009': { grade: '9º Ano', classId: '9º Ano B' },
+      'st-010': { grade: '5º Ano', classId: '5º Ano A' },
+      'st-011': { grade: '8º Ano', classId: '8º Ano A' },
+      'st-012': { grade: '7º Ano', classId: '7º Ano A' },
+    };
+
+    const mapping = studentGrades[selectedOccStudentId] || { grade: '8º Ano', classId: '8º Ano A' };
+
+    addOccurrence({
+      type: type as OccurrenceType,
+      title,
+      description: detailedDescription || `Lançamento em diário de bordo sob supervisão do docente. Comunicado aos responsáveis: ${isResponsibleNotified ? 'Sim' : 'Não'}.`,
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      reporter: `${currentTeacher.name} (${currentTeacher.subject || 'Docência'})`,
+      severity,
+      studentId: selectedOccStudentId,
+      studentName: studentObj.name,
+      grade: mapping.grade,
+      classId: mapping.classId,
+      status: 'nova'
+    });
+
+    if (hasGravissima) {
+      setIsCoordinationAlerted(true);
+      setTimeout(() => setIsCoordinationAlerted(false), 8000);
+    }
+
+    setOccurrenceSuccessMessage(`Sucesso! Ocorrência registrada para ${studentObj.name}. Nota de conduta atualizada para ${finalPoints.toFixed(1)}/20.0`);
+    
+    // Reset form
+    setSelectedNegatives({});
+    setSelectedPositives({});
+    setDetailedDescription('');
+    setTimeout(() => setOccurrenceSuccessMessage(''), 5000);
+  };
+
+  const handleGradeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = parseFloat(gradeValue);
+    if (isNaN(val) || val < 0 || val > 10) return;
+
+    const studentObj = studentsList.find(s => s.id === selectedGradeStudentId);
+    if (!studentObj) return;
+
+    if (selectedGradeStudentId === 'st-001') {
+      updateGrade(selectedGradeSubject, selectedGradeBimester, val);
+    }
+
+    setGradeSuccessMessage(`Sucesso! Nota ${val.toFixed(1)} gravada para ${studentObj.name} em ${selectedGradeSubject} no ${selectedGradeBimester.toUpperCase().replace('B', '')}º Bimestre.`);
+    setTimeout(() => setGradeSuccessMessage(''), 4000);
+  };
+
+  const generateAIReport = () => {
+    const studentObj = studentsList.find(s => s.id === selectedReportStudentId);
+    if (!studentObj) return;
+
+    setAiGenerating(true);
+    setCoordinationShared(false);
+    
+    setTimeout(() => {
+      setAiGenerating(false);
+
+      const templates = {
+        trimestral: `PARECER PEDAGÓGICO TRIMESTRAL - ALUNO: ${studentObj.name.toUpperCase()}
+Frequência Escolar: 94% | Média Disciplinar: 8.5 | Nota de Conduta: ${studentObj.points.toFixed(1)}/20.0
+
+O(A) estudante ${studentObj.name} apresenta um comportamento participativo e com ótimos insights durante as discussões temáticas. Demonstra sólida compreensão dos fatos trabalhados neste trimestre. Seu empenho em projetos de equipe é notável, agindo como facilitador para os demais. Como ponto de atenção e desenvolvimento contínuo, recomenda-se que mantenha o foco e evite dispersões durante os momentos de instrução direta, otimizando o uso do tempo em sala.
+
+${currentTeacher.name} (Docente Responsável)`,
+
+        psicologo: `RELATÓRIO DE ENCAMINHAMENTO DE SUPORTE EMOCIONAL E PSICOLÓGICO
+ALUNO: ${studentObj.name.toUpperCase()} | ANO: 8º Ano A | DATA DE EMISSÃO: ${new Date().toLocaleDateString('pt-BR')}
+
+O(A) estudante ${studentObj.name} apresenta bom engajamento geral nas matérias, mas foi observado comportamento de isolamento em momentos de recreação coletiva e oscilações abruptas no padrão de interação em sala (queda de oralidade). Em sala de aula, mantém atitude cooperativa, porém episódios recentes sugerem ansiedade frente a cobranças avaliativas de alta performance. Encaminhamos para acompanhamento psicológico especializado visando aprofundar o suporte socioemocional.
+
+Docente: ${currentTeacher.name} | Equipe Pedagógica Classium`,
+
+        psicopedagogo: `RELATÓRIO PSICOPEDAGÓGICO DE RENDIMENTO COGNITIVO
+ALUNO: ${studentObj.name.toUpperCase()} | DATA DE EMISSÃO: ${new Date().toLocaleDateString('pt-BR')}
+
+Observa-se que o educando ${studentObj.name} possui raciocínio abstrato bem desenvolvido e facilidade para organizar ideias de forma sistemática. Apresenta, no entanto, certa lentidão em tarefas escritas longas ou repetitivas, o que gera dispersão. Sugere-se a aplicação de metodologias ativas, avaliações fracionadas e o uso de ferramentas de suporte digital para maximizar seu potencial de retenção.
+
+${currentTeacher.name} (Especialista Pedagógico)`,
+
+        desenvolvimento: `RELATÓRIO DE EVOLUÇÃO E DESENVOLVIMENTO PEDAGÓGICO INDIVIDUAL
+ALUNO: ${studentObj.name.toUpperCase()} | DATA DE EMISSÃO: ${new Date().toLocaleDateString('pt-BR')}
+
+O(A) estudante ${studentObj.name} obteve uma evolução constante no seu ritmo de aprendizagem. Seus registros em diário de bordo mostram superação de dificuldades em raciocínio analítico, especialmente na transição de conteúdos teóricos para análises práticas. A dedicação e pontualidade na entrega de atividades escolares complementares evidenciam responsabilidade. Recomenda-se a continuidade do plano de incentivos de liderança positiva.
+
+${currentTeacher.name} (Docente Responsável)`
+      };
+
+      setGeneratedReportText(templates[reportTemplate]);
+    }, 1500);
+  };
+
+  const shareWithCoordination = () => {
+    setCoordinationShared(true);
+    alert('Relatório Pedagógico enviado com sucesso para a coordenação pedagógica e diretores da unidade!');
+  };
+
+  // Filter students based on search term for seating arrangement and student directory list
+  const filteredStudents = useMemo(() => {
+    if (!studentSearchTerm.trim()) return studentsList;
+    const term = studentSearchTerm.trim().toLowerCase();
+    return studentsList.filter(st => {
+      const nameMatch = (st.name || st.full_name || '').toLowerCase().includes(term);
+      const raMatch = (st.ra || st.registrationNumber || '').toLowerCase().includes(term);
+      return nameMatch || raMatch;
+    });
+  }, [studentsList, studentSearchTerm]);
+
+  // Counter calculated values
+  const countPresent = studentsList.filter(s => s.attendance === 'P').length;
+  const countAbsent = studentsList.filter(s => s.attendance === 'F').length;
+  const countTardy = studentsList.filter(s => s.attendance === 'A').length;
+
+  if (loadingData) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#050b1a]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-gold border-t-transparent"></div>
+          <p className="font-serif font-medium text-gold tracking-widest text-sm uppercase animate-pulse">Sincronizando em tempo real...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // A ausência de turma NÃO bloqueia o Portal Docente.
+  // O professor autenticado tem acesso a todos os menus e ferramentas da plataforma.
+
+  return (
+    <div className="bg-oxford min-h-screen text-ice font-sans">
+      
+      {/* 1. MOCK LOGIN SCREEN (IF NOT LOGGED IN) */}
+      {!isLoggedIn ? (
+        <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-radial from-oxford to-dark-panel">
+          {/* Visual Accents */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-gold/5 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-bordeaux/5 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div className="w-full max-w-md bg-[#0e2149] border border-gold/20 p-8 rounded-3xl shadow-2xl relative z-10 text-center space-y-6">
+            <div className="flex justify-center">
+              <Logo size="md" />
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-xl font-serif font-bold text-gold">Portal do Docente Classium</h2>
+              <p className="text-xs text-gray-300">Acesso restrito para professores credenciados da instituição.</p>
+            </div>
+
+            {loginError && (
+              <div className="p-3 bg-red-900/40 border border-red-500/50 text-red-200 text-xs rounded-xl text-left">
+                {loginError}
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-bold tracking-widest text-gold">E-mail Institucional</label>
+                <input 
+                  type="email" 
+                  required
+                  placeholder="exemplo@educamais.edu"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  className="w-full bg-[#08142d] border border-gold/10 rounded-xl px-4 py-3 text-xs text-ice outline-none focus:border-gold transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] uppercase font-bold tracking-widest text-gold">Senha de Acesso</label>
+                  <span className="text-[9px] text-gray-400">Senha padrão: educa123</span>
+                </div>
+                <input 
+                  type="password" 
+                  required
+                  placeholder="••••••••"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full bg-[#08142d] border border-gold/10 rounded-xl px-4 py-3 text-xs text-ice outline-none focus:border-gold transition-colors"
+                />
+              </div>
+
+              <div className="p-4 bg-gold/5 rounded-2xl border border-gold/10 space-y-1 text-[11px] text-gray-300">
+                <p className="font-bold text-gold">💡 Regra de Acesso Inicial:</p>
+                <p>Insira a senha padrão <span className="font-mono text-gold font-bold">educa123</span> fornecida pela equipe pedagógica. O seu perfil com disciplinas, turmas e cronogramas será importado de forma automatizada e instantânea.</p>
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full py-3.5 bg-bordeaux hover:bg-bordeaux/90 text-white rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-lg hover:shadow-bordeaux/15 hover:scale-[1.01] flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4 text-white" />
+                <span>Autenticar no Sistema</span>
+              </button>
+            </form>
+
+            <div className="pt-2 border-t border-gold/10 text-center">
+              <p className="text-[10px] text-gray-400">Classium Tecnologia Educacional © 2026. Todos os direitos reservados.</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        
+        // 2. MAIN TEACHER DASHBOARD VIEW (LOGGED IN)
+        <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
+          
+          {/* Header Bar: Exibido apenas em abas que não possuem hero unificado próprio */}
+          {activeTab !== 'dashboard' && activeTab !== 'alunos' && activeTab !== 'seating' && activeTab !== 'occurrences' && activeTab !== 'calendar' && activeTab !== 'relatorios_ia' && activeTab !== 'ia' && (activeTab as string) !== 'carreira' && activeTab !== 'studio' && activeTab !== 'configuracoes' && (
+            <div className="flex flex-col md:flex-row gap-6 justify-between items-center bg-[#0e2149] border border-gold/20 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+              <div className="absolute right-0 top-0 w-48 h-48 bg-gold/5 rounded-full blur-3xl pointer-events-none"></div>
+              
+              <div className="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
+                <Logo size="sm" />
+                <div className="h-px sm:h-12 w-12 sm:w-px bg-gold/20 my-1 sm:my-0"></div>
+                <div>
+                  <span className="text-[10px] text-gold uppercase font-bold tracking-widest block">Professor Titular • {currentTeacher.subject}</span>
+                  <h2 className="text-xl md:text-2xl font-serif font-bold text-white mt-0.5">{currentTeacher.name}</h2>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="hidden lg:block text-right text-xs">
+                  <span className="text-gray-400 block font-medium">Conectado via</span>
+                  <span className="text-gold font-bold uppercase text-[10px] tracking-wider">{currentTeacher.subject || 'História e Robótica'}</span>
+                </div>
+                <button 
+                  onClick={() => setIsLoggedIn(false)}
+                  className="p-2.5 bg-white/5 hover:bg-red-950/30 hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-xl transition-all"
+                  title="Sair do Portal"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* BANNER DE MODOS DE SUBSTITUIÇÃO (SE ATIVO) */}
+          {substitutionMode && (
+            <div className="p-4 bg-gradient-to-r from-purple-950/90 via-indigo-950 to-slate-900 border-2 border-purple-500/60 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in shadow-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/40 shrink-0">
+                  <RefreshCw className="w-5 h-5 text-purple-400 animate-spin-slow" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono font-extrabold uppercase bg-purple-900 text-purple-200 px-2.5 py-1 rounded border border-purple-400/40 shadow-sm">
+                      🔄 Turmas do Turno Substituição | Turma: {substitutionMode.className}
+                    </span>
+                    <span className="text-xs text-purple-200 font-bold">({substitutionMode.shift} • {substitutionMode.room})</span>
+                  </div>
+                  <p className="text-xs text-gray-300 mt-1">
+                    Acesso restrito autorizado pela gestão: <span className="text-emerald-400 font-bold">✅ Fazer Chamada</span> e <span className="text-emerald-400 font-bold">✅ Diário de Bordo</span> para os <span className="text-gold font-bold">{studentsList.length} estudantes desta turma</span>.
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSubstitutionMode(null)}
+                className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all shrink-0 border border-white/20"
+              >
+                Encerrar Substituição
+              </button>
+            </div>
+          )}
+
+          {/* AVISO INFORMATIVO: DOCENTE SEM TURMAS VINCULADAS (NÃO-BLOQUEANTE) */}
+          {Object.keys(classesInfo).length === 0 && (
+            <div className="p-4 bg-[#0e2149] border border-gold/30 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in shadow-xl text-left">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gold/10 text-gold rounded-xl border border-gold/25 shrink-0">
+                  <Users className="w-5 h-5 text-gold" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-extrabold uppercase bg-gold/20 text-gold px-2.5 py-0.5 rounded border border-gold/30 shadow-sm">
+                      Aviso Informativo
+                    </span>
+                    <span className="text-xs text-white font-bold">Nenhuma Turma Vinculada</span>
+                  </div>
+                  <p className="text-xs text-gray-300 mt-1 leading-relaxed font-light">
+                    Prezado(a) <strong className="text-gold font-medium">{profile?.name || currentTeacher.name}</strong>, você possui acesso irrestrito a todos os menus e ferramentas do Portal Docente (Calendário Escolar, Classium Studio, Relatórios IA, Educa Carreira & Benefícios, Recursos e Configurações). Para vincular turmas ao seu diário de classe, solicite à Coordenação Pedagógica da sua unidade.
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => window.location.reload()}
+                className="px-3.5 py-1.5 bg-gold/20 hover:bg-gold/30 border border-gold/40 text-gold rounded-xl text-xs font-bold transition-all shrink-0"
+              >
+                Sincronizar
+              </button>
+            </div>
+          )}
+
+          {/* PAINEL "MINHAS TURMAS" (Cards compactos para seleção de turma nas abas de gestão) */}
+          {!['dashboard', 'alunos', 'seating', 'occurrences', 'ia', 'carreira', 'studio', 'configuracoes', 'calendar', 'relatorios_ia'].includes(activeTab) && (
+            <div className="bg-[#0e2149] border border-gold/15 rounded-3xl p-5 space-y-3.5 text-left shadow-lg">
+              <div className="flex justify-between items-center border-b border-white/5 pb-2.5">
+                <h3 className="text-xs font-extrabold uppercase tracking-widest text-gold flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gold" />
+                  <span>Minhas Turmas</span>
+                </h3>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  {Object.keys(classesInfo).length} turmas vinculadas
+                </span>
+              </div>
+
+              {/* Grid de Cards das Minhas Turmas */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {Object.keys(classesInfo).length === 0 ? (
+                  <div className="col-span-full p-6 text-center bg-[#08142d] border border-gold/15 rounded-2xl text-gray-300 text-xs">
+                    Nenhuma turma vinculada a este docente no momento.
+                  </div>
+                ) : (
+                  Object.keys(classesInfo).map((classId) => {
+                    const info = classesInfo[classId];
+                    if (!info) return null;
+                    const isSelected = selectedClass === classId && !substitutionMode;
+                    const rawName = info.class_name || info.name || 'Turma';
+                    // Ensure Fundamental I or II is displayed
+                    const className = rawName.includes('Fundamental')
+                      ? rawName
+                      : (() => {
+                          const match = rawName.match(/([1-9])\s*º?/);
+                          if (match) {
+                            return `${rawName} - ${parseInt(match[1]) <= 5 ? 'Fundamental I' : 'Fundamental II'}`;
+                          }
+                          return `${rawName} - Fundamental II`;
+                        })();
+                    const roomName = info.room || 'Sala de Aula';
+                    const studentsCount = typeof info.students_count === 'number' 
+                      ? info.students_count 
+                      : (info.studentsCount || (Array.isArray(info.students) ? info.students.length : 10));
+
+                    return (
+                      <div
+                        key={classId}
+                        onClick={() => {
+                          setSubstitutionMode(null);
+                          setSelectedClass(classId);
+                        }}
+                        className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col justify-between gap-2.5 ${
+                          isSelected 
+                            ? 'bg-[#132c61] border-gold text-white shadow-md ring-1 ring-gold/50' 
+                            : 'bg-[#08142d] border-white/10 text-gray-300 hover:border-gold/30 hover:bg-[#0c1e42]'
+                        }`}
+                      >
+                        {/* Turma e Ano Ciclo Fundamental I ou II */}
+                        <h4 className="font-serif font-bold text-sm text-white leading-snug">
+                          {className}
+                        </h4>
+
+                        {/* Sala de aula e Número de estudantes (e mais nada) */}
+                        <div className="flex items-center justify-between text-xs text-gray-300 font-light pt-2 border-t border-white/5">
+                          <span className="text-gray-400 text-[11px] truncate max-w-[140px]">
+                            {roomName}
+                          </span>
+                          <span className="font-mono font-bold text-gold text-xs shrink-0">
+                            {studentsCount} estudantes
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* MODAL: TURMAS DO TURNO (SUBSTITUIÇÃO DE PROFESSOR) */}
+          {isShiftModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-[#0e2149] border-2 border-gold/30 rounded-3xl max-w-3xl w-full p-6 space-y-6 shadow-2xl relative text-left max-h-[90vh] overflow-y-auto">
+                
+                {/* Header */}
+                <div className="flex justify-between items-start border-b border-white/10 pb-4">
+                  <div>
+                    <span className="text-[10px] text-gold uppercase font-mono font-bold tracking-widest block">
+                      Painel de Cobertura de Aulas • Portal do Professor
+                    </span>
+                    <h3 className="text-xl font-serif font-bold text-white flex items-center gap-2 mt-1">
+                      <RefreshCw className="w-5 h-5 text-gold" />
+                      <span>🔄 Turmas do Turno (Modo Substituição)</span>
+                    </h3>
+                    <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                      Selecione uma turma do seu turno para realizar a substituição eventual de um professor ausente.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setIsShiftModalOpen(false)}
+                    className="p-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-all"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Permissions Rule Notification Box */}
+                <div className="p-4 bg-[#08142d] border border-gold/20 rounded-2xl space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-gold">
+                    <ShieldAlert className="w-4 h-4 text-gold shrink-0" />
+                    <span>Regra de Segurança do Classium (Diretrizes de Substituição):</span>
+                  </div>
+                  <p className="text-xs text-gray-300 leading-relaxed font-light">
+                    Ao assumir a aula de um colega ausente, o sistema libera temporariamente <strong>apenas</strong> as funções essenciais para o registro da aula:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs">
+                    <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-emerald-400 block">✅ Acessos Autorizados:</span>
+                      <ul className="text-gray-200 text-[11px] space-y-0.5">
+                        <li>• Diário de Bordo (Conteúdo e Ocorrências)</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-rose-400 block">❌ Acessos Bloqueados:</span>
+                      <ul className="text-gray-300 text-[11px] space-y-0.5">
+                        <li>• Lançamento de Notas e Avaliações</li>
+                        <li>• Planejamento Pedagógico & Arquivos</li>
+                        <li>• Histórico Completo de Alunos</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Shift Filter Tabs */}
+                <div className="flex gap-2 border-b border-white/10 pb-2">
+                  {['Matutino', 'Vespertino'].map((shift) => (
+                    <button
+                      key={shift}
+                      onClick={() => setActiveShiftFilter(shift as any)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                        activeShiftFilter === shift 
+                          ? 'bg-gold text-oxford shadow-md font-extrabold' 
+                          : 'bg-white/5 text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Turno {shift}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Shift Turmas List */}
+                <div className="space-y-3">
+                  {shiftTurmasList
+                    .filter(t => t.shift === activeShiftFilter)
+                    .map((turma) => (
+                      <div 
+                        key={turma.id}
+                        className="p-4 bg-[#08142d] border border-white/10 rounded-2xl hover:border-gold/30 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-white">{turma.name}</span>
+                            <span className="px-2 py-0.5 bg-white/10 text-gray-300 rounded text-[10px] font-mono">
+                              {turma.room}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1 font-light">
+                            Docente Titular: <strong className="text-gray-200">{turma.mainTeacher}</strong> ({turma.subject})
+                          </p>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                          <button
+                            onClick={() => {
+                              setSubstitutionMode({
+                                classId: turma.id,
+                                className: turma.name,
+                                room: turma.room,
+                                shift: turma.shift
+                              });
+                              setIsShiftModalOpen(false);
+                              setActiveTab('occurrences');
+                            }}
+                            className="px-3.5 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/50 text-blue-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                          >
+                            <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Diário de Bordo</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* 3. CORE PLATFORM TAB WINDOW CONTENT */}
+          <div className="min-h-[500px]">
+
+            {/* TAB: DASHBOARD */}
+            {activeTab === 'dashboard' && (
+              <DashboardTab 
+                teacherName={profile?.name || currentTeacher.name} 
+                teacherId={currentTeacher.id} 
+                teacherSubject={currentTeacher.subject || 'Português'}
+                counts={counts} 
+                onSelectClass={(id) => setSelectedClass(id)}
+                classes={classesInfo}
+                selectedClass={selectedClass}
+                onLogout={() => setIsLoggedIn(false)}
+              />
+            )}
+
+            {/* TAB: CLASSES */}
+            {activeTab === 'classes' && (
+              <ClassesTab 
+                classes={Object.values(classesInfo)}
+                selectedClass={selectedClass} 
+                onSelectClass={(id) => setSelectedClass(id as any)} 
+                onSelectTab={(tab) => setActiveTab(tab as any)} 
+              />
+            )}
+
+            {/* TAB: ALUNOS (DIRETÓRIO COMPLETO DE ALUNOS - PAINEL ÚNICO INTEGRADO E MODERNO) */}
+            {activeTab === 'alunos' && (
+              <div className="space-y-6">
+                {/* PAINEL UNIFICADO: IDENTIDADE + SELETOR DE TURMAS + BUSCA */}
+                <div 
+                  id="alunos-unified-panel"
+                  className="bg-[#0e2149] border border-gold/20 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5 relative overflow-hidden text-left"
+                >
+                  <div className="absolute right-0 top-0 w-72 h-72 bg-gold/5 rounded-full blur-3xl pointer-events-none"></div>
+
+                  {/* 1. Linha Superior: Logo, Identidade Docente e Logout */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
+                    <div className="flex items-center gap-4">
+                      <Logo size="sm" />
+                      <div className="h-10 w-px bg-gold/20 shrink-0 hidden sm:block"></div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-gold uppercase font-mono font-bold tracking-widest">
+                            Professor Titular • {currentTeacher.subject || 'História e Robótica'}
+                          </span>
+                        </div>
+                        <h2 className="text-lg sm:text-xl font-serif font-bold text-white tracking-tight">
+                          {currentTeacher.name}
+                        </h2>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
+                      <div className="hidden md:block text-right">
+                        <span className="text-[10px] text-gray-400 font-mono block">Diretório de Alunos</span>
+                        <span className="text-xs font-bold text-emerald-400 font-mono">
+                          {studentsList.length} estudantes vinculados
+                        </span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setIsLoggedIn(false)}
+                        className="p-2.5 bg-[#08142d] hover:bg-red-950/40 hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-2xl text-gray-300 transition-all shadow-sm shrink-0"
+                        title="Sair do Portal"
+                      >
+                        <LogOut className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2. Seletor Integrado de Turmas (Minhas Turmas Compacto) */}
+                  <div className="border-t border-white/10 pt-4 space-y-2.5 relative z-10">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-gold flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-gold" />
+                        <span>Minhas Turmas</span>
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">
+                        Clique para alternar de turma
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                      {Object.keys(classesInfo).length === 0 ? (
+                        <div className="col-span-full p-3 text-center bg-[#08142d] border border-gold/15 rounded-xl text-gray-300 text-xs">
+                          Nenhuma turma vinculada a este docente no momento.
+                        </div>
+                      ) : (
+                        Object.keys(classesInfo).map((classId) => {
+                          const info = classesInfo[classId];
+                          if (!info) return null;
+                          const isSelected = selectedClass === classId && !substitutionMode;
+                          const rawName = info.class_name || info.name || 'Turma';
+                          const className = rawName.includes('Fundamental')
+                            ? rawName
+                            : (() => {
+                                const match = rawName.match(/([1-9])\s*º?/);
+                                if (match) {
+                                  return `${rawName} - ${parseInt(match[1]) <= 5 ? 'Fundamental I' : 'Fundamental II'}`;
+                                }
+                                return `${rawName} - Fundamental II`;
+                              })();
+                          const roomName = info.room || 'Sala de Aula';
+                          const studentsCount = typeof info.students_count === 'number' 
+                            ? info.students_count 
+                            : (info.studentsCount || (Array.isArray(info.students) ? info.students.length : 10));
+
+                          return (
+                            <button
+                              key={classId}
+                              type="button"
+                              onClick={() => {
+                                setSubstitutionMode(null);
+                                setSelectedClass(classId);
+                              }}
+                              className={`p-3 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 ${
+                                isSelected 
+                                  ? 'bg-[#132c61] border-gold text-white shadow-md ring-1 ring-gold/50' 
+                                  : 'bg-[#08142d] border-white/10 text-gray-300 hover:border-gold/30 hover:bg-[#0c1e42]'
+                              }`}
+                            >
+                              <div className="truncate">
+                                <h4 className="font-serif font-bold text-xs text-white truncate">
+                                  {className}
+                                </h4>
+                                <span className="text-[10px] text-gray-400 truncate block">
+                                  {roomName}
+                                </span>
+                              </div>
+                              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                isSelected ? 'bg-gold/20 text-gold border border-gold/30' : 'bg-white/5 text-gray-400'
+                              }`}>
+                                {studentsCount} alunos
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. Barra de Busca e Resumo da Turma Ativa */}
+                  <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 relative z-10">
+                    <div className="relative w-full sm:w-80">
+                      <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input 
+                        type="text" 
+                        placeholder="Buscar por nome ou RA..." 
+                        value={studentSearchTerm}
+                        onChange={(e) => setStudentSearchTerm(e.target.value)}
+                        className="w-full bg-[#08142d] border border-gold/15 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-gray-400 outline-none focus:border-gold transition-colors"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs text-gray-400 font-mono w-full sm:w-auto justify-between sm:justify-end">
+                      <span className="px-3 py-1 rounded-xl bg-[#08142d] border border-white/10 text-gray-300 flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-gold" />
+                        <span>Mostrando <strong className="text-gold font-bold">{filteredStudents.length}</strong> de <strong className="text-white font-bold">{studentsList.length}</strong> alunos</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grid list of Student Cards */}
+                {filteredStudents.length === 0 ? (
+                  <div className="bg-[#0e2149] border border-gold/15 rounded-3xl p-10 text-center space-y-3 shadow-md">
+                    <div className="w-12 h-12 rounded-full bg-gold/10 border border-gold/20 text-gold flex items-center justify-center mx-auto">
+                      <Users className="w-6 h-6 text-gold" />
+                    </div>
+                    {studentSearchTerm ? (
+                      <div>
+                        <h4 className="text-sm font-serif font-bold text-white">Nenhum estudante encontrado</h4>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Nenhum resultado corresponde à busca por "{studentSearchTerm}".
+                        </p>
+                      </div>
+                    ) : Object.keys(classesInfo).length === 0 ? (
+                      <div>
+                        <h4 className="text-sm font-serif font-bold text-white">Nenhuma Turma Vinculada</h4>
+                        <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
+                          Não há turmas atribuídas a este diário de classe no momento. Solicite à Coordenação Pedagógica a vinculação das suas turmas.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <h4 className="text-sm font-serif font-bold text-white">Turma sem Estudantes</h4>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Nenhum estudante está matriculado na turma selecionada.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredStudents.map((st, sIdx) => {
+                      const isSeated = Object.values(seatingMap).includes(st.id);
+                      const seatNo = Object.keys(seatingMap).find(key => seatingMap[parseInt(key)] === st.id);
+                      const fallbackRA = `RA • 2026.09A.${String(sIdx + 1).padStart(3, '0')}`;
+
+                      return (
+                        <div 
+                          key={st.id} 
+                          className="bg-[#0e2149] border border-gold/10 hover:border-gold/30 rounded-3xl p-5 text-left space-y-4 transition-all shadow-md flex flex-col justify-between"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <img 
+                                src={st.photoUrl || `https://i.pravatar.cc/150?u=${st.id}`} 
+                                alt={st.name} 
+                                className="w-12 h-12 rounded-full object-cover border-2 border-gold/40 shadow-sm"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div>
+                                <h4 className="font-serif text-sm font-bold text-white truncate max-w-[150px]">{st.name}</h4>
+                                <span className="text-[10px] text-gray-400 block font-mono">{st.ra || fallbackRA}</span>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-lg bg-bordeaux/30 border border-gold/30 text-gold font-bold text-[10px] font-mono">
+                              {st.points.toFixed(1)} PTS
+                            </span>
+                          </div>
+
+                          {/* Student quick metrics */}
+                          <div className="bg-[#08142d] p-3 rounded-2xl text-[11px] flex items-center justify-between">
+                            <div>
+                              <span className="text-gray-400 block">Mapeamento em Sala</span>
+                              <span className="font-bold text-white block mt-0.5">
+                                {isSeated ? `Carteira ${seatNo?.padStart(2, '0')}` : 'Não Alocado'}
+                              </span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                              isSeated ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/5 text-gray-400'
+                            }`}>
+                              {isSeated ? 'Presente na Carteira' : 'Disponível'}
+                            </span>
+                          </div>
+
+                          {/* Quick Action Button block */}
+                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDossierModal(st)}
+                              className="py-2.5 bg-gradient-to-r from-gold/20 to-amber-500/20 hover:from-gold/30 hover:to-amber-500/30 border border-gold/40 text-gold font-bold rounded-xl text-xs uppercase tracking-wider text-center transition-all flex items-center justify-center gap-1.5 shadow-sm hover:scale-[1.01]"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-gold" />
+                              <span>Ficha Completa</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenOccModal(st)}
+                              className="py-2.5 bg-white/5 hover:bg-gold/10 border border-white/10 hover:border-gold/30 text-gray-300 hover:text-gold font-bold rounded-xl text-xs uppercase tracking-wider text-center transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                            >
+                              <AlertCircle className="w-3.5 h-3.5 text-gold" />
+                              <span>Ocorrência</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* MODAL: REGISTRO DE OCORRÊNCIA RÁPIDA */}
+                {isOccQuickModalOpen && selectedStudentForOcc && (
+                  <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in text-left">
+                    <div className="bg-[#0e2149] border-2 border-gold/30 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
+                      <div className="flex justify-between items-start border-b border-white/10 pb-4">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={selectedStudentForOcc.photoUrl || `https://i.pravatar.cc/150?u=${selectedStudentForOcc.id}`}
+                            alt={selectedStudentForOcc.name}
+                            className="w-12 h-12 rounded-full border-2 border-gold object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div>
+                            <span className="text-[10px] text-gold uppercase font-mono font-bold tracking-widest block">Registro de Ocorrência</span>
+                            <h3 className="text-base font-serif font-bold text-white">{selectedStudentForOcc.name}</h3>
+                            <span className="text-[11px] text-gray-400 font-mono">Pontuação Atual: {selectedStudentForOcc.points.toFixed(1)} / 20.0 PTS</span>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => setIsOccQuickModalOpen(false)}
+                          className="p-1.5 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-all"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleSaveOccModal} className="space-y-4">
+                        {occModalSuccessMsg && (
+                          <div className="p-3 bg-emerald-950/50 border border-emerald-500 rounded-xl text-emerald-300 text-xs font-bold flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{occModalSuccessMsg}</span>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Categoria do Evento</label>
+                            <select 
+                              value={quickOccType}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setQuickOccType(val);
+                                if (val === 'leve') setQuickOccPoints(0.5);
+                                else if (val === 'media') setQuickOccPoints(1.0);
+                                else if (val === 'gravissima') setQuickOccPoints(2.0);
+                                else setQuickOccPoints(0.0);
+                              }}
+                              className="w-full bg-[#08142d] border border-gold/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-gold"
+                            >
+                              <option value="pedagogica">Anotação Pedagógica</option>
+                              <option value="elogio">⭐ Elogio / Diferencial Positivo</option>
+                              <option value="saude">Atendimento de Saúde</option>
+                              <option value="leve">Infração Leve (-0.5 pt)</option>
+                              <option value="media">Infração Média (-1.0 pt)</option>
+                              <option value="gravissima">🔴 Infração Gravíssima (-2.0 pts)</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Dedução de Pontos</label>
+                            <input 
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="5"
+                              value={quickOccPoints}
+                              onChange={(e) => setQuickOccPoints(parseFloat(e.target.value) || 0.0)}
+                              className="w-full bg-[#08142d] border border-gold/15 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-gold"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Descrição do Acontecimento</label>
+                          <textarea 
+                            rows={3}
+                            placeholder="Descreva detalhadamente o evento ocorrido em sala de aula..."
+                            value={quickOccDesc}
+                            onChange={(e) => setQuickOccDesc(e.target.value)}
+                            className="w-full bg-[#08142d] border border-gold/15 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold resize-none"
+                            required
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-[#08142d] rounded-xl border border-white/5 text-xs">
+                          <span className="text-gray-300">Notificar responsáveis em tempo real?</span>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={quickOccNotify}
+                              onChange={(e) => setQuickOccNotify(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gold"></div>
+                          </label>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsOccQuickModalOpen(false);
+                              setSelectedOccStudentId(selectedStudentForOcc.id);
+                              setActiveTab('occurrences');
+                            }}
+                            className="px-3 py-2.5 bg-white/5 hover:bg-gold/10 text-gold border border-gold/20 rounded-xl text-xs font-bold transition-all shrink-0"
+                          >
+                            Abrir Diário Completo
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={isSavingOcc}
+                            className="flex-1 py-2.5 bg-bordeaux hover:bg-bordeaux/90 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          >
+                            {isSavingOcc ? <RefreshCw className="w-4 h-4 animate-spin text-white" /> : <Send className="w-4 h-4 text-white" />}
+                            <span>Registrar Ocorrência</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODAL 3: FICHA COMPLETA DO ALUNO (STUDENT DOSSIER) */}
+                <StudentDossierModal 
+                  isOpen={isDossierModalOpen}
+                  onClose={() => setIsDossierModalOpen(false)}
+                  student={selectedStudentForDossier}
+                  currentClass={classesInfo[activeClassId] || { id: activeClassId, name: '9º Ano A - Fundamental II' }}
+                  teacherId={currentTeacher.id}
+                  teacherName={currentTeacher.name}
+                  onStudentUpdated={(updatedStudent) => {
+                    setStudentsList(prev => prev.map(s => s.id === updatedStudent.id ? { ...s, ...updatedStudent } : s));
+                  }}
+                />
+
+                {/* MODAL 4: AÇÕES RÁPIDAS DA SALA (VISÃO DA SALA - INTERAÇÃO COM ALUNO) */}
+                <ClassroomStudentActionModal
+                  isOpen={isClassroomActionModalOpen}
+                  onClose={() => setIsClassroomActionModalOpen(false)}
+                  student={selectedStudentForClassroomAction}
+                  seatNumber={selectedSeatForClassroomAction}
+                  currentClass={classesInfo[activeClassId] || { id: activeClassId, name: '9º Ano A - Fundamental II' }}
+                  teacherId={currentTeacher.id}
+                  teacherName={currentTeacher.name}
+                  isSupervised={selectedSeatForClassroomAction ? Boolean(supervisedMap[selectedSeatForClassroomAction]) : false}
+                  onToggleSupervision={(seatNo) => handleToggleSupervision(seatNo)}
+                  onUnseatStudent={(seatNo) => handleClearSeat(seatNo)}
+                  onOpenDossier={(st) => handleOpenDossierModal(st)}
+                  onStudentUpdated={(updatedStudent) => {
+                    setStudentsList(prev => prev.map(s => s.id === updatedStudent.id ? { ...s, ...updatedStudent } : s));
+                  }}
+                />
+              </div>
+            )}
+
+            {/* TAB A: 3D SEATING MAP (VISÃO DA SALA DE AULA EM TEMPO REAL) - UNIFICADO */}
+            {activeTab === 'seating' && (
+              <div className="space-y-6">
+                
+                {/* UNIFIED CONTAINER: IDENTIDADE DOCENTE + MINHAS TURMAS + KPIS + MAPEAMENTO DE LUGARES */}
+                <div className="bg-[#0e2149] border border-gold/20 rounded-3xl p-5 sm:p-7 shadow-xl space-y-6 relative overflow-hidden text-left">
+                  {/* Subtle Ambient Glow */}
+                  <div className="absolute right-0 top-0 w-80 h-80 bg-gold/5 rounded-full blur-3xl pointer-events-none"></div>
+
+                  {/* 1. CABEÇALHO UNIFICADO E DISCRETO DA VISÃO DA SALA */}
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10 border-b border-white/10 pb-5">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] text-gold uppercase font-mono font-bold tracking-widest">
+                          Professor Titular • {currentTeacher.subject || 'História e Robótica'}
+                        </span>
+                        <span className="h-2 w-px bg-white/20 hidden sm:inline-block"></span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/30 text-emerald-400 font-mono text-[9px] font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          <span>SINCRONIZAÇÃO EM TEMPO REAL</span>
+                        </span>
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-serif font-bold text-white tracking-tight flex items-center gap-2">
+                        <span>{currentTeacher.name}</span>
+                        <span className="text-gray-400 text-sm font-sans font-normal hidden sm:inline">
+                          — {classesInfo[selectedClass]?.name || substitutionMode?.className || '9º Ano A - Fundamental II'}
+                        </span>
+                      </h2>
+                    </div>
+
+                    <div className="flex items-center gap-3 self-end md:self-auto shrink-0">
+                      <div className="hidden lg:block text-right">
+                        <span className="text-[10px] text-gray-400 font-mono block">Ambiente / Sala</span>
+                        <span className="text-xs font-bold text-gold font-mono">
+                          {classesInfo[selectedClass]?.room || 'Laboratório Maker 02'}
+                        </span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setIsLoggedIn(false)}
+                        className="p-2.5 bg-[#08142d] hover:bg-red-950/40 hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-2xl text-gray-300 transition-all shadow-sm shrink-0"
+                        title="Sair do Portal"
+                      >
+                        <LogOut className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2. SELETOR DE TURMAS INTEGRADO ('MINHAS TURMAS') */}
+                  <div className="space-y-3 relative z-10">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-extrabold uppercase tracking-widest text-gold flex items-center gap-2">
+                        <Users className="w-4 h-4 text-gold" />
+                        <span>Minhas Turmas</span>
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">
+                        Selecione a turma para sincronizar o mapa de assentos instantaneamente
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {Object.keys(classesInfo).length === 0 ? (
+                        <div className="col-span-full p-4 text-center bg-[#08142d] border border-gold/15 rounded-2xl text-gray-300 text-xs">
+                          Nenhuma turma vinculada a este docente no momento.
+                        </div>
+                      ) : (
+                        Object.keys(classesInfo).map((classId) => {
+                          const info = classesInfo[classId];
+                          const isSelected = selectedClass === classId && !substitutionMode;
+                          const rawName = info.class_name || info.name || 'Turma';
+                          const className = rawName.includes('Fundamental')
+                            ? rawName
+                            : (() => {
+                                const match = rawName.match(/([1-9])\s*º?/);
+                                if (match) {
+                                  return `${rawName} - ${parseInt(match[1]) <= 5 ? 'Fundamental I' : 'Fundamental II'}`;
+                                }
+                                return `${rawName} - Fundamental II`;
+                              })();
+                          const roomName = info.room || 'Sala de Aula';
+                          const shiftDisplay = info.shift?.toLowerCase().includes('mat') 
+                            ? '1º Turno (Matutino)' 
+                            : info.shift?.toLowerCase().includes('vesp') 
+                              ? '2º Turno (Vespertino)' 
+                              : (info.shift || '1º Turno');
+                          const isRefTeacher = info.isReference || info.isMain || info.is_main;
+                          const studentsCount = typeof info.students_count === 'number' 
+                            ? info.students_count 
+                            : (info.studentsCount || (Array.isArray(info.students) ? info.students.length : 10));
+
+                          return (
+                            <button
+                              key={classId}
+                              type="button"
+                              onClick={() => {
+                                setSubstitutionMode(null);
+                                setSelectedStudentForSeat(null);
+                                setActiveProfileStudentId(null);
+                                setSelectedClass(classId);
+                              }}
+                              className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all duration-200 flex flex-col justify-between gap-2.5 ${
+                                isSelected 
+                                  ? 'bg-[#132c61] border-gold text-white shadow-md ring-1 ring-gold/50 scale-[1.01]' 
+                                  : 'bg-[#08142d] border-white/10 text-gray-300 hover:border-gold/30 hover:bg-[#0c1e42]'
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <h4 className="font-serif font-bold text-xs sm:text-sm text-white truncate">
+                                    {className}
+                                  </h4>
+                                  {isSelected && (
+                                    <span className="w-2 h-2 rounded-full bg-gold animate-pulse shrink-0"></span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-mono text-gray-300">
+                                    {shiftDisplay}
+                                  </span>
+                                  {isRefTeacher && (
+                                    <span className="px-2 py-0.5 rounded-md bg-gold/15 border border-gold/30 text-[9px] font-mono text-gold font-bold">
+                                      ⭐ Prof. Referência
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs text-gray-300 font-light pt-2 border-t border-white/5">
+                                <span className="text-gray-400 text-[11px] truncate max-w-[140px]">
+                                  {roomName}
+                                </span>
+                                <span className="font-mono font-bold text-gold text-xs shrink-0">
+                                  {studentsCount} estudantes
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. FILEIRA DE KPIS EQUILIBRADA (2 CARDS: Ocorrências Hoje e Média da Turma) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left relative z-10">
+                    {/* Ocorrências Hoje */}
+                    <div className="p-4 bg-[#08142d] border border-amber-500/30 rounded-2xl shadow-md flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                          <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Ocorrências Hoje</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl sm:text-3xl font-bold font-mono text-amber-400">{classroomMetrics.occurrencesToday}</span>
+                          <span className="text-xs text-gray-400">registradas na turma</span>
+                        </div>
+                      </div>
+                      <span className="text-xs px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono rounded-xl font-bold">
+                        Clima Estável
+                      </span>
+                    </div>
+
+                    {/* Média da Turma */}
+                    <div className="p-4 bg-[#08142d] border border-gold/30 rounded-2xl shadow-md flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="w-2.5 h-2.5 rounded-full bg-gold"></span>
+                          <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Média da Turma</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl sm:text-3xl font-bold font-mono text-gold">{classroomMetrics.classAverage.toFixed(1)}</span>
+                          <span className="text-xs text-gray-400">/ 10.0</span>
+                        </div>
+                      </div>
+                      <span className="text-xs px-3 py-1 bg-gold/10 border border-gold/20 text-gold font-mono rounded-xl font-bold">
+                        Alto Rendimento
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 4. SUB-HEADER MAPEAMENTO DE LUGARES */}
+                  <div className="bg-[#08142d] p-4.5 rounded-2xl border border-gold/15 text-left flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
+                    <div>
+                      <h3 className="text-sm sm:text-base font-serif font-bold text-gold flex items-center gap-2">
+                        Mapeamento de Lugares — {classesInfo[selectedClass]?.name || substitutionMode?.className || '9º Ano A - Fundamental II'}
+                      </h3>
+                      <p className="text-xs text-gray-300 mt-0.5 font-light max-w-2xl">
+                        Mapeie regularmente o posicionamento físico dos estudantes. Clique em uma carteira ocupada para abrir as ações rápidas ou arraste para reposicionar.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleAutoAssignSeats}
+                        className="px-3.5 py-2 bg-white/5 hover:bg-gold/10 border border-white/10 hover:border-gold/30 text-gray-300 hover:text-gold rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                        title="Distribuir alunos da turma nas primeiras carteiras"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Distribuir Auto</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearAllSeats}
+                        className="px-3.5 py-2 bg-white/5 hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-gray-300 hover:text-red-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                        title="Limpar todas as carteiras da turma"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Limpar Mapa</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 5. GRID PRINCIPAL DA SALA & BARRA LATERAL */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative z-10">
+                    
+                    {/* Left Side: 3D CLASSROOM MAP GRID (Col 8) */}
+                    <div className="lg:col-span-8 bg-[#09152f] border border-gold/10 p-5 sm:p-6 rounded-3xl space-y-6 relative shadow-xl">
+                      
+                      {/* Front of the Classroom */}
+                      <div className="text-center space-y-2">
+                        {/* Glass Whiteboard Representation */}
+                        <div className="w-full max-w-xl mx-auto py-3 bg-white/5 border border-white/20 rounded-2xl relative overflow-hidden backdrop-blur-md shadow-[0_0_15px_rgba(255,255,255,0.02)]">
+                          <span className="text-[11px] font-bold text-gray-300 uppercase tracking-[0.25em] block">
+                            📝 QUADRO BRANCO PRINCIPAL (FRENTE)
+                          </span>
+                          <p className="text-[9px] text-gray-400">
+                            Estudo de {classesInfo[selectedClass]?.subject || 'História Geral & Robótica'}: Inteligência Artificial e Algoritmos
+                          </p>
+                        </div>
+
+                        {/* Teacher Desk & Portal Entrance Row */}
+                        <div className="flex justify-between items-center max-w-xl mx-auto px-2 pt-2">
+                          {/* Teacher's Desk */}
+                          <div className="bg-[#0e2149] border border-gold/30 px-4 py-2 rounded-xl text-left text-xs shadow-md flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-gold animate-pulse"></div>
+                            <div>
+                              <span className="text-[9px] text-gold uppercase font-bold block">Palanque</span>
+                              <span className="font-semibold text-white">Mesa do Professor</span>
+                            </div>
+                          </div>
+
+                          {/* Door */}
+                          <div className="border-l-4 border-emerald-500 bg-emerald-500/10 px-3 py-1.5 rounded-r-lg text-xs font-bold text-emerald-400 flex items-center gap-1.5 shadow-sm">
+                            <span>🚪</span>
+                            <span>PORTA DE ENTRADA</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 36 Desks organized in 6 rows of 6 desks (6x6 Grid matching Classium Master UI) */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="text-[10px] font-bold text-gold uppercase tracking-widest">
+                            Organização: 6 Filas de Carteiras (Máx. 6x6)
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-6 gap-2.5 max-w-4xl mx-auto">
+                          {Array.from({ length: 36 }).map((_, index) => {
+                            const deskNum = index + 1;
+                            const studentId = seatingMap[deskNum];
+                            const seatedStudent = studentId ? studentsList.find(s => s.id === studentId) : null;
+                            const isSupervised = Boolean(supervisedMap[deskNum]);
+                            const isSelectedForDetail = activeDetailStudent?.id === studentId;
+
+                            let attendanceColor = 'bg-emerald-500';
+                            if (seatedStudent) {
+                              if (seatedStudent.attendance === 'F') attendanceColor = 'bg-red-500';
+                              else if (seatedStudent.attendance === 'A') attendanceColor = 'bg-amber-500';
+                            }
+                            
+                            return (
+                              <div 
+                                key={deskNum}
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDropOnSeat(e, deskNum)}
+                                onClick={() => {
+                                  if (selectedStudentForSeat) {
+                                    handleSeatPlacement(deskNum);
+                                  } else if (seatedStudent) {
+                                    setActiveProfileStudentId(seatedStudent.id);
+                                    handleOpenClassroomActionModal(seatedStudent, deskNum);
+                                  }
+                                }}
+                                className={`relative p-2.5 rounded-2xl border transition-all cursor-pointer text-left min-h-[92px] flex flex-col justify-between group ${
+                                  seatedStudent 
+                                    ? isSupervised
+                                      ? 'bg-[#152a58] border-amber-400 shadow-md ring-1 ring-amber-400/40'
+                                      : isSelectedForDetail
+                                        ? 'bg-[#0f2759] border-gold shadow-md ring-1 ring-gold/50'
+                                        : 'bg-[#0e2149] border-gold/30 hover:border-gold shadow-sm' 
+                                    : 'bg-white/[0.02] border-white/10 hover:bg-white/[0.06] hover:border-gold/40 border-dashed'
+                                }`}
+                              >
+                                {/* Supervision Badge on top-left */}
+                                {isSupervised && (
+                                  <div 
+                                    className="absolute top-1.5 left-1.5 px-1 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/40 text-[7px] font-extrabold flex items-center gap-0.5" 
+                                    title="Supervisão Direta / Atenção Pedagógica Ativa"
+                                  >
+                                    🛡️ Sup. Direta
+                                  </div>
+                                )}
+
+                                {/* White circle Desk number on top-right */}
+                                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-white text-oxford flex items-center justify-center text-[9px] font-extrabold shadow-md z-10">
+                                  {deskNum.toString().padStart(2, '0')}
+                                </div>
+
+                                {/* Student Info if Seated */}
+                                {seatedStudent ? (
+                                  <div className="space-y-1 pt-3.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="relative shrink-0">
+                                        <img 
+                                          src={seatedStudent.photoUrl || `https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&fit=crop`} 
+                                          alt={seatedStudent.name} 
+                                          className="w-5 h-5 rounded-full object-cover border border-gold/50"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                        {/* Attendance Dot Indicator */}
+                                        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-oxford ${attendanceColor}`}></span>
+                                      </div>
+                                      <span className="text-[10px] font-bold text-white truncate max-w-[65px] block leading-tight">
+                                        {seatedStudent.name.split(' ')[0]}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[8px] text-gray-400 pt-0.5">
+                                      <span className="font-mono truncate max-w-[50px]">{seatedStudent.ra?.replace('RA • ', '') || seatedStudent.id}</span>
+                                      
+                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleSupervision(deskNum);
+                                          }}
+                                          className="p-0.5 text-gray-400 hover:text-amber-400 transition-colors"
+                                          title={isSupervised ? "Desativar supervisão direta" : "Ativar supervisão direta"}
+                                        >
+                                          <Shield className="w-2.5 h-2.5" />
+                                        </button>
+                                        <button 
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleClearSeat(deskNum);
+                                          }}
+                                          className="p-0.5 text-gray-400 hover:text-red-400 transition-colors"
+                                          title="Desocupar carteira"
+                                        >
+                                          <Trash2 className="w-2.5 h-2.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col justify-between h-full text-[10px] pt-3.5">
+                                    <span className="text-gray-500 font-light text-[9px] block">Vazio</span>
+                                    <span className="text-[8px] text-gray-500 font-bold group-hover:text-gold transition-colors uppercase">
+                                      {selectedStudentForSeat ? 'Posicionar' : 'Alocar'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Info Legends */}
+                      <div className="pt-4 border-t border-white/5 flex flex-wrap justify-center gap-6 text-[10px] text-gray-400">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3.5 h-3.5 rounded-lg bg-[#0e2149] border border-gold/30"></div>
+                          <span>Carteira Ocupada</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3.5 h-3.5 rounded-lg bg-white/[0.02] border border-white/10 border-dashed"></div>
+                          <span>Carteira Disponível</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded-full bg-white text-oxford flex items-center justify-center text-[9px] font-extrabold">12</div>
+                          <span>Numeração Circular Branca</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3.5 h-3.5 rounded-lg bg-[#152a58] border border-amber-400 flex items-center justify-center text-[8px]">🛡️</div>
+                          <span>Supervisão Direta</span>
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Right Side: STUDENTS SELECTOR LIST & QUICK ACCESS CARD (Col 4) */}
+                    <div className="lg:col-span-4 space-y-5">
+                      
+                      {/* CARD 1: LISTA DE ALUNOS DA TURMA */}
+                      <div className="bg-[#09152f] border border-gold/15 p-5 rounded-3xl space-y-4 text-left shadow-lg">
+                        <div>
+                          <h4 className="text-xs font-bold text-gold uppercase tracking-widest">Alunos da Turma</h4>
+                          <p className="text-[11px] text-gray-300">Selecione ou arraste um aluno para posicionar nas carteiras.</p>
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-3" />
+                          <input 
+                            type="text" 
+                            placeholder="Buscar estudante..."
+                            value={studentSearchTerm}
+                            onChange={(e) => setStudentSearchTerm(e.target.value)}
+                            className="w-full bg-[#08142d] border border-gold/10 rounded-xl pl-9 pr-4 py-2 text-xs text-ice outline-none focus:border-gold"
+                          />
+                        </div>
+
+                        {/* List */}
+                        <div className="space-y-1.5 max-h-[320px] overflow-y-auto scrollbar-thin pr-1">
+                          {filteredStudents.map(st => {
+                            // Check if student is already seated
+                            const isSeated = Object.values(seatingMap).includes(st.id);
+                            const seatNo = Object.keys(seatingMap).find(key => seatingMap[parseInt(key)] === st.id);
+                            const isSelected = selectedStudentForSeat === st.id;
+
+                            return (
+                              <div
+                                key={st.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, st.id)}
+                                onClick={() => {
+                                  setSelectedStudentForSeat(isSelected ? null : st.id);
+                                  setActiveProfileStudentId(st.id);
+                                }}
+                                className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 text-xs cursor-grab active:cursor-grabbing ${
+                                  isSelected 
+                                    ? 'bg-gold/15 border-gold shadow-md' 
+                                    : 'bg-[#08142d] border-white/5 hover:border-gold/30 hover:bg-[#0b1b3d]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <img 
+                                    src={st.photoUrl || `https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&fit=crop`} 
+                                    alt={st?.name || 'Estudante'} 
+                                    className="w-7 h-7 rounded-full object-cover border border-white/10 shrink-0"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="min-w-0">
+                                    <span className="font-bold text-white block truncate">{st?.name || 'Estudante'}</span>
+                                    <span className="text-[10px] text-gray-400 block font-mono">{st.ra || st.id}</span>
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0">
+                                  {isSeated ? (
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-900/40 text-emerald-300 border border-emerald-500/30 font-bold font-mono text-[9px]">
+                                      CART: {seatNo?.padStart(2, '0')}
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-md bg-amber-900/40 text-amber-300 border border-amber-500/30 font-bold text-[9px] uppercase tracking-wider">
+                                      Não Alocado
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Instructions for Placement */}
+                        {selectedStudentForSeat && (
+                          <div className="p-3 bg-gold/10 border border-gold/30 rounded-2xl text-xs space-y-1 text-gold animate-pulse">
+                            <p className="font-bold">✨ Alocação Ativa:</p>
+                            <p>Agora, clique em qualquer carteira vaga do mapa para alocar {studentsList.find(s => s.id === selectedStudentForSeat)?.name || 'o estudante'}.</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* CARD 2: ACESSO RÁPIDO — FICHA DE INFORMAÇÕES DO ALUNO SELECIONADO */}
+                      {activeDetailStudent && (
+                        <div className="bg-[#09152f] border border-gold/15 p-5 rounded-3xl space-y-4 text-left shadow-lg">
+                          <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                            <span className="text-[10px] font-bold text-gold uppercase tracking-widest block">Acesso Rápido — Ficha de Informações</span>
+                            <span className="text-[9px] px-2 py-0.5 bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 rounded-full font-bold">Online</span>
+                          </div>
+
+                          <div className="flex items-center gap-3 p-3 bg-white/[0.02] border border-white/5 rounded-2xl">
+                            <img 
+                              src={activeDetailStudent.photoUrl || `https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&fit=crop`} 
+                              className="w-11 h-11 rounded-full border-2 border-gold object-cover shrink-0" 
+                              referrerPolicy="no-referrer"
+                              alt={activeDetailStudent?.name || 'Estudante'}
+                            />
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-white text-xs truncate">{activeDetailStudent?.name || 'Estudante'}</h4>
+                              <span className="text-[10px] text-gray-400 font-mono block">{activeDetailStudent?.ra || 'RA Oficial'}</span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[9px] text-gold font-bold font-mono">Nota Conduta: {(activeDetailStudent?.points || 0).toFixed(1)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] text-gray-300 space-y-1.5 font-light leading-relaxed">
+                            <p>• {activeDetailStudent?.name || 'O estudante'} é o aluno selecionado no painel da sala.</p>
+                            <p>• Ocorrências e alterações de carteira sincronizam automaticamente em tempo real.</p>
+                          </div>
+
+                          {/* Quick Action Buttons for selected student */}
+                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDossierModal(activeDetailStudent)}
+                              className="py-2.5 px-3 bg-gradient-to-r from-gold/20 to-amber-500/20 hover:from-gold/30 hover:to-amber-500/30 border border-gold/40 text-gold font-bold rounded-xl text-[10px] uppercase tracking-wider text-center transition-all shadow-sm"
+                            >
+                              Ficha Completa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenOccModal(activeDetailStudent)}
+                              className="py-2.5 px-3 bg-white/5 hover:bg-gold/10 border border-white/10 hover:border-gold/30 text-gray-300 hover:text-gold font-bold rounded-xl text-[10px] uppercase tracking-wider text-center transition-all"
+                            >
+                              Ocorrência
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB C: BEHAVIOR LEDGER & OCCURRENCE SYSTEM (DIÁRIO DE BORDO E GESTÃO DE OCORRÊNCIAS) */}
+            {activeTab === 'occurrences' && (
+              <LogbookTab 
+                classId={selectedClass}
+                teacherId={currentTeacher.id}
+                teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+                teacherSubject={currentTeacher.subject || 'HISTÓRIA & ROBÓTICA'}
+                students={studentsList}
+                disciplineName={classesInfo[selectedClass]?.subject_name || classesInfo[selectedClass]?.subject || "Robótica Educacional & IA"}
+                onStudentPointsUpdate={(studentId, newPoints) => {
+                  setStudentsList(prev => prev.map(s => s.id === studentId ? { ...s, points: newPoints } : s));
+                }}
+                onSelectClass={(id) => {
+                  setSelectedClass(id);
+                  setSubstitutionMode(null);
+                }}
+                selectedClassName={classesInfo[selectedClass]?.name}
+                substitutionInfo={substitutionMode}
+                onOpenShiftModal={() => setIsShiftModalOpen(true)}
+                classesList={Object.values(classesInfo).filter(Boolean).map((c: any) => ({
+                  id: c?.id || 'cls',
+                  name: c?.name || c?.class_name || 'Turma',
+                  room: c?.room || 'Sala Multimídia',
+                  shift: c?.shift || 'Matutino',
+                  subject: c?.subject_name || c?.subject || 'Robótica Educacional & IA',
+                  studentsCount: c?.students_count || c?.total_students || 10,
+                  isReference: Boolean(c?.is_main || c?.isMain || c?.isReference || c?.id === 'cls-9a'),
+                  inProgress: c?.id === selectedClass
+                }))}
+              />
+            )}
+
+            {/* TAB D: CALENDÁRIO & AGENDA ESCOLAR OFICIAL 2026 */}
+            {activeTab === 'calendar' && (
+              <EducaSharedCalendar 
+                role="professor" 
+                selectedUnit={profile?.school_id || profile?.organization_id || undefined} 
+              />
+            )}
+
+            {/* TAB F: RELATÓRIOS IA (DIRETÓRIO E MODELOS DE EXPORTAÇÃO) */}
+            {activeTab === 'relatorios_ia' && (
+              <RelatoriosTab
+                teacherId={currentTeacher.id}
+                teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+                teacherSubject={currentTeacher.subject || 'HISTÓRIA & ROBÓTICA'}
+                selectedClass={selectedClass}
+                onSelectClass={(id) => {
+                  setSelectedClass(id);
+                  setSubstitutionMode(null);
+                }}
+                classesList={Object.values(classesInfo).filter(Boolean).map((c: any) => ({
+                  id: c?.id || 'cls',
+                  name: c?.name || c?.class_name || 'Turma',
+                  room: c?.room || 'Sala Multimídia',
+                  shift: c?.shift || 'Matutino',
+                  subject: c?.subject_name || c?.subject || 'Robótica Educacional & IA',
+                  studentsCount: c?.students_count || c?.total_students || 10,
+                  isReference: Boolean(c?.is_main || c?.isMain || c?.isReference || c?.id === 'cls-9a')
+                }))}
+                onOpenShiftModal={() => setIsShiftModalOpen(true)}
+                onLogout={() => setIsLoggedIn(false)}
+              />
+            )}
+
+            {/* TAB: CLASSIUM CARREIRA & BENEFÍCIOS */}
+            {(activeTab === 'ia' || (activeTab as string) === 'carreira') && (
+              <EducaCarreiraEBeneficios 
+                teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+                teacherSubject={currentTeacher.subject || 'História & Robótica'}
+                onLogout={() => setIsLoggedIn(false)}
+              />
+            )}
+
+            {/* TAB G: CLASSIUM STUDIO (GERADOR DE ATIVIDADES PEDAGÓGICAS COM IA) */}
+            {activeTab === 'studio' && (
+              <EducaStudio 
+                teacherId={currentTeacher.id}
+                teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+                teacherSubject={currentTeacher.subject || 'HISTÓRIA & ROBÓTICA'}
+                selectedClass={selectedClass}
+                onSelectClass={(id) => {
+                  setSelectedClass(id);
+                  setSubstitutionMode(null);
+                }}
+                classesList={Object.values(classesInfo).filter(Boolean).map((c: any) => ({
+                  id: c?.id || 'cls',
+                  name: c?.name || c?.class_name || 'Turma',
+                  room: c?.room || 'Sala Multimídia',
+                  shift: c?.shift || 'Matutino',
+                  subject: c?.subject_name || c?.subject || 'Robótica Educacional & IA',
+                  studentsCount: c?.students_count || c?.total_students || 10,
+                  isReference: Boolean(c?.is_main || c?.isMain || c?.isReference || c?.id === 'cls-9a'),
+                  inProgress: c?.id === selectedClass
+                }))}
+                onOpenShiftModal={() => setIsShiftModalOpen(true)}
+              />
+            )}
+
+            {/* TAB H: CONFIGURAÇÕES DO PORTAL CLASSIUM */}
+            {activeTab === 'configuracoes' && (
+              <TeacherSettingsTab 
+                teacherId={currentTeacher.id}
+                teacherName={profile?.name || currentTeacher.name || 'Professor Docente'}
+                selectedClass={selectedClass}
+                onSelectClass={(id) => {
+                  setSelectedClass(id);
+                  setSubstitutionMode(null);
+                }}
+                classesList={Object.values(classesInfo).filter(Boolean).map((c: any) => ({
+                  id: c?.id || 'cls',
+                  name: c?.name || c?.class_name || 'Turma',
+                  room: c?.room || 'Sala Multimídia',
+                  shift: c?.shift || 'Matutino',
+                  subject: c?.subject_name || c?.subject || 'Robótica Educacional & IA',
+                  studentsCount: c?.students_count || c?.total_students || 10,
+                  isReference: Boolean(c?.is_main || c?.isMain || c?.isReference || c?.id === 'cls-9a'),
+                  inProgress: c?.id === selectedClass
+                }))}
+                onOpenShiftModal={() => setIsShiftModalOpen(true)}
+              />
+            )}
+
+            {/* TAB D: LEGACY SECTION BYPASSED SAFE WRAP */}
+            {false && (
+              <div className="space-y-6 text-left">
+                
+                {/* Intro Card */}
+                <div className="bg-[#0e2149] p-5 rounded-2xl border border-gold/15">
+                  <h3 className="text-base font-serif font-bold text-gold flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-gold" />
+                    <span>Lançamento de Notas & Emissor de Relatórios Inteligente IA Classium</span>
+                  </h3>
+                  <p className="text-xs text-gray-300 mt-1 max-w-4xl font-light leading-relaxed">
+                    A IA CLASSIUM auxilia o professor na escrita de pareceres pedagógicos e relatórios para profissionais externos (como psicólogos ou psicopedagogos). Com base na frequência acumulada do aluno, pontos de conduta e avaliações, a IA gera esboços de forma automatizada.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                  
+                  {/* Left Side: Launch Grades & Choose Report Templates (Col 5) */}
+                  <div className="lg:col-span-5 space-y-6">
+                    
+                    {/* Grade Launcher Form */}
+                    <form onSubmit={handleGradeSubmit} className="bg-[#0e2149] border border-gold/15 p-5 rounded-3xl space-y-4">
+                      <h4 className="text-xs font-bold text-gold uppercase tracking-widest border-b border-white/5 pb-2">
+                        📝 Registrar Nota Bimestral
+                      </h4>
+
+                      {gradeSuccessMessage && (
+                        <div className="p-3 bg-emerald-950/40 border border-emerald-500 rounded-xl text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span>{gradeSuccessMessage}</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-3 text-xs">
+                        {/* Student select */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest block">Estudante Alvo</label>
+                          <select 
+                            value={selectedGradeStudentId}
+                            onChange={(e) => setSelectedGradeStudentId(e.target.value)}
+                            className="w-full bg-[#08142d] border border-gold/10 rounded-xl px-3 py-2.5 text-xs text-white font-semibold outline-none focus:border-gold"
+                          >
+                            {studentsList.map(s => (
+                              <option key={s.id} value={s.id}>{s.name} (ID: {s.id})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Subject Select */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest block">Matéria / Conteúdo</label>
+                          <select 
+                            value={selectedGradeSubject}
+                            onChange={(e) => setSelectedGradeSubject(e.target.value)}
+                            className="w-full bg-[#08142d] border border-gold/10 rounded-xl px-3 py-2.5 text-xs text-white font-semibold outline-none focus:border-gold"
+                          >
+                            <option value="História">História</option>
+                            <option value="Robótica">Robótica Avançada</option>
+                            <option value="Geometria">Geometria e Espaço</option>
+                          </select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Bimester Select */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest block">Bimestre</label>
+                            <select 
+                              value={selectedGradeBimester}
+                              onChange={(e) => setSelectedGradeBimester(e.target.value as any)}
+                              className="w-full bg-[#08142d] border border-gold/10 rounded-xl px-3 py-2.5 text-xs text-white font-semibold outline-none focus:border-gold"
+                            >
+                              <option value="b1">1º Bimestre</option>
+                              <option value="b2">2º Bimestre</option>
+                              <option value="b3">3º Bimestre (Atual)</option>
+                              <option value="b4">4º Bimestre</option>
+                            </select>
+                          </div>
+
+                          {/* Grade input */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest block">Nota (0.0 a 10.0)</label>
+                            <input 
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="10"
+                              value={gradeValue}
+                              onChange={(e) => setGradeValue(e.target.value)}
+                              className="w-full bg-[#08142d] border border-gold/10 rounded-xl px-3 py-2 text-xs text-white font-extrabold outline-none focus:border-gold"
+                            />
+                          </div>
+                        </div>
+
+                        <button 
+                          type="submit"
+                          className="w-full py-3 bg-bordeaux hover:bg-bordeaux/90 text-white rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-md"
+                        >
+                          Salvar Nota Oficial
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* AI Template Select Panel */}
+                    <div className="bg-[#0e2149] border border-gold/15 p-5 rounded-3xl space-y-4">
+                      <h4 className="text-xs font-bold text-gold uppercase tracking-widest border-b border-white/5 pb-2">
+                        ✨ Configurar Parecer IA Classium
+                      </h4>
+
+                      <div className="space-y-3 text-xs">
+                        {/* Student selection */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest block">Estudante Alvo</label>
+                          <select 
+                            value={selectedReportStudentId}
+                            onChange={(e) => setSelectedReportStudentId(e.target.value)}
+                            className="w-full bg-[#08142d] border border-gold/10 rounded-xl px-3 py-2.5 text-xs text-white font-semibold outline-none focus:border-gold"
+                          >
+                            {studentsList.map(s => (
+                              <option key={s.id} value={s.id}>{s.name} (Faltas: {s.attendance === 'F' ? '1' : '0'})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Report Template Selector */}
+                        <div className="space-y-1.5 text-left">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Modelo de Parecer Requerido</span>
+                          <div className="grid grid-cols-1 gap-2">
+                            {[
+                              { id: 'trimestral', label: '📄 Parecer Descritivo Trimestral', desc: 'Resumo comportamental e pedagógico de João Pedro' },
+                              { id: 'psicologo', label: '🧠 Relatório para Psicólogo Escolar', desc: 'Foco no comportamento socioemocional e isolamento' },
+                              { id: 'psicopedagogo', label: '🩺 Relatório para Psicopedagogo', desc: 'Análise de retenção analítica e processamento cognitivo' },
+                              { id: 'desenvolvimento', label: '🏫 Relatório de Evolução de Desenvolvimento', desc: 'Foco em liderança positiva e melhora na Geometria' }
+                            ].map(tpl => {
+                              const isSel = reportTemplate === tpl.id;
+                              return (
+                                <button
+                                  key={tpl.id}
+                                  type="button"
+                                  onClick={() => setReportTemplate(tpl.id as any)}
+                                  className={`p-3 rounded-xl border text-left transition-all ${
+                                    isSel 
+                                      ? 'bg-gold/15 border-gold text-gold shadow-sm' 
+                                      : 'bg-[#08142d] border-white/5 text-gray-300 hover:border-gold/20'
+                                  }`}
+                                >
+                                  <span className="font-bold text-xs block">{tpl.label}</span>
+                                  <span className="text-[10px] text-gray-400 block mt-0.5 font-light">{tpl.desc}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Trigger AI Button */}
+                        <button
+                          type="button"
+                          onClick={generateAIReport}
+                          disabled={aiGenerating}
+                          className="w-full py-3 bg-gradient-to-r from-amber-500 to-gold text-oxford rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
+                        >
+                          <Sparkles className="w-4 h-4 text-oxford animate-spin-slow" />
+                          <span>{aiGenerating ? 'Analisando Diários com IA...' : 'Gerar Relatório com IA Classium'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Right Side: Generated Output Window & Action Suite (Col 7) */}
+                  <div className="lg:col-span-7 bg-[#09152f] border border-gold/15 rounded-3xl p-6 space-y-4">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                      <h4 className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-gold" />
+                        <span>Visualização e Edição do Esboço de Parecer</span>
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full bg-gold/10 text-gold text-[9px] font-bold uppercase font-mono animate-pulse">
+                        Classium AI v4.2
+                      </span>
+                    </div>
+
+                    {/* Report Textbox */}
+                    {aiGenerating ? (
+                      <div className="min-h-[350px] flex flex-col items-center justify-center text-center space-y-4 p-8 bg-oxford/30 border border-dashed border-gold/20 rounded-2xl">
+                        {/* High-tech pulsing radial load */}
+                        <div className="relative w-16 h-16 flex items-center justify-center">
+                          <span className="animate-ping absolute inline-flex h-12 w-12 rounded-full bg-gold opacity-45"></span>
+                          <div className="w-10 h-10 rounded-full bg-gold/25 flex items-center justify-center">
+                            <Sparkles className="w-5 h-5 text-gold animate-spin" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="font-bold text-xs text-gold uppercase tracking-widest block">Análise Cognitiva Ativa</span>
+                          <p className="text-[11px] text-gray-400 font-light max-w-sm">
+                            Cruzando dados de frequência de chamadas matutinas, 4 registros comportamentais em diários e notas de História no 3º Bimestre...
+                          </p>
+                        </div>
+                      </div>
+                    ) : generatedReportText ? (
+                      <div className="space-y-4 animate-fade-in text-left">
+                        <textarea
+                          rows={14}
+                          value={generatedReportText}
+                          onChange={(e) => setGeneratedReportText(e.target.value)}
+                          className="w-full bg-[#08142d] border border-gold/15 rounded-2xl p-4 text-xs text-gray-200 outline-none focus:border-gold font-mono leading-relaxed"
+                        />
+                        
+                        {/* Action buttons */}
+                        <div className="flex flex-wrap gap-2 justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGeneratedReportText('');
+                              setCoordinationShared(false);
+                            }}
+                            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl text-xs font-bold uppercase transition-all"
+                          >
+                            Limpar Esboço
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={shareWithCoordination}
+                            className="px-5 py-2.5 bg-bordeaux hover:bg-bordeaux/95 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md"
+                          >
+                            <UserCheck className="w-4 h-4 text-white" />
+                            <span>{coordinationShared ? 'Compartilhado ✓' : 'Compartilhar com Equipe Pedagógica'}</span>
+                          </button>
+                        </div>
+
+                        {coordinationShared && (
+                          <div className="p-3.5 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-emerald-400 text-xs font-semibold">
+                            ✓ Relatório despachado com selo de integridade digital. A equipe psicopedagógica e a coordenação foram notificadas e já possuem acesso restrito a este parecer de João Pedro Silva.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="min-h-[350px] flex flex-col items-center justify-center text-center p-8 bg-white/[0.01] border border-dashed border-white/5 rounded-2xl space-y-2">
+                        <FileText className="w-12 h-12 text-gray-500 font-light" />
+                        <span className="font-bold text-xs text-gray-400 uppercase tracking-widest block">Painel de Visualização Vazio</span>
+                        <p className="text-[11px] text-gray-400 font-light max-w-sm">
+                          Escolha o aluno, selecione o modelo de parecer correspondente na coluna esquerda e clique em "Gerar Relatório com IA Classium" para obter uma minuta instantânea baseada em evidências em sala de aula.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Historical Logs Quick Viewer */}
+                    <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl text-xs text-left space-y-2">
+                      <span className="text-[10px] text-gold font-bold uppercase tracking-widest block">Histórico de Pareceres Recentes — Turma 801 A</span>
+                      <div className="divide-y divide-white/5 text-[11px]">
+                        <div className="py-2 flex justify-between items-center">
+                          <span className="text-gray-300">Ana Clara Souza — Relatório de Atendimento</span>
+                          <span className="text-gray-500">12/07/2026</span>
+                        </div>
+                        <div className="py-2 flex justify-between items-center">
+                          <span className="text-gray-300">João Pedro Silva — Parecer Semestral</span>
+                          <span className="text-gray-500">24/06/2026</span>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+            )}
+
+          </div>
+
+          {/* Footer branding */}
+          <div className="pt-6 border-t border-gold/10 text-center text-xs text-gray-400 space-y-2">
+            <p>PAINEL DE ADMINISTRAÇÃO DOCENTE E PEDAGÓGICA CLASSIUM PROFESSOR — CONEXÃO SEGURA TLS 1.3</p>
+            <p className="text-[10px] text-gray-500">
+              Ambiente de uso exclusivo para docentes autorizados. Todas as ações neste diário geram trilhas auditadas de auditoria.
+            </p>
+          </div>
+        </div>
+
+      )}
+
+    </div>
+  );
+}

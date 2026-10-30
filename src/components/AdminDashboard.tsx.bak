@@ -1,0 +1,453 @@
+import React, { useState, useEffect } from 'react';
+import { usePlatform } from '../context/PlatformContext';
+import { useAuth } from '../hooks/useAuth';
+import { 
+  Building, Users, FileText, BarChart3, Radio, CheckCircle2, ShieldCheck, 
+  Trash2, Plus, Calendar, Settings2, UserPlus, Eye, Search, Sparkles,
+  ClipboardList, CheckSquare, Bell, Moon, Sun, Monitor, AlertTriangle, ShieldAlert
+} from 'lucide-react';
+
+// Import modular panels
+import { AdminDashboardHome } from './admin/AdminDashboardHome';
+import { AdminPessoas } from './admin/AdminPessoas';
+import { AdminPedagogico } from './admin/AdminPedagogico';
+import { AdminFinanceiro } from './admin/AdminFinanceiro';
+import { AdminOutros } from './admin/AdminOutros';
+import { CommunicationEditor } from './admin/CommunicationEditor';
+import { AdminComunicacao } from './admin/AdminComunicacao';
+import { AdminEstudantes } from './admin/AdminEstudantes';
+import { AdminRadarRotina } from './admin/AdminRadarRotina';
+import { AdminSecretaria } from './admin/AdminSecretaria';
+import { AdminRelatorios } from './admin/AdminRelatorios';
+import { AdminHorarioAula } from './admin/AdminHorarioAula';
+import { CentroDisciplinarClassium } from './admin/CentroDisciplinarEducaPlus';
+import { EducaIntelligenceCenter } from './admin/EducaIntelligenceCenter';
+import { SuperIaCenter } from './admin/SuperIaCenter';
+import { ClassiumIntegrationHub } from './admin/EducaPlusIntegrationHub';
+import { SupabaseCenter } from './admin/SupabaseCenter';
+import { AdminInstituicao } from './admin/AdminInstituicao';
+import { AdminTransporte } from './admin/AdminTransporte';
+import { AdminGestaoParceiros } from './admin/AdminGestaoParceiros';
+import { ErrorBoundary } from './common/ErrorBoundary';
+
+interface GlobalSearchResult {
+  title: string;
+  category: string;
+  tab: 'dashboard' | 'instituicao' | 'pessoas' | 'academico' | 'pedagogico' | 'financeiro' | 'comunicacao' | 'agenda' | 'transporte' | 'alimentacao' | 'patrimonio' | 'biblioteca' | 'bi' | 'ia' | 'configuracoes';
+  description: string;
+}
+
+export function AdminDashboard() {
+  const { 
+    activeAdminTab, setActiveAdminTab, schoolInfo, permissionMatrix, addAuditLog 
+  } = usePlatform();
+  const { user, role, organizationId } = useAuth();
+
+  // Validate if active tab is permitted by RBAC matrix for current role
+  const isTabPermitted = (tab: string) => {
+    if (role === 'admin') return true;
+    if (!role) return false;
+    const roleTree = permissionMatrix && permissionMatrix[role] ? permissionMatrix[role] : null;
+    if (!roleTree) return true;
+
+    const findInTree = (nodes: any[]): boolean | null => {
+      for (const node of nodes) {
+        const nodeLowerId = node.id.toLowerCase();
+        const nodeLowerLabel = node.label.toLowerCase();
+
+        const matches = 
+          node.id === tab || 
+          node.id.endsWith(tab) ||
+          (tab === 'dashboard' && (nodeLowerId.includes('dash') || nodeLowerLabel.includes('dash'))) ||
+          (tab === 'instituicao' && (nodeLowerId.includes('inst') || nodeLowerLabel.includes('institu'))) ||
+          (tab === 'pessoas' && (nodeLowerId.includes('estud') || nodeLowerLabel.includes('estudante'))) ||
+          (tab === 'pedagogico' && (nodeLowerId.includes('pedag') || nodeLowerLabel.includes('pedagóg'))) ||
+          (tab === 'comunicacao' && (nodeLowerId.includes('comun') || nodeLowerLabel.includes('comunica'))) ||
+          (tab === 'agenda' && (nodeLowerId.includes('cal') || nodeLowerLabel.includes('calend') || nodeLowerLabel.includes('agenda'))) ||
+          (tab === 'horario-aula' && (nodeLowerId.includes('horar') || nodeLowerLabel.includes('horário') || nodeLowerLabel.includes('grade'))) ||
+          (tab === 'transporte' && (nodeLowerId.includes('transp') || nodeLowerLabel.includes('transport'))) ||
+          (tab === 'alimentacao' && (nodeLowerId.includes('alim') || nodeLowerLabel.includes('alimenta'))) ||
+          (tab === 'achados-perdidos' && (nodeLowerId.includes('achad') || nodeLowerLabel.includes('achado'))) ||
+          (tab === 'portaria-qrcode' && (nodeLowerId.includes('port') || nodeLowerLabel.includes('portaria'))) ||
+          (tab === 'ia' && (nodeLowerId.includes('carr') || nodeLowerLabel.includes('carreira'))) ||
+          (tab === 'financeiro' && (nodeLowerId.includes('fin') || nodeLowerLabel.includes('financ'))) ||
+          (tab === 'relatorios' && (nodeLowerId.includes('relat') || nodeLowerLabel.includes('relatór'))) ||
+          (tab === 'radar-rotina' && (nodeLowerId.includes('radar') || nodeLowerLabel.includes('radar'))) ||
+          (tab === 'configuracoes' && (nodeLowerId.includes('config') || nodeLowerLabel.includes('configur')));
+
+        if (matches) {
+          return node.visible;
+        }
+
+        if (node.children) {
+          const res = findInTree(node.children);
+          if (res !== null) return res;
+        }
+      }
+      return null;
+    };
+
+    const found = findInTree(roleTree);
+    return found !== null ? found : true;
+  };
+
+  const hasAccess = isTabPermitted(activeAdminTab);
+
+  // Log audit attempt on unauthorized access attempt
+  useEffect(() => {
+    if (!hasAccess && addAuditLog) {
+      addAuditLog({
+        action: 'UNAUTHORIZED_ACCESS_ATTEMPT',
+        module: activeAdminTab,
+        details: `Tentativa de acesso direto não autorizado ao módulo ${activeAdminTab} pelo perfil ${role || 'sem_perfil'}. Bloqueado pelo firewall RBAC.`
+      });
+    }
+  }, [hasAccess, activeAdminTab, role, addAuditLog]);
+
+  // Premium Custom Configurations states
+  const [demoMode, setDemoMode] = useState<boolean>(!user);
+  
+  useEffect(() => {
+    if (user) {
+      setDemoMode(false);
+    }
+  }, [user]);
+
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const [selectedUnit, setSelectedUnit] = useState<string>('sede');
+  
+  // Tasks list state (Central de Tarefas Premium)
+  const [tasks, setTasks] = useState([
+    { id: 't1', title: 'Revisar Contrato de Matrícula 2026', assignee: 'Secretaria', status: 'pending', dueDate: '19/03' },
+    { id: 't2', title: 'Homologar horários pós-conflito Carlos', assignee: 'Coordenação', status: 'pending', dueDate: '18/03' },
+    { id: 't3', title: 'Enviar DRE para Auditoria Contábil', assignee: 'Financeiro', status: 'completed', dueDate: '15/03' }
+  ]);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+
+  // Workflow Approvals state (Workflow de Aprovação Premium)
+  const [approvals, setApprovals] = useState([
+    { id: 'ap1', type: 'Desconto de Pontualidade', details: 'Solicitação de 10% desconto mensalidade p/ Aluno João Silva', requestedBy: 'Família Silva', status: 'pending' },
+    { id: 'ap2', type: 'Matrícula Retardatária', details: 'Matrícula fora de prazo na turma 8º Ano B', requestedBy: 'Secretaria', status: 'pending' }
+  ]);
+
+  // Documents Store state (Central de Documentos Premium)
+  const [docs, setDocs] = useState([
+    { name: 'Regimento Interno Escolar 2026.pdf', version: 'v2.4', date: '10/01/2026', size: '1.4 MB' },
+    { name: 'Ata Conselho Pedagógico - 1º Bim.pdf', version: 'v1.1', date: '04/03/2026', size: '850 KB' },
+    { name: 'Contrato Padrão de Prestação de Serviços.pdf', version: 'v4.0', date: '15/12/2025', size: '2.1 MB' }
+  ]);
+
+  // Ctrl+K Search States
+  const [searchOpen, setSearchOpen] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const searchDatabase: GlobalSearchResult[] = [
+    { title: 'Dados da Instituição', category: 'Gestão Escolar', tab: 'dashboard', description: 'Visualizar dados cadastrais oficiais, CNPJ, telefone e equipe gestora no Dashboard unificado.' },
+    { title: 'João Silva', category: 'Aluno - 7º Ano A', tab: 'pessoas', description: 'Visualizar cadastro, CPF, telefone e vínculos legais.' },
+    { title: 'Maria Oliveira', category: 'Aluno - 8º Ano B', tab: 'pessoas', description: 'Visualizar cadastro, CPF e responsável financeiro.' },
+    { title: 'Prof. Carlos Eduardo', category: 'Professor - História', tab: 'pessoas', description: 'Visualizar carga horária e conflitos de horários.' },
+    { title: 'DRE Financeiro', category: 'Contabilidade', tab: 'financeiro', description: 'Demonstrativo do Resultado do Exercício com receitas e despesas.' },
+    { title: 'Inadimplência Escolar', category: 'Finanças', tab: 'financeiro', description: 'Indicadores e gráfico de pagamentos atrasados.' },
+    { title: 'Mapa de Calor de Ocorrências', category: 'Pedagógico', tab: 'pedagogico', description: 'Gráficos de intensidade disciplinar por série e dia.' },
+    { title: 'Disparador Multicanal', category: 'Comunicação', tab: 'comunicacao', description: 'Enviar comunicados por WhatsApp, SMS, E-mail ou Carta.' },
+    { title: 'Controle de Estoque da Merenda', category: 'Alimentação', tab: 'alimentacao', description: 'Monitore as quantidades de alimentos e insumos de merenda.' },
+    { title: 'Regulamentos e Contratos', category: 'Configurações', tab: 'configuracoes', description: 'Auditorias de consentimento de dados sob as regras da LGPD.' }
+  ];
+
+  // Global Ctrl + K keydown listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+    setTasks([
+      ...tasks,
+      { id: `t-${Date.now()}`, title: newTaskTitle, assignee: 'Diretor', status: 'pending', dueDate: 'Hoje' }
+    ]);
+    setNewTaskTitle('');
+  };
+
+  const toggleTaskStatus = (id: string) => {
+    setTasks(prev => prev.map(t => 
+      t.id === id ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' } : t
+    ));
+  };
+
+  const handleWorkflowAction = (id: string, action: 'approved' | 'rejected') => {
+    setApprovals(prev => prev.map(ap => 
+      ap.id === id ? { ...ap, status: action } : ap
+    ));
+  };
+
+  const filteredSearchResults = searchDatabase.filter(item => 
+    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSearchResultClick = (tab: GlobalSearchResult['tab']) => {
+    setActiveAdminTab(tab);
+    setSearchOpen(false);
+    setSearchQuery('');
+  };
+
+  return (
+    <div className={`min-h-screen transition-all duration-300 text-left ${
+      isDarkMode ? 'bg-[#0B1329] text-slate-100' : 'bg-[#F8FAFC] text-slate-800'
+    }`}>
+      
+      {/* Admin Utility Header Bar (Clean EdTech SaaS style) */}
+      <header className={`p-4 sticky top-0 z-30 backdrop-blur-md border-b flex flex-wrap items-center justify-between gap-4 transition-all duration-200 ${
+        isDarkMode ? 'bg-[#0B1329]/90 border-slate-800' : 'bg-white/90 border-slate-200 shadow-2xs'
+      }`}>
+        
+        {/* Branch / Multi-unidades display */}
+        <div className="flex items-center gap-3">
+          {schoolInfo?.logo ? (
+            <img src={schoolInfo.logo} className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-2xs" alt="Logo da Escola" referrerPolicy="no-referrer" />
+          ) : (
+            <Building className="w-5 h-5 text-[#1E3A5F]" />
+          )}
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+            {schoolInfo?.name || 'Classium ERP'}
+          </span>
+        </div>
+
+        {/* Global search launcher */}
+        <div className="flex-1 max-w-md hidden md:block">
+          <button 
+            onClick={() => setSearchOpen(true)}
+            className={`w-full flex items-center justify-between px-4 py-2 rounded-full text-xs transition-all border ${
+              isDarkMode 
+                ? 'bg-slate-950/40 border-slate-800 hover:border-slate-700 text-slate-400' 
+                : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-600 shadow-2xs'
+            }`}
+          >
+            <span className="flex items-center gap-2"><Search className="w-4 h-4 text-slate-400" /> Pesquisa Global Inteligente...</span>
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-200 text-[10px] text-slate-600 font-mono font-semibold">Ctrl + K</kbd>
+          </button>
+        </div>
+
+        {/* Global theme, demo modes, quick actions */}
+        <div className="flex items-center gap-3">
+          {/* Demo mode switch */}
+          <button 
+            onClick={() => setDemoMode(!demoMode)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase border transition-all cursor-pointer ${
+              demoMode 
+                ? 'bg-amber-50 text-amber-800 border-amber-300' 
+                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+            }`}
+            title="Alternar dados de simulação"
+          >
+            <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" /> {demoMode ? 'Demonstração Ativa' : 'Modo Limpo'}
+          </button>
+
+          {/* Theme switcher */}
+          <button 
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`p-2 rounded-xl transition-colors cursor-pointer ${
+              isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-amber-400' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+            title="Alternar Modo Escuro / Claro"
+          >
+            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+        </div>
+
+      </header>
+
+      {/* Main ERP Panels Layout Grid */}
+      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+        
+        {/* Active main screens conditional routing */}
+        <div className="transition-all duration-300">
+          
+          {!hasAccess ? (
+            <div className="p-8 max-w-2xl mx-auto my-12 bg-red-950/40 border border-red-500/40 rounded-2xl text-center space-y-4 shadow-2xl animate-fade-in">
+              <ShieldAlert className="w-16 h-16 text-red-400 mx-auto animate-bounce" />
+              <h2 className="text-xl font-bold text-red-200 uppercase tracking-wider">Acesso Não Autorizado - Bloqueado por Segurança</h2>
+              <p className="text-sm text-red-300/80 leading-relaxed">
+                O acesso ao módulo <strong className="text-white uppercase">{activeAdminTab}</strong> foi revogado ou ocultado para o seu perfil ({role}) nas diretrizes de permissões da Instituição.
+              </p>
+              <div className="pt-2">
+                <button 
+                  onClick={() => setActiveAdminTab('dashboard')}
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all"
+                >
+                  Voltar para o Dashboard
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* HOME / DASHBOARD TAB (CONSOLIDADO: DASHBOARD + DADOS CADASTRAIS DA INSTITUIÇÃO) */}
+          {(activeAdminTab === 'dashboard' || activeAdminTab === 'instituicao') && (
+            <AdminDashboardHome demoMode={demoMode} selectedUnit={selectedUnit} />
+          )}
+          
+          {/* CLASSIUM INTELLIGENCE CENTER TAB */}
+          {activeAdminTab === 'intelligence_center' && (
+            <EducaIntelligenceCenter />
+          )}
+
+          {/* CLASSIUM REAL-TIME INTEGRATION HUB TAB */}
+          {activeAdminTab === 'integration_hub' && (
+            <ClassiumIntegrationHub />
+          )}
+
+          {/* SUPABASE POSTGRESQL & AUTH CENTER TAB */}
+          {activeAdminTab === 'supabase_center' && (
+            <SupabaseCenter />
+          )}
+
+          {/* SUPER IA CLASSIUM 5.0 - MULTI-AGENT AI PLATFORM */}
+          {activeAdminTab === 'super_ia_center' && (
+            <SuperIaCenter />
+          )}
+
+          {/* ESTUDANTES TAB (100% Supabase RPC get_my_organization_students) */}
+          {activeAdminTab === 'pessoas' && (
+            <AdminEstudantes />
+          )}
+
+          {/* PEDAGOGICO TAB (Lesson plan, BNCC, Disciplinary center, IA prediction) */}
+          {activeAdminTab === 'pedagogico' && (
+            <AdminPedagogico organizationId={organizationId || undefined} schoolInfo={schoolInfo} />
+          )}
+
+          {/* RELATÓRIOS TAB */}
+          {activeAdminTab === 'relatorios' && (
+            <AdminRelatorios />
+          )}
+
+          {/* DOCUMENTOS TAB */}
+          {activeAdminTab === 'documentos' && (
+            <AdminSecretaria initialView="documentos" />
+          )}
+
+          {/* SECRETARIA TAB */}
+          {activeAdminTab === 'secretaria-tab' && (
+            <AdminSecretaria initialView="secretaria" />
+          )}
+
+          {/* DIÁRIO DISCIPLINAR TAB */}
+          {activeAdminTab === 'diario-disciplinar' && (
+            <AdminRadarRotina initialSubTab="disciplina" />
+          )}
+
+          {/* RADAR DE ROTINA TAB */}
+          {activeAdminTab === 'radar-rotina' && (
+            <AdminRadarRotina />
+          )}
+
+          {/* FINANCEIRO TAB (Renegociação, Billing, DRE) */}
+          {activeAdminTab === 'financeiro' && (
+            <AdminFinanceiro />
+          )}
+
+          {/* HORÁRIO DE AULA TAB */}
+          {activeAdminTab === 'horario-aula' && (
+            <AdminHorarioAula />
+          )}
+
+          {/* COMUNICAÇÃO TAB */}
+          {activeAdminTab === 'comunicacao' && (
+            <CommunicationEditor />
+          )}
+
+          {/* TRANSPORTE TAB */}
+          {activeAdminTab === 'transporte' && (
+            <AdminTransporte selectedUnit={selectedUnit} />
+          )}
+
+          {/* GESTÃO DE PARCEIROS & COMERCIAL TAB */}
+          {(activeAdminTab === 'gestao-parceiros' || activeAdminTab === 'comercial') && (
+            <AdminGestaoParceiros />
+          )}
+
+          {/* ALL OTHER COMPACT OPERATIONAL TABS */}
+          {[
+            'agenda', 'alimentacao', 
+            'ia', 'configuracoes', 'achados-perdidos', 'portaria-qrcode'
+          ].includes(activeAdminTab) && (
+            <AdminOutros 
+              tab={activeAdminTab} 
+              demoMode={demoMode} 
+              selectedUnit={selectedUnit} 
+              setSelectedUnit={setSelectedUnit} 
+            />
+          )}
+            </>
+          )}
+
+        </div>
+
+
+
+      </div>
+
+      {/* 🔍 CTRL + K SEARCH DIALOG MODAL */}
+      {searchOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-start justify-center p-4 z-50 pt-20">
+          <div className="bg-white border border-slate-200 p-5 rounded-2xl max-w-xl w-full text-left space-y-4 animate-scale-up shadow-2xl">
+            
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-5 h-5 text-slate-400 absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                autoFocus
+                placeholder="Pesquisar por alunos, DRE, horários, merendas..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-blue-600 font-sans"
+              />
+            </div>
+
+            {/* Explainer tag */}
+            <p className="text-[10px] text-slate-500 uppercase font-mono tracking-wider flex justify-between items-center px-1 border-b border-slate-100 pb-2">
+              <span>Resultados rápidos para "{searchQuery || 'Todos'}"</span>
+              <span>Pressione ESC para fechar</span>
+            </p>
+
+            {/* Results Roster */}
+            <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+              {filteredSearchResults.length > 0 ? (
+                filteredSearchResults.map((result, idx) => (
+                  <div 
+                    key={idx}
+                    onClick={() => handleSearchResultClick(result.tab)}
+                    className="p-3 bg-slate-50 hover:bg-blue-50/60 hover:border-blue-200 border border-slate-200/60 rounded-xl cursor-pointer transition-all flex justify-between items-center group"
+                  >
+                    <div className="space-y-0.5 truncate pr-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-slate-900 group-hover:text-blue-900 truncate">{result.title}</span>
+                        <span className="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded uppercase tracking-widest font-bold">{result.category}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 truncate leading-relaxed">{result.description}</p>
+                    </div>
+                    <span className="text-[10px] text-blue-700 uppercase font-mono font-bold shrink-0">Navegar ➔</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500 italic text-center py-6">Nenhum registro encontrado correspondente ao termo digitado.</p>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

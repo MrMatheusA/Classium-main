@@ -1,0 +1,584 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { cn } from '../lib/utils';
+import { usePlatform } from '../context/PlatformContext';
+import { supabase } from '../lib/supabase';
+import { maskCPF } from '../utils/masks';
+import { StudentDataTab } from './family/StudentDataTab';
+import { StudentsAndLinkingTab } from './family/StudentsAndLinkingTab';
+import { AuthorizationsTab } from './family/AuthorizationsTab';
+import { UrgentNoticesTab } from './family/UrgentNoticesTab';
+import { CentralComunicacaoTab } from './family/CentralComunicacaoTab';
+import { RoutineRadarTab } from './family/RoutineRadarTab';
+import { SchoolCalendarTab } from './family/SchoolCalendarTab';
+import { LostFoundTab } from './family/LostFoundTab';
+import { GateQRCodeTab } from './family/GateQRCodeTab';
+import { TutorsMarketplaceTab } from './family/TutorsMarketplaceTab';
+import { AppointmentTab } from './family/AppointmentTab';
+import { ClimateSurveyTab } from './family/ClimateSurveyTab';
+import { DocsChatTab } from './family/DocsChatTab';
+import { TransportTab } from './family/TransportTab';
+import { StudentClassScheduleTab } from './family/StudentClassScheduleTab';
+import { FoodMenuTab } from './family/FoodMenuTab';
+import { CentralAlimentacaoEscolar } from './admin/CentralAlimentacaoEscolar';
+import { ThemeSettingsTab, THEME_PRESETS } from './family/ThemeSettingsTab';
+
+import { 
+  User, ShieldCheck, AlertCircle, Clock, Calendar, Shirt, QrCode, 
+  BookOpen, Phone, Sparkles, MessageSquare, GraduationCap, Bus, Utensils, Users,
+  CheckCircle2, Search, Link as LinkIcon, Loader2, Palette, ChevronRight, FileText,
+  UserCheck, Layers
+} from 'lucide-react';
+
+export interface FamilyChildRPC {
+  student_id: string;
+  full_name: string;
+  class_name: string;
+  shift: string;
+  room: string;
+  relationship: string;
+  status?: string;
+  guardian_id?: string;
+  guardian_name?: string;
+}
+
+interface TabItem {
+  id: number;
+  label: string;
+  icon: React.ReactNode;
+  badge?: string | number;
+  badgeColor?: string;
+}
+
+export function FamilyDashboard() {
+  const { 
+    student, 
+    activeFamilyTab, 
+    setActiveFamilyTab, 
+    familyStudents, 
+    setFamilyStudents, 
+    setStudent, 
+    selectFamilyStudent 
+  } = usePlatform();
+
+  const activeTab = activeFamilyTab;
+  const setActiveTab = setActiveFamilyTab;
+
+  // Local state for family children loaded via RPC
+  const [rpcChildren, setRpcChildren] = useState<FamilyChildRPC[]>([]);
+  const [isLoadingChildren, setIsLoadingChildren] = useState<boolean>(true);
+
+  // Theme Personalization State
+  const [currentTheme, setCurrentTheme] = useState<string>(() => {
+    return localStorage.getItem('family_portal_theme') || 'padrao';
+  });
+
+  const activeThemeConfig = THEME_PRESETS.find(t => t.id === currentTheme) || THEME_PRESETS[0];
+
+  const prevSyncedChildrenRef = useRef<string>('');
+
+  // Helper to sync context platform state
+  const syncContextStudents = (childrenList: FamilyChildRPC[]) => {
+    if (!childrenList || childrenList.length === 0) return;
+
+    const currentKey = childrenList.map(c => `${c.student_id}:${c.full_name}:${c.class_name}`).join('|');
+    if (prevSyncedChildrenRef.current === currentKey) {
+      return;
+    }
+    prevSyncedChildrenRef.current = currentKey;
+
+    const mapped = childrenList.map(c => ({
+      id: c.student_id,
+      name: c.full_name,
+      photoUrl: `https://i.pravatar.cc/150?u=${c.student_id}`,
+      grade: c.class_name,
+      classId: c.class_name,
+      ibeScore: 88,
+      attendanceRate: 96,
+      status: c.status === 'active' || c.status === 'Ativo' ? 'Ativo' : (c.status || 'Ativo'),
+      aiAlerts: [],
+      occurrences: [],
+      performance: [],
+      guardians: [
+        {
+          id: c.guardian_id || 'g-1',
+          name: c.guardian_name || 'Responsável',
+          relationship: c.relationship || 'Responsável',
+          cpf: 'Informado',
+          phone: '',
+          email: '',
+          hasAccess: true,
+          isPrincipal: true
+        }
+      ]
+    }));
+
+    if (setFamilyStudents) {
+      setFamilyStudents(mapped);
+    }
+    if (setStudent && mapped.length > 0) {
+      const alreadyCurrent = student && mapped.find(m => m.id === student.id);
+      if (!alreadyCurrent) {
+        setStudent(mapped[0]);
+      }
+    }
+  };
+
+  // 1. Fetch user theme preference on mount from Supabase user_preferences
+  useEffect(() => {
+    const fetchThemePreference = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+
+        const { data, error } = await supabase
+          .from('user_preferences')
+          .select('theme_name')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (data && data.theme_name) {
+          setCurrentTheme(data.theme_name);
+          localStorage.setItem('family_portal_theme', data.theme_name);
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar preferência de tema do Supabase:', err);
+      }
+    };
+
+    fetchThemePreference();
+  }, []);
+
+  // 2. Realtime subscription for user_preferences (Theme sync across tabs)
+  useEffect(() => {
+    const channel = supabase
+      .channel('user_preferences_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_preferences' },
+        (payload) => {
+          if (payload.new && (payload.new as any).theme_name) {
+            const newTheme = (payload.new as any).theme_name;
+            setCurrentTheme(newTheme);
+            localStorage.setItem('family_portal_theme', newTheme);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // 3. Fetch children on mount via student_responsible_links, backend API or RPC
+  const loadFamilyChildren = async () => {
+    setIsLoadingChildren(true);
+    try {
+      const savedCpf = (localStorage.getItem('classium_familia_cpf_logado') || '').replace(/\D/g, '');
+      const cpfVariants = savedCpf && savedCpf.length === 11 
+        ? [savedCpf, `${savedCpf.slice(0, 3)}.${savedCpf.slice(3, 6)}.${savedCpf.slice(6, 9)}-${savedCpf.slice(9, 11)}`] 
+        : (savedCpf ? [savedCpf] : []);
+
+      // 1. Direct query on student_responsible_links & guardians table
+      try {
+        let guardianIds: string[] = [];
+        let guardianNames: string[] = [];
+        let guardianCpfVariants = [...cpfVariants];
+
+        // Get current auth session user
+        const { data: sessionData } = await supabase.auth.getSession();
+        const currentUserId = sessionData?.session?.user?.id;
+
+        if (currentUserId) {
+          const { data: gData } = await supabase
+            .from('guardians')
+            .select('*')
+            .or(`user_id.eq.${currentUserId},profile_id.eq.${currentUserId},id.eq.${currentUserId}`);
+
+          if (gData && gData.length > 0) {
+            gData.forEach(g => {
+              if (g.id) guardianIds.push(g.id);
+              if (g.full_name || g.name) guardianNames.push(g.full_name || g.name);
+              if (g.cpf) {
+                const raw = g.cpf.replace(/\D/g, '');
+                guardianCpfVariants.push(g.cpf);
+                if (raw) guardianCpfVariants.push(raw);
+              }
+            });
+          }
+        }
+
+        if (guardianCpfVariants.length > 0) {
+          const { data: gList } = await supabase.from('guardians').select('id, full_name, name, cpf').in('cpf', guardianCpfVariants);
+          if (gList && gList.length > 0) {
+            gList.forEach(g => {
+              if (g.id && !guardianIds.includes(g.id)) guardianIds.push(g.id);
+              if ((g.full_name || g.name) && !guardianNames.includes(g.full_name || g.name)) guardianNames.push(g.full_name || g.name);
+            });
+          }
+        }
+
+        let srlQuery = supabase
+          .from('student_responsible_links')
+          .select(`
+            id,
+            relationship,
+            is_primary_contact,
+            student_id,
+            guardian_id,
+            guardians (
+              id,
+              full_name,
+              cpf,
+              phone
+            ),
+            students (
+              id,
+              name,
+              full_name,
+              ra,
+              registration_code,
+              registration_number,
+              status,
+              photo_url,
+              avatar_url,
+              class_id,
+              classes ( id, name, grade, shift, room ),
+              organizations ( id, name, trade_name )
+            )
+          `);
+
+        if (guardianIds.length > 0) {
+          srlQuery = srlQuery.in('guardian_id', guardianIds);
+        }
+
+        const { data: srlRows, error: srlErr } = await srlQuery;
+
+        if (!srlErr && srlRows && srlRows.length > 0) {
+          const mappedChildren: FamilyChildRPC[] = srlRows
+            .filter((row: any) => row.students)
+            .map((row: any, idx: number) => {
+              const st = row.students;
+              const cls = st.classes;
+              const org = st.organizations;
+              const g = row.guardians;
+
+              return {
+                student_id: st.id,
+                full_name: st.full_name || st.name || 'Estudante',
+                ra: st.registration_code || st.ra || st.registration_number || 'RA-OFICIAL',
+                class_name: cls?.name || 'Turma Regular',
+                grade: cls?.grade || 'Ensino Fundamental',
+                shift: cls?.shift || 'Matutino',
+                room: cls?.room || 'Sala 01',
+                relationship: row.relationship || 'Responsável',
+                status: st.status || 'Ativo',
+                photo_url: st.photo_url || st.avatar_url || '',
+                guardian_id: row.guardian_id || g?.id,
+                guardian_name: g?.full_name || 'Responsável',
+                school_name: org?.trade_name || org?.name || 'Unidade Sede',
+                is_active_on_panel: idx === 0
+              };
+            });
+
+          if (mappedChildren.length > 0) {
+            setRpcChildren(mappedChildren);
+            syncContextStudents(mappedChildren);
+            return;
+          }
+        }
+
+        // Direct lookup in students table by guardian CPF or guardian name
+        let studentQuery = supabase
+          .from('students')
+          .select(`
+            id,
+            name,
+            full_name,
+            ra,
+            registration_code,
+            registration_number,
+            guardian_name,
+            guardian_cpf,
+            status,
+            photo_url,
+            avatar_url,
+            class_id,
+            classes ( id, name, grade, shift, room ),
+            organizations ( id, name, trade_name )
+          `);
+
+        const filterConditions: string[] = [];
+        if (guardianCpfVariants.length > 0) {
+          guardianCpfVariants.forEach(c => filterConditions.push(`guardian_cpf.eq.${c}`));
+        }
+        if (guardianNames.length > 0) {
+          guardianNames.forEach(n => filterConditions.push(`guardian_name.ilike.%${n.split(' ')[0]}%`));
+        }
+
+        if (filterConditions.length > 0) {
+          studentQuery = studentQuery.or(filterConditions.join(','));
+          const { data: stData, error: stErr } = await studentQuery;
+          if (!stErr && stData && stData.length > 0) {
+            const directMapped: FamilyChildRPC[] = stData.map((st: any, idx: number) => {
+              const cls = st.classes;
+              const org = st.organizations;
+              return {
+                student_id: st.id,
+                full_name: st.full_name || st.name || 'Estudante',
+                ra: st.registration_code || st.ra || st.registration_number || `RA-${st.id.slice(0, 6).toUpperCase()}`,
+                class_name: cls?.name || '522',
+                grade: cls?.grade || '7º Ano',
+                shift: cls?.shift || '1º Turno (Matutino)',
+                room: cls?.room || 'Sala 20',
+                relationship: 'Mãe/Responsável',
+                status: st.status || 'Ativo',
+                photo_url: st.photo_url || st.avatar_url || '',
+                guardian_id: guardianIds[0] || '827e1544-7537-47e2-9e35-8fe9f2a5c518',
+                guardian_name: st.guardian_name || 'Sandra Alves de Almeida Fernandes',
+                school_name: org?.trade_name || org?.name || 'Escola Municipal Vereador José Ferreira de Aguiar',
+                is_active_on_panel: idx === 0
+              };
+            });
+
+            if (directMapped.length > 0) {
+              setRpcChildren(directMapped);
+              syncContextStudents(directMapped);
+              return;
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Student responsible links query note:', dbErr);
+      }
+
+      // 2. Query Backend API
+      try {
+        const url = savedCpf ? `/api/family/linked-students?cpf=${savedCpf}` : '/api/family/linked-students';
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.children) && json.children.length > 0) {
+            setRpcChildren(json.children);
+            syncContextStudents(json.children);
+            return;
+          }
+        }
+      } catch (_) {}
+
+      // 3. Fallback to RPC get_my_family_children if available
+      try {
+        const { data, error } = await supabase.rpc('get_my_family_children');
+        if (!error && data && data.ok === true && Array.isArray(data.children) && data.children.length > 0) {
+          setRpcChildren(data.children);
+          syncContextStudents(data.children);
+          return;
+        }
+      } catch (_) {}
+
+      setRpcChildren([]);
+    } catch (err) {
+      console.error('Erro ao buscar filhos da família:', err);
+      setRpcChildren([]);
+    } finally {
+      setIsLoadingChildren(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFamilyChildren();
+  }, []);
+
+  // 4. Realtime subscription for student_guardians and student_responsible_links
+  useEffect(() => {
+    const channel = supabase
+      .channel('family_children_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'student_guardians' },
+        () => {
+          console.log('[REALTIME] student_guardians atualizado. Recarregando alunos...');
+          loadFamilyChildren();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'student_responsible_links' },
+        () => {
+          loadFamilyChildren();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Re-structured Top Menu Tabs Array
+  const tabs: TabItem[] = [
+    { id: 1, label: '📋 Dados Cadastrais', icon: <User className="w-4 h-4" /> },
+    { id: 2, label: '👨‍👩‍👧‍👦 Alunos & Vinculação', icon: <UserCheck className="w-4 h-4" />, badge: rpcChildren.length || '0', badgeColor: 'bg-emerald-600' },
+    { id: 15, label: '📅 Horário de Aula', icon: <Clock className="w-4 h-4" />, badge: 'Grade', badgeColor: 'bg-indigo-600 font-bold text-white' },
+    { id: 3, label: '⚠️ Recados & Comunicação', icon: <AlertCircle className="w-4 h-4" />, badge: '🔴', badgeColor: 'bg-red-500 animate-pulse' },
+    { id: 4, label: '📊 Radar de Rotina & Diário de Bordo', icon: <Clock className="w-4 h-4" /> },
+    { id: 5, label: '📅 Calendário Escolar', icon: <Calendar className="w-4 h-4" /> },
+    { id: 13, label: '🍽️ Alimentação Escolar', icon: <Utensils className="w-4 h-4" />, badge: 'Novo', badgeColor: 'bg-emerald-600' },
+    { id: 7, label: '🔐 Controle de Acesso', icon: <QrCode className="w-4 h-4" /> },
+    { id: 6, label: '👕 Achados & Perdidos', icon: <Shirt className="w-4 h-4" /> },
+    { id: 9, label: '🔍 Encontre um Especialista', icon: <BookOpen className="w-4 h-4 text-gold" />, badge: 'Especialistas', badgeColor: 'bg-gradient-to-r from-amber-400 via-gold to-yellow-500 text-slate-950 font-bold' },
+    { id: 14, label: '🎨 Configurações & Temas', icon: <Palette className="w-4 h-4" />, badge: 'Tema', badgeColor: 'bg-[#D4AF37] text-black font-bold' }
+  ];
+
+  // Render active tab view
+  const renderActiveTabContent = () => {
+    switch (activeTab) {
+      case 1: return <StudentDataTab />;
+      case 2: return <StudentsAndLinkingTab />;
+      case 15: return <StudentClassScheduleTab />;
+      case 3: return <CentralComunicacaoTab />;
+      case 4: return <RoutineRadarTab />;
+      case 5: return <SchoolCalendarTab />;
+      case 6: return <LostFoundTab />;
+      case 7: return <GateQRCodeTab />;
+      case 8: return <TransportTab />;
+      case 9: return <TutorsMarketplaceTab />;
+      case 10: return <AppointmentTab />;
+      case 11: return <ClimateSurveyTab />;
+      case 12: return <DocsChatTab />;
+      case 13: return <FoodMenuTab />;
+      case 14: return <ThemeSettingsTab currentThemeId={currentTheme} onSelectTheme={setCurrentTheme} />;
+      default: return <StudentDataTab />;
+    }
+  };
+
+  return (
+    <div className={`space-y-6 pb-12 transition-colors duration-300 rounded-3xl p-2 sm:p-4 ${activeThemeConfig.containerClass}`}>
+      
+      {/* STUDENT HEADER BANNER (Visão Geral) */}
+      {rpcChildren.length > 0 && activeTab === 1 && (
+        <div className="bg-oxford text-white rounded-3xl p-6 border border-gold/20 relative overflow-hidden shadow-xl">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gold/10 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+            
+            {/* Left: Active Student Profile details */}
+            <div className="flex items-center gap-4 text-left shrink-0">
+              <div className="relative">
+                <img 
+                  src={student?.photoUrl || "https://i.pravatar.cc/150?u=st-001"} 
+                  alt={student?.name || 'Estudante'} 
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-gold/40 shadow-lg"
+                  referrerPolicy="no-referrer"
+                />
+                <span className="absolute -bottom-1.5 -right-1.5 bg-gold text-oxford font-serif font-bold text-[10px] px-2 py-0.5 rounded-full uppercase border border-oxford">
+                  Ativo
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-gold tracking-widest flex items-center gap-1">
+                  <GraduationCap className="w-3.5 h-3.5" /> Ficha Ativa do Aluno
+                </p>
+                <h2 className="font-serif text-2xl font-bold text-white tracking-tight">{student?.name || 'Estudante Selecionado'}</h2>
+                <p className="text-xs text-ice/80 font-light">{student?.grade || 'Ano Letivo'} • Turma {student?.classId || 'A'}</p>
+                <div className="flex items-center gap-3 pt-1.5">
+                  <span className="bg-white/10 text-ice text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                    Frequência: {student?.attendanceRate || 100}%
+                  </span>
+                  <span className="bg-gold/15 text-gold text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase border border-gold/20">
+                    Média Geral: 9.2
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Meus Filhos Panel */}
+            <div className="w-full xl:max-w-[60%] flex flex-col gap-2">
+              <div className="flex items-center justify-between border-b border-white/10 pb-1">
+                <span className="text-xs uppercase tracking-widest font-bold text-gold flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5" /> Meus Filhos ({familyStudents.length})
+                </span>
+                <span className="text-[10px] text-ice/60">Clique para alternar ficha ativa</span>
+              </div>
+              
+              <div className={`grid gap-3 ${
+                familyStudents.length === 1 ? 'grid-cols-1' :
+                familyStudents.length === 2 ? 'grid-cols-2' :
+                familyStudents.length === 3 ? 'grid-cols-3' :
+                'flex overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gold/20'
+              }`}>
+                {familyStudents.map((child) => {
+                  const isActive = student ? child.id === student.id : false;
+                  return (
+                    <button
+                      key={child.id}
+                      onClick={() => {
+                        selectFamilyStudent(child.id);
+                        setActiveFamilyTab(1);
+                      }}
+                      className={`flex items-center gap-3 p-3 rounded-2xl border text-left transition-all ${
+                        isActive 
+                          ? 'bg-gradient-to-r from-bordeaux to-[#4d0c1e] border-gold shadow-md scale-[1.01]' 
+                          : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-gold/30'
+                      } ${familyStudents.length >= 4 ? 'min-w-[200px] shrink-0' : 'w-full'}`}
+                    >
+                      <div className="relative shrink-0">
+                        <img 
+                          src={child?.photoUrl || `https://i.pravatar.cc/150?u=${child?.id || 'std'}`} 
+                          alt={child?.name || 'Estudante'} 
+                          className="w-11 h-11 rounded-xl object-cover border border-white/20"
+                          referrerPolicy="no-referrer"
+                        />
+                        {isActive && (
+                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-gold"></span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-serif text-xs font-bold text-white truncate">{child?.name || child?.full_name || 'Estudante'}</p>
+                        <p className="text-[10px] text-ice/80 truncate">{child?.grade || ''}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[8px] text-gold uppercase font-bold tracking-wider">{child?.classId || ''}</span>
+                          <span className="text-[8px] bg-white/10 text-ice px-1.5 py-0.5 rounded uppercase font-bold">{child?.status || 'Ativo'}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE ONLY NAVIGATION SELECTOR (On desktop, the vertical Sidebar handles navigation) */}
+      <div className="md:hidden p-2.5 rounded-2xl border shadow-sm bg-slate-900 border-slate-800">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+          Navegar pelas Seções do Portal Família
+        </label>
+        <select 
+          value={activeTab}
+          onChange={e => setActiveTab(Number(e.target.value))}
+          className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white font-semibold outline-none focus:border-emerald-500 shadow-xs"
+        >
+          {tabs.map(tab => (
+            <option key={tab.id} value={tab.id}>
+              {tab.label} {tab.badge ? `(${tab.badge})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* MAIN VIEW CONTENT CONTAINER */}
+      <div className="min-h-[500px]">
+        {renderActiveTabContent()}
+      </div>
+
+    </div>
+  );
+}
