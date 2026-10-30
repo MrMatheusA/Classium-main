@@ -1,24 +1,32 @@
 # ==============================================================================
-# ESTÁGIO 1: BUILD & PREPARAÇÃO DE DEPENDÊNCIAS VIA BUN
+# ESTÁGIO 1: BUILD (FRONTEND + BACKEND) E DEPENDÊNCIAS VIA BUN
 # ==============================================================================
 FROM oven/bun:1.2.4-slim AS builder
 
 WORKDIR /build
 
+# development garante que as devDependencies (vite, esbuild, etc.) sejam instaladas
 ENV NODE_ENV=development
 
-# Copiar arquivos de manifesto e lockfile oficial
+# Variáveis embutidas no frontend em tempo de build (marque como "Build Variable" no Coolify).
+# Ajuste os nomes para os que o seu código realmente usa via import.meta.env.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+
+# Copiar manifesto e lockfile primeiro para aproveitar cache de camadas
 COPY package.json bun.lock ./
 
 # Instalação reproduzível congelada pelo lockfile oficial
 RUN bun install --frozen-lockfile
 
-# Copiar arquivos de configuração e código-fonte do servidor backend
-COPY tsconfig.json ./
-COPY server.ts ./
-COPY server/ ./server/
+# Copiar todo o código-fonte (frontend + backend), filtrado pelo .dockerignore
+COPY . .
 
-# Compilar o servidor backend via esbuild gerando dist-server/server.cjs
+# Compilar o frontend com Vite -> /build/dist
+# NODE_ENV=production evita que o React seja empacotado em modo de desenvolvimento
+RUN NODE_ENV=production bun run build:client
+
+# Compilar o servidor backend via esbuild -> /build/dist-server/server.cjs
 RUN bun run build:server
 
 # Instalar dependências estritamente de produção para a imagem final
@@ -33,7 +41,7 @@ RUN mkdir -p /build/prod_deps && \
 FROM node:22-bookworm-slim AS runner
 
 LABEL maintainer="Classium Gestão Educacional"
-LABEL description="Backend Express conteinerizado para o Classium"
+LABEL description="Classium (frontend + backend Express) conteinerizado"
 
 WORKDIR /app
 
@@ -41,10 +49,11 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # Criar diretórios operacionais vazios atribuídos ao usuário não-root node
-RUN mkdir -p /app/data /app/uploads/thumbnails /app/dist-server && \
+RUN mkdir -p /app/data /app/uploads/thumbnails /app/dist /app/dist-server && \
     chown -R node:node /app
 
-# Copiar bundle compilado e node_modules estritamente de produção
+# Copiar frontend compilado, bundle do servidor e node_modules de produção
+COPY --chown=node:node --from=builder /build/dist /app/dist
 COPY --chown=node:node --from=builder /build/dist-server /app/dist-server
 COPY --chown=node:node --from=builder /build/prod_deps/node_modules /app/node_modules
 COPY --chown=node:node --from=builder /build/package.json /app/package.json

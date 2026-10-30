@@ -21,17 +21,15 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Artefatos do Frontend (não pertencem ao backend conteinerizado)
-src/
-public/
-index.html
-vite.config.ts
+# Arquivos de deploy de outras plataformas
 vercel.json
 
 # Dados e uploads locais do host (não poluir a imagem de produção)
 data/
 uploads/
 build/
+
+# Artefatos de build locais (são gerados dentro do container)
 dist/
 dist-server/
 
@@ -39,7 +37,4 @@ dist-server/
 tests/
 *.md
 *.sql
-*.txt
-*.js
-!server/
 query-schema.js
