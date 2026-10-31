@@ -8,10 +8,13 @@ WORKDIR /build
 # development garante que as devDependencies (vite, esbuild, etc.) sejam instaladas
 ENV NODE_ENV=development
 
-# Variáveis embutidas no frontend em tempo de build (marque como "Build Variable" no Coolify).
-# Ajuste os nomes para os que o seu código realmente usa via import.meta.env.
+# Variáveis embutidas no frontend em tempo de build.
+# No Coolify, marque-as como "Available during build".
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
+# Sinal de ambiente exigido por src/lib/supabase/config.ts fora da Vercel
+# (production | staging). Sem ele, o build de produção é considerado ambíguo.
+ARG VITE_APP_ENV
 
 # Copiar manifesto e lockfile primeiro para aproveitar cache de camadas
 COPY package.json bun.lock ./
