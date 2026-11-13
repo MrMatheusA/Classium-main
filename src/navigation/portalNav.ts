@@ -8,14 +8,17 @@ import {
   Building2,
   Bus,
   Calendar,
+  CalendarCheck,
   ClipboardList,
   Clock,
   DollarSign,
   FileText,
   GraduationCap,
+  HandHeart,
   Home,
   Megaphone,
   MessageSquare,
+  NotebookPen,
   Plug,
   QrCode,
   Radar,
@@ -72,6 +75,15 @@ export const ADMIN_NAV: NavSection<string>[] = [
     items: [
       { id: 'dashboard', slug: '', label: 'Início', icon: Home, description: 'Matrículas, frequência e indicadores da escola.' },
       { id: 'instituicao', slug: 'escola', label: 'Dados da escola', icon: Building2, description: 'Razão social, CNPJ, endereço e equipe gestora.', inSidebar: false },
+    ],
+  },
+  {
+    title: 'Escola Escuta',
+    items: [
+      { id: 'ee-mural', slug: 'mural', label: 'Mural de Recados', icon: Megaphone, description: 'Recados oficiais com confirmação de leitura e ciência.' },
+      { id: 'ee-agenda', slug: 'agenda-familia', label: 'Agenda Família', icon: CalendarCheck, description: 'Horários de atendimento e agendamentos das famílias.' },
+      { id: 'ee-diario', slug: 'agenda-diaria', label: 'Agenda Diária', icon: NotebookPen, description: 'Registros diários dos docentes para aprovar.' },
+      { id: 'ee-participa', slug: 'participa', label: 'Participa', icon: HandHeart, description: 'Pesquisas, sugestões, inscrições e devolutivas.' },
     ],
   },
   {
@@ -138,6 +150,15 @@ export const FAMILY_NAV: NavSection<number>[] = [
     ],
   },
   {
+    title: 'Escola Escuta',
+    items: [
+      { id: 20, slug: 'mural', label: 'Mural de Recados', icon: Megaphone, description: 'Recados da escola com confirmação de leitura.' },
+      { id: 22, slug: 'agenda-diaria', label: 'Agenda Diária', icon: NotebookPen, description: 'O dia do seu filho contado pelos professores.' },
+      { id: 21, slug: 'agendar-atendimento', label: 'Agendar atendimento', icon: CalendarCheck, description: 'Marque um horário com a escola.' },
+      { id: 23, slug: 'participa', label: 'Participa', icon: HandHeart, description: 'Pesquisas, sugestões e inscrições.' },
+    ],
+  },
+  {
     title: 'Dia a dia',
     items: [
       { id: 3, slug: 'recados', label: 'Recados', icon: Megaphone, description: 'Comunicados da escola e dos professores.' },
@@ -170,6 +191,14 @@ export const PROFESSOR_NAV: NavSection<string>[] = [
       { id: 'seating', slug: 'mapa-da-sala', label: 'Mapa da sala', icon: GraduationCap, description: 'Onde cada aluno senta.' },
       { id: 'occurrences', slug: 'diario', label: 'Diário de bordo', icon: Activity, description: 'Ocorrências e registros da aula.' },
       { id: 'calendar', slug: 'calendario', label: 'Calendário', icon: Calendar, description: 'Aulas, provas e eventos.' },
+    ],
+  },
+  {
+    title: 'Escola Escuta',
+    items: [
+      { id: 'ee-mural', slug: 'mural', label: 'Mural de Recados', icon: Megaphone, description: 'Recados da escola e confirmação de leitura.' },
+      { id: 'ee-diario', slug: 'agenda-diaria', label: 'Agenda Diária', icon: NotebookPen, description: 'Registre o dia da turma para as famílias.' },
+      { id: 'ee-participa', slug: 'participa', label: 'Participa', icon: HandHeart, description: 'Pesquisas, sugestões e encontros.' },
     ],
   },
   {
@@ -237,6 +266,10 @@ const MATRIX_ALIASES: Record<string, string[]> = {
   financeiro: ['fin', 'financ'],
   relatorios: ['relat', 'relatór'],
   'radar-rotina': ['radar'],
+  'ee-mural': ['mural'],
+  'ee-agenda': ['agenda fam'],
+  'ee-diario': ['agenda diária', 'agenda diaria'],
+  'ee-participa': ['particip'],
   configuracoes: ['config', 'configur'],
 };
 

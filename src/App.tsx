@@ -15,6 +15,7 @@ import { GestorDashboard } from './components/GestorDashboard';
 import { FamilyDashboard } from './components/FamilyDashboard';
 import { ProfessorDashboard } from './components/ProfessorDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
+import { EscolaEscutaAba, moduloDaAba } from './components/escolaEscuta';
 import { AICommandPanel } from './components/AICommandPanel';
 import { AuthProvider } from './auth/AuthProvider';
 import { useAuth } from './hooks/useAuth';
@@ -181,6 +182,9 @@ function AppContent() {
               {mode === 'admin' &&
                 (role === 'gestor' && activeAdminTab === 'dashboard' ? (
                   <GestorDashboard />
+                ) : (role === 'gestor' || role === 'admin') && moduloDaAba(activeAdminTab) ? (
+                  /* Escola Escuta: Mural, Agenda Família, Agenda Diária, Participa */
+                  <EscolaEscutaAba portal="gestor" />
                 ) : role === 'gestor' || role === 'admin' ? (
                   <AdminDashboard />
                 ) : null)}

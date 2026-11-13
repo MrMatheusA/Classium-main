@@ -11,6 +11,15 @@ import { exportToWord, exportToPDF } from './studio/ExportManager';
 import { classesService, ClassEntity, DisciplineEntity } from '../services/classes/classes.service';
 import { activitiesService, ActivityRecord } from '../services/activities/activities.service';
 import { useAuth } from '../hooks/useAuth';
+import {
+  ajustarAtividade,
+  gerarAtividade,
+  listarMotores,
+  nomeMotor,
+  sugerirTema,
+  type MotorId,
+  type MotoresIA,
+} from '../services/ia/iaService';
 
 import { 
   Sparkles, Brain, Download, Printer, FileText, 
@@ -114,6 +123,42 @@ export function EducaStudio({
     baixaVisao: false,
     dislexia: false
   });
+
+  // IA: qual motor usar (Gemini, Groq, OpenRouter ou automático) e o que o docente precisa
+  const [motorIA, setMotorIA] = useState<MotorId>(() => {
+    try {
+      return (localStorage.getItem('classium:ia-motor') as MotorId) || 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+  const [motoresIA, setMotoresIA] = useState<MotoresIA | null>(null);
+  const [erroMotores, setErroMotores] = useState<string | null>(null);
+  const [instrucoesExtras, setInstrucoesExtras] = useState('');
+  const [textoBase, setTextoBase] = useState('');
+  const [progressoIA, setProgressoIA] = useState<{ nome?: string; aviso?: string } | null>(null);
+  const [ultimoProvedor, setUltimoProvedor] = useState<string | null>(null);
+  const [pedidoAjuste, setPedidoAjuste] = useState('');
+  const iaDisponivel = !!motoresIA?.pode_usar && !!motoresIA?.motores?.some((m) => m.configurado);
+
+  const carregarMotores = useCallback(async () => {
+    const r = await listarMotores();
+    if (r.error) setErroMotores(r.error);
+    else {
+      setErroMotores(null);
+      setMotoresIA(r.data || null);
+    }
+  }, []);
+  useEffect(() => {
+    carregarMotores();
+  }, [carregarMotores]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('classium:ia-motor', motorIA);
+    } catch {
+      /* navegação privada */
+    }
+  }, [motorIA]);
 
   // Generator & UI states
   const [isGenerating, setIsGenerating] = useState(false);
@@ -496,7 +541,24 @@ export function EducaStudio({
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  // 3. AI Topic Suggestion
+  // 3. AI Topic Suggestion (botão "Sugerir IA" usa Gemini/Groq/OpenRouter quando configurados)
+  const handleSuggestTopicIA = async () => {
+    if (!iaDisponivel) return handleSuggestTopic(subject, grade);
+    setIsSuggestingTopic(true);
+    try {
+      const sug = await sugerirTema(subject, grade, motorIA, orgId);
+      if (sug.topic) setTopic(sug.topic);
+      if (sug.bncc) setBncc(sug.bncc);
+      if (sug.objective) setObjective(sug.objective);
+      showToast(`Tema sugerido pelo ${nomeMotor(sug.provedor)}: "${sug.topic}"`);
+      carregarMotores();
+    } catch (err: any) {
+      showToast(err?.message || 'Não foi possível sugerir um tema agora.');
+    } finally {
+      setIsSuggestingTopic(false);
+    }
+  };
+
   const handleSuggestTopic = async (subj: string, gr: string) => {
     setIsSuggestingTopic(true);
     try {
@@ -522,7 +584,71 @@ export function EducaStudio({
   ];
 
   // 4. AI Generation trigger
+  /** Geração com Gemini / Groq / OpenRouter (troca sozinho se um falhar) */
+  const handleGenerateIA = async () => {
+    if (!topic.trim()) return showToast('Informe o tema ou conteúdo da atividade.');
+    setIsGenerating(true);
+    setGenerationStep(0);
+    setProgressoIA(null);
+    const interval = setInterval(() => setGenerationStep((prev) => (prev < generationSteps.length - 1 ? prev + 1 : prev)), 2500);
+    try {
+      const { atividade, provedor } = await gerarAtividade(
+        {
+          grade,
+          subject,
+          topic,
+          context,
+          objective,
+          bncc,
+          docType,
+          difficulty,
+          questionCount,
+          questionTypes,
+          inclusivity,
+          instrucoesExtras,
+          textoBase,
+          organizationId: orgId,
+        },
+        motorIA,
+        setProgressoIA,
+      );
+      const agora = Date.now();
+      setDocument({
+        id: `doc-${agora}`,
+        title: atividade.title || `Atividade de ${subject}: ${topic}`,
+        header: { ...document.header, subject, grade, date: new Date().toLocaleDateString('pt-BR') },
+        instructions: atividade.instructions || 'Leia atentamente as questões antes de responder.',
+        questions: atividade.questions.map((q, idx) => ({
+          id: `q-${agora}-${idx}`,
+          number: idx + 1,
+          type: q.type as any,
+          difficulty: (q.difficulty || difficulty) as any,
+          text: q.text,
+          options: q.options,
+          answer: q.answer,
+        })),
+        estimatedTimeMinutes: atividade.estimatedTimeMinutes || 45,
+        bnccHabilites: atividade.bnccHabilites?.length ? atividade.bnccHabilites : [bncc],
+        learningIndexExpected: 88,
+        createdAt: new Date().toLocaleDateString('pt-BR'),
+        updatedAt: new Date().toLocaleDateString('pt-BR'),
+        version: 1,
+      });
+      setUltimoProvedor(provedor);
+      setHasUnsavedChanges(true);
+      showToast(`Atividade gerada pelo ${nomeMotor(provedor)} com ${atividade.questions.length} questões. Revise antes de usar.`);
+    } catch (err: any) {
+      showToast(err?.message || 'Não foi possível gerar agora.');
+    } finally {
+      clearInterval(interval);
+      setIsGenerating(false);
+      setProgressoIA(null);
+      carregarMotores();
+    }
+  };
+
   const handleGenerate = async () => {
+    if (iaDisponivel) return handleGenerateIA();
     setIsGenerating(true);
     setGenerationStep(0);
 
@@ -605,6 +731,50 @@ export function EducaStudio({
     if (action === 'mostrar_gabarito') {
       setShowAnswerKey(true);
       showToast(" Gabarito de referência reexibido!");
+      return;
+    }
+
+    if (iaDisponivel) {
+      const pedidos: Record<string, string> = {
+        reescrever: 'Reescreva as instruções e torne os enunciados mais instigantes e contextualizados, sem mudar o conteúdo avaliado.',
+        facilitar: 'Reduza a complexidade: linguagem mais simples, enunciados mais curtos e nível mais introdutório.',
+        dificultar: 'Aumente o nível crítico: questões mais reflexivas, que exijam análise e argumentação.',
+        inclusao: 'Adapte para estudantes com TEA e TDAH: frases curtas e literais, uma instrução por vez, destaque do que fazer, menos texto por questão.',
+      };
+      const pedido = action === 'livre' ? pedidoAjuste.trim() : pedidos[action] || action;
+      if (!pedido) return showToast('Escreva o que a IA deve ajustar.');
+      setIsGenerating(true);
+      setGenerationStep(0);
+      setProgressoIA(null);
+      try {
+        const { atividade, provedor } = await ajustarAtividade(document, pedido, { grade, subject, difficulty, organizationId: orgId }, motorIA, setProgressoIA);
+        const agora = Date.now();
+        setDocument({
+          ...document,
+          title: atividade.title || document.title,
+          instructions: atividade.instructions || document.instructions,
+          questions: atividade.questions.map((q, idx) => ({
+            id: `q-upd-${agora}-${idx}`,
+            number: idx + 1,
+            type: q.type as any,
+            difficulty: (q.difficulty || difficulty) as any,
+            text: q.text,
+            options: q.options,
+            answer: q.answer,
+          })),
+          updatedAt: new Date().toLocaleDateString('pt-BR'),
+        });
+        setUltimoProvedor(provedor);
+        setHasUnsavedChanges(true);
+        if (action === 'livre') setPedidoAjuste('');
+        showToast(`Ajuste aplicado pelo ${nomeMotor(provedor)}.`);
+      } catch (err: any) {
+        showToast(err?.message || 'Não foi possível ajustar agora.');
+      } finally {
+        setIsGenerating(false);
+        setProgressoIA(null);
+        carregarMotores();
+      }
       return;
     }
 
@@ -1105,6 +1275,60 @@ export function EducaStudio({
           </div>
 
           <div className="space-y-4">
+            {/* Motor de IA */}
+            <div className="space-y-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="motor-ia" className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--text-heading)]">
+                  <Brain className="h-3.5 w-3.5 text-[var(--accent)]" /> Inteligência artificial
+                </label>
+                {motoresIA && (
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    {motoresIA.usados_hoje}/{motoresIA.limite_diario} hoje
+                  </span>
+                )}
+              </div>
+              <select
+                id="motor-ia"
+                value={motorIA}
+                onChange={(e) => setMotorIA(e.target.value as MotorId)}
+                disabled={!iaDisponivel}
+                className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)] disabled:opacity-60"
+              >
+                <option value="auto">Automático (usa a melhor disponível)</option>
+                {(motoresIA?.motores || []).map((m) => (
+                  <option key={m.id} value={m.id} disabled={!m.configurado}>
+                    {m.nome}
+                    {m.configurado ? '' : ' (não configurada)'}
+                  </option>
+                ))}
+              </select>
+              <div className="flex flex-wrap gap-1.5">
+                {(motoresIA?.motores || []).map((m) => (
+                  <span
+                    key={m.id}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={m.configurado ? { background: '#E7F6EE', color: '#127A4B' } : { background: 'var(--bg-card-alt)', color: 'var(--text-muted)' }}
+                    title={m.modelo || undefined}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.configurado ? '#12B76A' : '#98A2B3' }} />
+                    {m.nome}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
+                {erroMotores
+                  ? erroMotores
+                  : !motoresIA
+                    ? 'Verificando as IAs…'
+                    : !motoresIA.pode_usar
+                      ? 'A IA do gerador é liberada para professores e equipe da escola.'
+                      : iaDisponivel
+                        ? 'Se a escolhida estiver fora do ar ou no limite gratuito, o sistema tenta a próxima sozinho.'
+                        : 'Nenhuma IA configurada ainda. A administração cadastra as chaves gratuitas no banco.'}
+                {ultimoProvedor ? ` Última geração: ${nomeMotor(ultimoProvedor)}.` : ''}
+              </p>
+            </div>
+
             {/* Turma / Integração com Minhas Turmas */}
             <div className="space-y-1">
               <label className="text-[10px] text-[var(--text-muted)] font-bold block">
@@ -1130,7 +1354,7 @@ export function EducaStudio({
                 value={grade}
                 onChange={(e) => {
                   setGrade(e.target.value);
-                  handleSuggestTopic(subject, e.target.value);
+                  if (!iaDisponivel) handleSuggestTopic(subject, e.target.value);
                 }}
                 className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)] transition-colors"
               >
@@ -1152,7 +1376,7 @@ export function EducaStudio({
                 value={subject}
                 onChange={(e) => {
                   setSubject(e.target.value);
-                  handleSuggestTopic(e.target.value, grade);
+                  if (!iaDisponivel) handleSuggestTopic(e.target.value, grade);
                 }}
                 className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)] transition-colors"
               >
@@ -1170,7 +1394,7 @@ export function EducaStudio({
                 </label>
                 <button
                   type="button"
-                  onClick={() => handleSuggestTopic(subject, grade)}
+                  onClick={handleSuggestTopicIA}
                   disabled={isSuggestingTopic}
                   className="text-[9px] text-[var(--accent)] font-bold flex items-center gap-1 transition-all cursor-pointer"
                   title="Sugerir novo tema pedagógico com IA"
@@ -1200,6 +1424,36 @@ export function EducaStudio({
                 placeholder="Foco nas mudanças sociais, surgimento das fábricas e emigração campo-cidade..."
                 className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)] transition-colors resize-none leading-relaxed"
               />
+            </div>
+
+            {/* O que o docente precisa (vai com prioridade para a IA) */}
+            <div className="space-y-1">
+              <label htmlFor="ia-instrucoes" className="text-[10px] text-[var(--text-muted)] font-bold block">
+                O que você precisa? (pedido para a IA)
+              </label>
+              <textarea
+                id="ia-instrucoes"
+                value={instrucoesExtras}
+                onChange={(e) => setInstrucoesExtras(e.target.value.slice(0, 2000))}
+                rows={3}
+                placeholder="Ex.: questões com situações do cotidiano dos alunos, uma questão com gráfico descrito em texto, linguagem para turma com defasagem em leitura…"
+                className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)] transition-colors resize-none leading-relaxed"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="ia-texto-base" className="text-[10px] text-[var(--text-muted)] font-bold block">
+                Texto-base (opcional)
+              </label>
+              <textarea
+                id="ia-texto-base"
+                value={textoBase}
+                onChange={(e) => setTextoBase(e.target.value.slice(0, 12000))}
+                rows={3}
+                placeholder="Cole aqui um texto, poema, notícia ou trecho do livro para a IA criar questões a partir dele."
+                className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)] transition-colors resize-none leading-relaxed"
+              />
+              {textoBase && <p className="text-[10px] text-[var(--text-muted)]">{textoBase.length.toLocaleString('pt-BR')} / 12.000 caracteres</p>}
             </div>
 
             {/* Dificuldade */}
@@ -1289,6 +1543,15 @@ export function EducaStudio({
                   />
                   <span>Associação</span>
                 </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={questionTypes.complete}
+                    onChange={(e) => setQuestionTypes({ ...questionTypes, complete: e.target.checked })}
+                    className="accent-gold rounded"
+                  />
+                  <span>Complete as lacunas</span>
+                </label>
               </div>
             </div>
 
@@ -1317,6 +1580,24 @@ export function EducaStudio({
                   />
                   <span>TDAH</span>
                 </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={inclusivity.baixaVisao}
+                    onChange={(e) => setInclusivity({ ...inclusivity, baixaVisao: e.target.checked })}
+                    className="accent-purple-500 rounded"
+                  />
+                  <span>Baixa visão</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={inclusivity.dislexia}
+                    onChange={(e) => setInclusivity({ ...inclusivity, dislexia: e.target.checked })}
+                    className="accent-purple-500 rounded"
+                  />
+                  <span>Dislexia</span>
+                </label>
               </div>
             </div>
 
@@ -1327,7 +1608,13 @@ export function EducaStudio({
               className="w-full py-3.5 bg-gradient-to-r from-purple-600 via-[var(--accent)] to-purple-600 hover:brightness-110 active:scale-[0.99] text-[var(--accent-fg)] rounded-xl text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer mt-2"
             >
               <Sparkles className="w-4 h-4 text-[var(--text-heading)] animate-pulse" />
-              <span>{isGenerating ? 'Gerando com IA...' : 'Gerar atividade com IA'}</span>
+              <span>
+                {isGenerating
+                  ? `Gerando com ${progressoIA?.nome || (motorIA === 'auto' ? 'IA' : nomeMotor(motorIA))}…`
+                  : iaDisponivel && motorIA !== 'auto'
+                    ? `Gerar atividade com ${nomeMotor(motorIA)}`
+                    : 'Gerar atividade com IA'}
+              </span>
             </button>
           </div>
         </div>
@@ -1448,6 +1735,26 @@ export function EducaStudio({
               >
                  Aumentar Rigor
               </button>
+              {iaDisponivel && (
+                <form
+                  className="flex items-center gap-1"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    triggerAIAction('livre');
+                  }}
+                >
+                  <input
+                    value={pedidoAjuste}
+                    onChange={(e) => setPedidoAjuste(e.target.value.slice(0, 500))}
+                    placeholder="Pedir ajuste à IA…"
+                    aria-label="Pedir ajuste à IA"
+                    className="w-44 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-2 py-1 text-[10px] text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
+                  />
+                  <button type="submit" disabled={isGenerating || !pedidoAjuste.trim()} className="rounded-lg bg-[var(--accent)] px-2 py-1 text-[10px] font-bold text-[var(--accent-fg)] disabled:opacity-50">
+                    Ajustar
+                  </button>
+                </form>
+              )}
               <button 
                 onClick={() => triggerAIAction('inclusao')}
                 className="px-2.5 py-1 bg-purple-50 hover:bg-purple-50 border border-purple-200 rounded-lg text-[10px] font-bold text-purple-300 transition-all cursor-pointer"
@@ -1549,6 +1856,8 @@ export function EducaStudio({
                 <div className="text-xs text-purple-700 font-mono mt-1">
                   {generationSteps[generationStep]}
                 </div>
+                {progressoIA?.nome && <div className="text-[11px] text-[var(--text-muted)]">Usando {progressoIA.nome}</div>}
+                {progressoIA?.aviso && <div className="text-[11px] font-semibold text-[#B54708]">{progressoIA.aviso}</div>}
                 <div className="w-64 h-1.5 bg-oxford/50 rounded-full overflow-hidden mx-auto border border-[var(--border)]">
                   <div 
                     className="h-full bg-gradient-to-r from-purple-500 to-[var(--accent)] rounded-full transition-all duration-1000" 

@@ -18,10 +18,16 @@ import { DocsChatTab } from './family/DocsChatTab';
 import { TransportTab } from './family/TransportTab';
 import { StudentClassScheduleTab } from './family/StudentClassScheduleTab';
 import { FoodMenuTab } from './family/FoodMenuTab';
+import { usePortalNav } from '../navigation/portalNav';
+import { AgendaDiariaFamilia, AgendaFamiliaPortal, DiarioNosRecados, MuralDestaque, MuralPortal, PainelFamilia, ParticipaPortal, useMuralNaoLidos } from './escolaEscuta';
 import { Avatar, BrandHero, Card, CardHeader, EmptyState, Page, PillNav, Skeleton, EASE } from './ui/kit';
 import {
   BookOpen,
+  CalendarCheck,
   CalendarDays,
+  HandHeart,
+  Megaphone,
+  NotebookPen,
   Check,
   Clock,
   Heart,
@@ -55,6 +61,10 @@ const TABS: { id: number; label: string; icon: LucideIcon }[] = [
   { id: 1, label: 'Visão geral', icon: User },
   { id: 2, label: 'Filhos e vínculos', icon: UserCheck },
   { id: 15, label: 'Horário de aula', icon: Clock },
+  { id: 20, label: 'Mural', icon: Megaphone },
+  { id: 22, label: 'Agenda diária', icon: NotebookPen },
+  { id: 21, label: 'Agendar atendimento', icon: CalendarCheck },
+  { id: 23, label: 'Participa', icon: HandHeart },
   { id: 3, label: 'Recados', icon: MessageSquare },
   { id: 4, label: 'Rotina', icon: Radar },
   { id: 5, label: 'Calendário', icon: CalendarDays },
@@ -67,9 +77,13 @@ const TABS: { id: number; label: string; icon: LucideIcon }[] = [
 
 export function FamilyDashboard() {
   const { student, activeFamilyTab, setActiveFamilyTab, familyStudents, setFamilyStudents, setStudent, selectFamilyStudent } = usePlatform();
+  const nav = usePortalNav(); // abre módulos pelo menu (URL e menu acompanham)
 
   const [children, setChildren] = useState<FamilyChildRPC[]>([]);
   const [loading, setLoading] = useState(true);
+  // Escola Escuta: recado aberto pelo destaque da página e contador do Mural
+  const [recadoId, setRecadoId] = useState<string | null>(null);
+  const novidadesMural = useMuralNaoLidos('familia');
   const lastSyncKey = useRef('');
 
   /** Leva os filhos para o contexto da plataforma (usado pelas abas) */
@@ -148,11 +162,22 @@ export function FamilyDashboard() {
       case 1:
         return <StudentDataTab />;
       case 2:
-        return <StudentsAndLinkingTab />;
+        // Início da família: painel com atendimentos, participações, prazos e Agenda Diária
+        return (
+          <>
+            <PainelFamilia onIr={(aba) => nav.go(aba)} />
+            <StudentsAndLinkingTab />
+          </>
+        );
       case 15:
         return <StudentClassScheduleTab />;
       case 3:
-        return <CentralComunicacaoTab />;
+        return (
+          <>
+            <DiarioNosRecados onIr={(aba) => nav.go(aba)} />
+            <CentralComunicacaoTab />
+          </>
+        );
       case 4:
         return <RoutineRadarTab />;
       case 5:
@@ -175,6 +200,15 @@ export function FamilyDashboard() {
         return <FoodMenuTab />;
       case 14:
         return <AppearanceSettings />;
+      // Escola Escuta
+      case 20:
+        return <MuralPortal portal="familia" recadoInicialId={recadoId} />;
+      case 21:
+        return <AgendaFamiliaPortal />;
+      case 22:
+        return <AgendaDiariaFamilia />;
+      case 23:
+        return <ParticipaPortal portal="familia" />;
       default:
         return <StudentDataTab />;
     }
@@ -266,10 +300,23 @@ export function FamilyDashboard() {
         </BrandHero>
       )}
 
+      {/* Recado novo no Mural: destaque de 5 segundos (não bloqueia nada) */}
+      {activeTab !== 20 && (
+        <MuralDestaque
+          portal="familia"
+          onAbrir={(id) => {
+            setRecadoId(id);
+            setActiveFamilyTab(20);
+          }}
+        />
+      )}
+
       {/* Seções */}
       <PillNav
         label="Seções do portal da família"
-        items={TABS.map((t) => (t.id === 2 ? { ...t, badge: children.length || undefined } : t))}
+        items={TABS.map((t) =>
+          t.id === 2 ? { ...t, badge: children.length || undefined } : t.id === 20 ? { ...t, badge: novidadesMural || undefined } : t,
+        )}
         value={activeTab}
         onChange={(id) => setActiveFamilyTab(id)}
       />

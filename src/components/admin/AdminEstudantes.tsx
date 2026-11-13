@@ -967,126 +967,95 @@ export function AdminEstudantes() {
   return (
     <div className="space-y-6 text-left animate-fade-in">
       
-      {/* A) CABEÇALHO DA ABA ESTUDANTES */}
-      <div className="bg-slate-900/80 border border-gold/30 rounded-3xl p-6 md:p-8 backdrop-blur shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-gold/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#7F1D1D] to-slate-900 border border-gold/40 flex items-center justify-center text-gold shadow-md">
-                <GraduationCap className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="font-serif text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                  <span>Menu Estudantes</span>
-                </h1>
-                <p className="text-xs text-slate-400">Gestão acadêmica, matrículas, responsáveis e rotas corporativas</p>
-              </div>
+      {/* A) CABEÇALHO — mesmo padrão visual da Comunicação */}
+      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 sm:p-6">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, var(--accent-soft) 1px, transparent 1px), linear-gradient(to bottom, var(--accent-soft) 1px, transparent 1px)',
+            backgroundSize: '40px 40px',
+            maskImage: 'radial-gradient(ellipse 55% 90% at 100% 0%, black, transparent)',
+            WebkitMaskImage: 'radial-gradient(ellipse 55% 90% at 100% 0%, black, transparent)',
+          }}
+        />
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-[0_12px_24px_-14px_rgba(16,24,40,0.6)]" style={{ background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)' }}>
+              <GraduationCap className="h-6 w-6" />
+            </span>
+            <div>
+              <h1 className="font-serif text-[28px] font-semibold leading-tight tracking-[-0.015em] text-[var(--text-heading)]">Estudantes</h1>
+              <p className="mt-1 text-[15px] text-[var(--text-muted)]">Matrículas, turmas, responsáveis e transporte.</p>
             </div>
           </div>
 
-          {/* BADGES & BOTOES */}
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Realtime Sync Badge */}
-            <div className="bg-emerald-950/70 border border-emerald-500/40 px-3.5 py-2 rounded-2xl flex items-center gap-2.5 shadow-lg shadow-emerald-950/30">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-[12px] text-[var(--text-muted)]" title="Atualiza sozinho quando algo muda">
+              <span className="relative flex h-2 w-2">
+                <span className={`absolute inline-flex h-full w-full rounded-full opacity-60 ${realtimeConnected ? 'animate-ping bg-[#12B76A] motion-reduce:animate-none' : 'bg-[#F79009]'}`} />
+                <span className={`relative inline-flex h-2 w-2 rounded-full ${realtimeConnected ? 'bg-[#12B76A]' : 'bg-[#F79009]'}`} />
               </span>
-              <div className="flex flex-col">
-                <span className="text-[9px] uppercase font-bold text-emerald-400 tracking-wider">Sincronizado em Tempo Real</span>
-                <span className="text-[11px] font-bold text-emerald-200 font-mono">
-                  {realtimeConnected ? `Ativo ${lastSyncedTime ? `• ${lastSyncedTime}` : ''}` : 'Reconectando...'}
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-gold" />
-              <div className="flex flex-col">
-                <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Total</span>
-                <span className="text-xs font-bold text-white font-mono">
-                  {total} {total === 1 ? 'estudante' : 'estudantes'}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setIsEnrollmentWizardOpen(true)}
-              className="px-4 py-2.5 bg-[#D4AF37] hover:bg-[#c5a030] text-slate-950 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-gold/10 cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4 text-slate-950 font-extrabold" />
-              <span>Nova Matrícula</span>
-            </button>
-
+              {realtimeConnected ? `Ao vivo${lastSyncedTime ? ` · ${lastSyncedTime}` : ''}` : 'Reconectando…'}
+            </span>
             <button
               onClick={loadStudents}
               disabled={loading}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              title="Recarregar dados do banco"
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-4 text-[13px] font-semibold text-[var(--text-body)] transition-colors hover:bg-[var(--bg-card-alt)] disabled:opacity-50"
+              title="Recarregar"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-gold' : ''}`} />
-              <span>Recarregar</span>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Recarregar
+            </button>
+            <button
+              onClick={() => setIsEnrollmentWizardOpen(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--accent)] px-5 text-[13px] font-semibold text-[var(--accent-fg)] shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-[0.98]"
+            >
+              <UserPlus className="h-4 w-4" />
+              Nova matrícula
             </button>
           </div>
         </div>
 
-        {/* METRICS DASHBOARD CARDS */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 mt-6 pt-6 border-t border-slate-800/80">
-          <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-2xl">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Ativos na Rede</span>
-            <span className="text-lg font-black text-emerald-400 font-mono">{metrics.activeCount}</span>
-          </div>
-
-          <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">Transporte Escolar</span>
-              <span className="text-lg font-black text-amber-400 font-mono">{metrics.transportCount}</span>
-            </div>
-            <Truck className="w-5 h-5 text-amber-400 opacity-80" />
-          </div>
-
-          <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-2xl">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Matriculados</span>
-            <span className="text-lg font-black text-emerald-400 font-mono">{metrics.matriculadosCount}</span>
-          </div>
-
-          <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-2xl">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Transferidos</span>
-            <span className="text-lg font-black text-rose-400 font-mono">{metrics.transferidosCount}</span>
-          </div>
-
-          <div className="bg-slate-950/70 border border-slate-800 p-3.5 rounded-2xl col-span-2 sm:col-span-1 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">Faltas Registradas — Ano Letivo</span>
-              <div className="flex items-baseline gap-1.5 mt-0.5">
-                <span className="text-lg font-black text-amber-400 font-mono">{metrics.totalAbsencesInSchool}</span>
-                <span className="text-[10px] text-slate-400 font-mono">({metrics.studentsWithAbsencesCount} c/ faltas)</span>
+        {/* Indicadores */}
+        <div className="relative mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            { label: 'Total', value: total, color: 'var(--text-heading)', icon: Users },
+            { label: 'Matriculados', value: metrics.matriculadosCount, color: '#067647', icon: CheckCircle2 },
+            { label: 'Transferidos', value: metrics.transferidosCount, color: '#B42318', icon: XCircle },
+            { label: 'Transporte', value: metrics.transportCount, color: '#A15C07', icon: Truck },
+            { label: 'Aniversariantes do mês', value: metrics.birthdayCount, color: 'var(--accent)', icon: Cake },
+            { label: 'Alerta de faltas (16+)', value: metrics.studentsInAlertCount, color: '#B42318', icon: CalendarDays, hint: `${metrics.totalAbsencesInSchool} faltas no ano` },
+          ].map((m) => {
+            const Icon = m.icon;
+            return (
+              <div key={m.label} className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card-alt)] p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] text-[var(--text-muted)]">{m.label}</span>
+                  <Icon className="h-4 w-4 opacity-70" style={{ color: m.color }} />
+                </div>
+                <p className="mt-1 text-[22px] font-semibold tabular-nums leading-none" style={{ color: m.color }}>{m.value}</p>
+                {m.hint && <p className="mt-1 text-[11px] text-[var(--text-muted)]">{m.hint}</p>}
               </div>
-              <span className="text-[9px] text-rose-400 font-bold block mt-0.5">
-                {metrics.studentsInAlertCount} em alerta (16+)
-              </span>
-            </div>
-            <CalendarDays className="w-5 h-5 text-amber-400 opacity-80" />
-          </div>
+            );
+          })}
         </div>
-
-      </div>
+      </section>
 
       {/* ERRO DE CONEXÃO */}
       {errorMessage && (
-        <div className="p-5 bg-red-950/40 border border-red-500/40 rounded-3xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 text-red-300 text-xs">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+        <div className="p-5 bg-[#FEF3F2] border border-[#F5C2C0] rounded-[24px] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-red-700 text-xs">
+            <AlertCircle className="w-5 h-5 text-red-700 shrink-0" />
             <div>
-              <p className="font-bold text-red-200">Aviso da consulta do banco de dados</p>
-              <p className="text-red-300/80 mt-0.5">{errorMessage}</p>
+              <p className="font-bold text-red-700">Aviso da consulta do banco de dados</p>
+              <p className="text-red-700 mt-0.5">{errorMessage}</p>
             </div>
           </div>
           <button 
             onClick={loadStudents}
-            className="px-3.5 py-2 bg-red-800 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-[#D92D20] hover:bg-[#B42318] rounded-full text-[var(--text-heading)] rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
           </button>
@@ -1094,17 +1063,17 @@ export function AdminEstudantes() {
       )}
 
       {/* B) BARRA DE FILTROS APRIMORADA */}
-      <div className="bg-slate-900/80 border border-slate-800/80 p-4 rounded-3xl flex flex-col lg:flex-row gap-4 items-center justify-between shadow-lg">
+      <div className="bg-[var(--bg-card)] border border-[var(--border)] p-4 rounded-[24px] flex flex-col lg:flex-row gap-4 items-center justify-between shadow-lg">
         
         {/* BUSCA NOME / RA / CPF */}
-        <div className="flex-1 w-full flex items-center bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 focus-within:border-gold/50 transition-all">
-          <Search className="w-4 h-4 text-slate-500 mr-2.5 shrink-0" />
+        <div className="flex-1 w-full flex items-center bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl px-4 py-2.5 focus-within:border-[var(--accent)] transition-all">
+          <Search className="w-4 h-4 text-[var(--text-muted)] mr-2.5 shrink-0" />
           <input
             type="text"
             placeholder="Pesquisar por nome, código de matrícula ou CPF/documento..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent border-none outline-none text-xs w-full text-white placeholder:text-slate-600 focus:ring-0"
+            className="bg-transparent border-none outline-none text-xs w-full text-[var(--text-heading)] placeholder:text-[var(--text-muted)] focus:ring-0"
           />
         </div>
 
@@ -1112,32 +1081,32 @@ export function AdminEstudantes() {
         <div className="flex items-center gap-3 w-full lg:w-auto flex-wrap">
           
           {/* FILTRO ANO LETIVO */}
-          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-2xl px-3 py-2 text-xs">
-            <Calendar className="w-3.5 h-3.5 text-gold shrink-0" />
-            <span className="text-[10px] text-slate-500 uppercase font-bold">Ano:</span>
+          <div className="flex items-center gap-2 bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl px-3 py-2 text-xs">
+            <Calendar className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+            <span className="text-[10px] text-[var(--text-muted)] uppercase font-bold">Ano:</span>
             <select
               value={academicYearFilter}
               onChange={(e) => setAcademicYearFilter(e.target.value)}
-              className="bg-transparent text-xs text-white font-mono font-bold outline-none cursor-pointer"
+              className="bg-transparent text-xs text-[var(--text-heading)] font-mono font-bold outline-none cursor-pointer"
             >
-              <option value="Todos" className="bg-slate-900 text-white">Todos os Anos</option>
+              <option value="Todos" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Todos os Anos</option>
               {availableYears.map(year => (
-                <option key={year} value={year} className="bg-slate-900 text-white">{year}</option>
+                <option key={year} value={year} className="bg-[var(--bg-card)] text-[var(--text-heading)]">{year}</option>
               ))}
             </select>
           </div>
 
           {/* FILTRO TURMAS COM CONTAGEM (EX: 111 (22)) */}
-          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-2xl px-3 py-2 text-xs">
-            <BookOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <div className="flex items-center gap-2 bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl px-3 py-2 text-xs">
+            <BookOpen className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
             <select
               value={classFilter}
               onChange={(e) => setClassFilter(e.target.value)}
-              className="bg-transparent text-xs text-white outline-none cursor-pointer"
+              className="bg-transparent text-xs text-[var(--text-heading)] outline-none cursor-pointer"
             >
-              <option value="Todas" className="bg-slate-900 text-white">Todas as Turmas ({items.length})</option>
+              <option value="Todas" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Todas as Turmas ({items.length})</option>
               {classesWithCounts.map(c => (
-                <option key={c.name} value={c.name} className="bg-slate-900 text-white">
+                <option key={c.name} value={c.name} className="bg-[var(--bg-card)] text-[var(--text-heading)]">
                   {c.name} ({c.count})
                 </option>
               ))}
@@ -1145,34 +1114,34 @@ export function AdminEstudantes() {
           </div>
 
           {/* FILTRO TURNO */}
-          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-2xl px-3 py-2 text-xs">
-            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <div className="flex items-center gap-2 bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl px-3 py-2 text-xs">
+            <Clock className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
             <select
               value={shiftFilter}
               onChange={(e) => setShiftFilter(e.target.value)}
-              className="bg-transparent text-xs text-white outline-none cursor-pointer"
+              className="bg-transparent text-xs text-[var(--text-heading)] outline-none cursor-pointer"
             >
-              <option value="Todos" className="bg-slate-900 text-white">Todos os Turnos</option>
-              <option value="Matutino" className="bg-slate-900 text-white">1º Turno (Matutino)</option>
-              <option value="Vespertino" className="bg-slate-900 text-white">2º Turno (Vespertino)</option>
-              <option value="Noturno" className="bg-slate-900 text-white">3º Turno (Noturno)</option>
-              <option value="Integral" className="bg-slate-900 text-white">Integral</option>
+              <option value="Todos" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Todos os Turnos</option>
+              <option value="Matutino" className="bg-[var(--bg-card)] text-[var(--text-heading)]">1º Turno (Matutino)</option>
+              <option value="Vespertino" className="bg-[var(--bg-card)] text-[var(--text-heading)]">2º Turno (Vespertino)</option>
+              <option value="Noturno" className="bg-[var(--bg-card)] text-[var(--text-heading)]">3º Turno (Noturno)</option>
+              <option value="Integral" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Integral</option>
             </select>
           </div>
 
           {/* FILTRO SITUAÇÃO / STATUS */}
-          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-2xl px-3 py-2 text-xs">
-            <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <div className="flex items-center gap-2 bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl px-3 py-2 text-xs">
+            <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-transparent text-xs text-white outline-none cursor-pointer"
+              className="bg-transparent text-xs text-[var(--text-heading)] outline-none cursor-pointer"
             >
-              <option value="Todos" className="bg-slate-900 text-white">Todas as Situações</option>
-              <option value="Matriculado" className="bg-slate-900 text-white">Matriculado</option>
-              <option value="Transferido" className="bg-slate-900 text-white">Transferido</option>
-              <option value="Readmissão" className="bg-slate-900 text-white">Readmissão</option>
-              <option value="Classificação" className="bg-slate-900 text-white">Classificação</option>
+              <option value="Todos" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Todas as Situações</option>
+              <option value="Matriculado" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Matriculado</option>
+              <option value="Transferido" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Transferido</option>
+              <option value="Readmissão" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Readmissão</option>
+              <option value="Classificação" className="bg-[var(--bg-card)] text-[var(--text-heading)]">Classificação</option>
             </select>
           </div>
 
@@ -1180,24 +1149,24 @@ export function AdminEstudantes() {
       </div>
 
       {/* C) TABELA REORGANIZADA DE ESTUDANTES */}
-      <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
+      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[24px] overflow-hidden shadow-xl">
         {loading ? (
           <div className="p-16 text-center space-y-3">
-            <RefreshCw className="w-8 h-8 text-gold animate-spin mx-auto" />
-            <p className="text-xs font-medium text-slate-400">Carregando dados dos estudantes...</p>
+            <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin mx-auto" />
+            <p className="text-xs font-medium text-[var(--text-muted)]">Carregando dados dos estudantes...</p>
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="p-16 text-center space-y-3">
-            <GraduationCap className="w-10 h-10 text-slate-600 mx-auto" />
-            <p className="text-sm font-bold text-slate-300">Nenhum estudante encontrado com os filtros aplicados.</p>
-            <p className="text-xs text-slate-500">Ajuste os filtros de busca no topo para visualizar os registros.</p>
+            <GraduationCap className="w-10 h-10 text-[var(--text-muted)] mx-auto" />
+            <p className="text-sm font-bold text-[var(--text-body)]">Nenhum estudante encontrado com os filtros aplicados.</p>
+            <p className="text-xs text-[var(--text-muted)]">Ajuste os filtros de busca no topo para visualizar os registros.</p>
           </div>
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-950/80 border-b border-slate-800/80 text-[10px] text-slate-400 uppercase tracking-wider font-bold">
+                <tr className="bg-[var(--bg-card-alt)] border-b border-[var(--border)] text-[12px] text-[var(--text-muted)] font-medium">
                   <th className="p-4">Estudante/Criança</th>
                   <th className="p-4 text-center">Sexo</th>
                   <th className="p-4">Data de Nasc.</th>
@@ -1209,7 +1178,7 @@ export function AdminEstudantes() {
                   <th className="p-4 text-center">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-xs">
+              <tbody className="divide-y divide-[var(--border)] text-xs">
                 {paginatedItems.map((item, index) => {
                   const displayName = item.full_name || item.name || 'Sem nome';
                   const initial = displayName.trim().charAt(0).toUpperCase() || 'E';
@@ -1227,12 +1196,12 @@ export function AdminEstudantes() {
                   });
 
                   return (
-                    <tr key={item.id || item.student_id || index} className="hover:bg-slate-950/40 transition-colors">
+                    <tr key={item.id || item.student_id || index} className="hover:bg-[var(--bg-card-alt)] transition-colors">
                       
                       {/* 1. ESTUDANTE / CRIANÇA */}
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 overflow-hidden flex items-center justify-center font-bold text-gold shrink-0 shadow-sm">
+                          <div className="w-10 h-10 rounded-2xl bg-[var(--accent-soft)] border border-[var(--border)] overflow-hidden flex items-center justify-center font-bold text-[var(--accent)] shrink-0 shadow-sm">
                             {item.avatar_url ? (
                               <img src={item.avatar_url} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
@@ -1240,10 +1209,10 @@ export function AdminEstudantes() {
                             )}
                           </div>
                           <div>
-                            <p className="font-bold text-white hover:text-gold transition-colors cursor-pointer" onClick={() => setSelectedStudent(item)}>
+                            <p className="font-bold text-[var(--text-heading)] hover:text-[var(--accent)] transition-colors cursor-pointer" onClick={() => setSelectedStudent(item)}>
                               {displayName}
                             </p>
-                            <span className="text-[10px] text-slate-500 font-mono">
+                            <span className="text-[10px] text-[var(--text-muted)] font-mono">
                               RA: {item.registration_code || item.code || '—'}
                             </span>
                           </div>
@@ -1251,29 +1220,29 @@ export function AdminEstudantes() {
                       </td>
 
                       {/* 2. SEXO */}
-                      <td className="p-4 text-center font-bold text-slate-300 font-mono">
+                      <td className="p-4 text-center font-bold text-[var(--text-body)] font-mono">
                         {sexFormatted}
                       </td>
 
                       {/* 3. DATA DE NASC. */}
-                      <td className="p-4 text-slate-300 font-mono">
+                      <td className="p-4 text-[var(--text-body)] font-mono">
                         {birthFormatted}
                       </td>
 
                       {/* 4. IDADE */}
-                      <td className="p-4 text-center font-bold text-slate-300">
+                      <td className="p-4 text-center font-bold text-[var(--text-body)]">
                         {ageFormatted}
                       </td>
 
                       {/* 5. TURMA (IDENTIFICADOR LIMPO OU SEM TURMA) */}
                       <td className="p-4">
                         {(!mainClass?.name || mainClass?.name === 'Sem Turma' || mainClass?.name?.includes('Sem turma') || mainClass?.name?.includes('Pendente')) ? (
-                          <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10px] font-bold inline-flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-200 text-amber-700 text-[10px] font-bold inline-flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                             Sem Turma
                           </span>
                         ) : (
-                          <span className="font-bold text-white text-sm">
+                          <span className="font-bold text-[var(--text-heading)] text-sm">
                             {mainClass?.class_name || mainClass?.name || mainClass?.title}
                           </span>
                         )}
@@ -1287,17 +1256,17 @@ export function AdminEstudantes() {
                           const absences = stat.absences || 0;
 
                           const badgeColor = 
-                            absences >= 54 ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 hover:bg-purple-500/30' :
-                            absences >= 48 ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 hover:bg-rose-500/30' :
-                            absences >= 32 ? 'bg-orange-500/20 text-orange-300 border-orange-500/50 hover:bg-orange-500/30' :
-                            absences >= 16 ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30' :
-                            'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700';
+                            absences >= 54 ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' :
+                            absences >= 48 ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' :
+                            absences >= 32 ? 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100' :
+                            absences >= 16 ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' :
+                            'bg-[var(--bg-card-alt)] text-[var(--text-body)] border-[var(--border)] hover:bg-[var(--bg-card-alt)]';
 
                           return (
                             <button
                               type="button"
                               onClick={() => setStudentForHistoryModal(item)}
-                              className={`px-3 py-1 rounded-xl border text-[11px] font-mono font-bold inline-flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer shadow-sm focus:outline-none focus:ring-2 focus:ring-gold/50 ${badgeColor}`}
+                              className={`px-3 py-1 rounded-xl border text-[11px] font-mono font-bold inline-flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${badgeColor}`}
                               title="Consultar ou editar faltas"
                               aria-label={`Consultar ou editar faltas de ${displayName}: ${absences} ${absences === 1 ? 'falta' : 'faltas'}`}
                             >
@@ -1316,33 +1285,33 @@ export function AdminEstudantes() {
                       <td className="p-4">
                         {primaryGuardian ? (
                           <div>
-                            <p className="font-bold text-slate-200">{primaryGuardian.full_name || primaryGuardian.name || 'Responsável'}</p>
-                            <span className="text-[10px] text-slate-500 font-mono">{primaryGuardian.relationship || 'Responsável'}</span>
+                            <p className="font-bold text-[var(--text-body)]">{primaryGuardian.full_name || primaryGuardian.name || 'Responsável'}</p>
+                            <span className="text-[10px] text-[var(--text-muted)] font-mono">{primaryGuardian.relationship || 'Responsável'}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-500 italic text-[11px]">— Não cadastrado</span>
+                          <span className="text-[var(--text-muted)] italic text-[11px]">— Não cadastrado</span>
                         )}
                       </td>
 
                       {/* 8. CONTATO RESPONSÁVEL */}
-                      <td className="p-4 text-slate-300 text-[11px]">
+                      <td className="p-4 text-[var(--text-body)] text-[11px]">
                         {primaryGuardian ? (
                           <div className="space-y-0.5 font-mono">
                             {primaryGuardian.phone && (
-                              <div className="flex items-center gap-1 text-slate-300">
-                                <Phone className="w-3 h-3 text-slate-500 shrink-0" />
+                              <div className="flex items-center gap-1 text-[var(--text-body)]">
+                                <Phone className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
                                 <span>{primaryGuardian.phone}</span>
                               </div>
                             )}
                             {primaryGuardian.email && (
-                              <div className="flex items-center gap-1 text-slate-400">
-                                <Mail className="w-3 h-3 text-slate-500 shrink-0" />
+                              <div className="flex items-center gap-1 text-[var(--text-muted)]">
+                                <Mail className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
                                 <span className="truncate max-w-[130px]">{primaryGuardian.email}</span>
                               </div>
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-500 italic">—</span>
+                          <span className="text-[var(--text-muted)] italic">—</span>
                         )}
                       </td>
 
@@ -1353,7 +1322,7 @@ export function AdminEstudantes() {
                           {/* CANETINHA (EDIÇÃO EXPANDIDA) */}
                           <button
                             onClick={() => handleOpenEditModal(item)}
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-gold border border-slate-700 hover:border-gold/40 rounded-xl transition-all cursor-pointer"
+                            className="p-1.5 bg-[var(--bg-card-alt)] hover:bg-[var(--bg-card-alt)] text-[var(--accent)] border border-[var(--border)] hover:border-[var(--accent)] rounded-xl transition-all cursor-pointer"
                             title="Editar Cadastro Completo do Aluno"
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -1364,8 +1333,8 @@ export function AdminEstudantes() {
                             onClick={() => handleToggleTransport(item)}
                             className={`p-1.5 border rounded-xl transition-all cursor-pointer ${
                               item.uses_transport || item.transport_required
-                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-md shadow-amber-500/10'
-                                : 'bg-slate-800 text-slate-500 border-slate-700 hover:text-slate-300'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200 '
+                                : 'bg-[var(--bg-card-alt)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text-heading)]'
                             }`}
                             title={item.uses_transport || item.transport_required ? "Utiliza Transporte Escolar (Clique para alterar)" : "Não utiliza Transporte (Clique para ativar)"}
                           >
@@ -1375,7 +1344,7 @@ export function AdminEstudantes() {
                           {/* LIXEIRINHA (EXCLUSÃO COM MODAL) */}
                           <button
                             onClick={() => setStudentToDelete(item)}
-                            className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800 rounded-xl transition-all cursor-pointer"
+                            className="p-1.5 bg-[var(--bg-card-alt)] hover:bg-[#FEF3F2] text-[var(--text-muted)] hover:text-rose-700 border border-[var(--border)] hover:border-[#F5C2C0] rounded-xl transition-all cursor-pointer"
                             title="Excluir Estudante"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1384,7 +1353,7 @@ export function AdminEstudantes() {
                           {/* OLHO (VISUALIZAR DOSSIÊ COMPLETO) */}
                           <button
                             onClick={() => setSelectedStudent(item)}
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 hover:border-sky-500/40 rounded-xl transition-all cursor-pointer"
+                            className="p-1.5 bg-[var(--bg-card-alt)] hover:bg-[var(--bg-card-alt)] text-sky-700 border border-[var(--border)] hover:border-sky-500/40 rounded-xl transition-all cursor-pointer"
                             title="Ver Ficha Completa do Estudante"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -1402,10 +1371,10 @@ export function AdminEstudantes() {
 
           {/* PAGINATION CONTROLS */}
           {filteredItems.length > 0 && (
-            <div className="p-4 bg-slate-950/60 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3 text-xs text-slate-400">
+            <div className="p-4 bg-[var(--bg-card-alt)] border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
                 <span>Exibindo <strong>{filteredItems.length === 0 ? 0 : startIndex + 1}</strong> a <strong>{Math.min(startIndex + pageSize, filteredItems.length)}</strong> de <strong>{filteredItems.length}</strong> estudantes</span>
-                <span className="text-slate-600">|</span>
+                <span className="text-[var(--text-muted)]">|</span>
                 <div className="flex items-center gap-1.5">
                   <span>Por página:</span>
                   <select
@@ -1414,7 +1383,7 @@ export function AdminEstudantes() {
                       setPageSize(Number(e.target.value));
                       setCurrentPage(1);
                     }}
-                    className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-gold/50 cursor-pointer"
+                    className="bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-body)] text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
                     <option value={10}>10</option>
                     <option value={20}>20</option>
@@ -1428,7 +1397,7 @@ export function AdminEstudantes() {
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={safeCurrentPage <= 1}
-                  className="p-1.5 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="p-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-body)] hover:bg-[var(--bg-card-alt)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Página Anterior"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -1451,8 +1420,8 @@ export function AdminEstudantes() {
                         onClick={() => setCurrentPage(pageNum)}
                         className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
                           safeCurrentPage === pageNum
-                            ? 'bg-gold text-slate-950 shadow-md shadow-gold/20'
-                            : 'bg-slate-900 border border-slate-700/80 text-slate-300 hover:bg-slate-800'
+                            ? 'bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm'
+                            : 'bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-body)] hover:bg-[var(--bg-card-alt)]'
                         }`}
                       >
                         {pageNum}
@@ -1464,7 +1433,7 @@ export function AdminEstudantes() {
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={safeCurrentPage >= totalPages}
-                  className="p-1.5 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="p-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-body)] hover:bg-[var(--bg-card-alt)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Próxima Página"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -1478,13 +1447,13 @@ export function AdminEstudantes() {
 
       {/* D) DRAWER / MODAL DE DOSSIÊ COMPLETO DO ESTUDANTE (OLHO) */}
       {selectedStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex justify-end animate-fade-in p-0 md:p-4">
-          <div className="w-full max-w-2xl bg-slate-900 border-l md:border border-slate-800 md:rounded-3xl h-full md:h-[95vh] overflow-y-auto flex flex-col shadow-2xl relative my-auto">
+        <div className="fixed inset-0 z-50 bg-[rgba(16,24,40,0.45)] backdrop-blur-sm flex justify-end animate-fade-in p-0 md:p-4">
+          <div className="w-full max-w-2xl bg-[var(--bg-card)] border-l md:border border-[var(--border)] md:rounded-[24px] h-full md:h-[95vh] overflow-y-auto flex flex-col shadow-2xl relative my-auto">
             
             {/* STICKY HEADER */}
-            <div className="sticky top-0 bg-slate-900/95 border-b border-slate-800 p-6 flex items-center justify-between z-20 backdrop-blur">
+            <div className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border)] p-6 flex items-center justify-between z-20 backdrop-blur">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-gold/40 flex items-center justify-center font-bold text-gold text-lg shadow-md">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--accent-soft)] border border-[var(--border)] flex items-center justify-center font-bold text-[var(--accent)] text-lg shadow-md">
                   {selectedStudent.avatar_url ? (
                     <img src={selectedStudent.avatar_url} alt="Avatar" className="w-full h-full object-cover rounded-2xl" referrerPolicy="no-referrer" />
                   ) : (
@@ -1492,84 +1461,84 @@ export function AdminEstudantes() {
                   )}
                 </div>
                 <div>
-                  <h2 className="font-serif text-xl font-bold text-white">
+                  <h2 className="font-serif text-xl font-bold text-[var(--text-heading)]">
                     {selectedStudent.full_name || selectedStudent.name || 'Estudante'}
                   </h2>
-                  <p className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                    <span>Matrícula: <strong className="font-mono text-gold">{selectedStudent.registration_code || selectedStudent.code || 'N/A'}</strong></span>
+                  <p className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
+                    <span>Matrícula: <strong className="font-mono text-[var(--accent)]">{selectedStudent.registration_code || selectedStudent.code || 'N/A'}</strong></span>
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setSelectedStudent(null)}
-                className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-all cursor-pointer"
+                className="p-2 hover:bg-[var(--bg-card-alt)] rounded-xl text-[var(--text-muted)] hover:text-[var(--text-heading)] transition-all cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* CONTENT BODY */}
-            <div className="p-6 space-y-6 flex-1 text-xs text-slate-300">
+            <div className="p-6 space-y-6 flex-1 text-xs text-[var(--text-body)]">
               
               {/* 1. DADOS PESSOAIS */}
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-                <h3 className="font-serif text-xs font-bold text-gold flex items-center gap-2 uppercase tracking-wider">
-                  <User className="w-4 h-4 text-gold" /> Dados Pessoais & Documentos
+              <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
+                <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
+                  <User className="w-4 h-4 text-[var(--accent)]" /> Dados Pessoais & Documentos
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Nome Completo</span>
-                    <span className="font-bold text-white text-sm">{selectedStudent.full_name || selectedStudent.name || '—'}</span>
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Nome Completo</span>
+                    <span className="font-bold text-[var(--text-heading)] text-sm">{selectedStudent.full_name || selectedStudent.name || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Código de Matrícula (RA)</span>
-                    <span className="font-mono font-bold text-gold">{selectedStudent.registration_code || selectedStudent.code || '—'}</span>
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Código de Matrícula (RA)</span>
+                    <span className="font-mono font-bold text-[var(--accent)]">{selectedStudent.registration_code || selectedStudent.code || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Data de Nascimento / Idade</span>
-                    <span className="text-white font-mono">
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Data de Nascimento / Idade</span>
+                    <span className="text-[var(--text-heading)] font-mono">
                       {formatDate(selectedStudent.birth_date)} ({calculateAge(selectedStudent.birth_date)})
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">CPF / Documento</span>
-                    <span className="font-mono text-slate-200">{selectedStudent.document_number || selectedStudent.cpf || selectedStudent.rg || '—'}</span>
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">CPF / Documento</span>
+                    <span className="font-mono text-[var(--text-body)]">{selectedStudent.document_number || selectedStudent.cpf || selectedStudent.rg || '—'}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Sexo</span>
-                    <span className="font-bold text-white">
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Sexo</span>
+                    <span className="font-bold text-[var(--text-heading)]">
                       {(selectedStudent.sex === 'F' || selectedStudent.gender === 'F') ? 'Feminino (F)' : 'Masculino (M)'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Situação Acadêmica</span>
-                    <span className="font-bold text-emerald-400 uppercase">{selectedStudent.status || 'Matriculado'}</span>
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Situação Acadêmica</span>
+                    <span className="font-bold text-emerald-700 uppercase">{selectedStudent.status || 'Matriculado'}</span>
                   </div>
                 </div>
               </div>
 
               {/* 2. SITUAÇÃO ACADÊMICA & TURMA */}
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-                <h3 className="font-serif text-xs font-bold text-gold flex items-center gap-2 uppercase tracking-wider">
-                  <BookOpen className="w-4 h-4 text-gold" /> Situação Acadêmica & Turma
+              <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
+                <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
+                  <BookOpen className="w-4 h-4 text-[var(--accent)]" /> Situação Acadêmica & Turma
                 </h3>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Turma</span>
-                    <span className="font-bold text-white">
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Turma</span>
+                    <span className="font-bold text-[var(--text-heading)]">
                       {(selectedStudent.classes && selectedStudent.classes[0]?.name) || selectedStudent.class_name || '8º Ano A'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Ano Letivo</span>
-                    <span className="font-mono font-bold text-slate-200">
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Ano Letivo</span>
+                    <span className="font-mono font-bold text-[var(--text-body)]">
                       {selectedStudent.academic_year || '2026'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Turno</span>
-                    <span className="font-bold text-slate-300">
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Turno</span>
+                    <span className="font-bold text-[var(--text-body)]">
                       {(selectedStudent.classes && selectedStudent.classes[0]?.shift) || selectedStudent.shift || 'Matutino'}
                     </span>
                   </div>
@@ -1577,36 +1546,36 @@ export function AdminEstudantes() {
               </div>
 
               {/* 3. INCLUSÃO PEDAGÓGICA & SAÚDE */}
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-                <h3 className="font-serif text-xs font-bold text-gold flex items-center gap-2 uppercase tracking-wider">
-                  <Activity className="w-4 h-4 text-gold" /> Inclusão Pedagógica & Saúde
+              <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
+                <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
+                  <Activity className="w-4 h-4 text-[var(--accent)]" /> Inclusão Pedagógica & Saúde
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">AEE (Atendimento Especializado)</span>
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">AEE (Atendimento Especializado)</span>
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold mt-1 ${
-                      selectedStudent.aee ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-slate-400'
+                      selectedStudent.aee ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-[var(--bg-card-alt)] text-[var(--text-muted)]'
                     }`}>
                       {selectedStudent.aee ? 'Sim (Atendido)' : 'Não'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Laudo Médico Emitido</span>
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Laudo Médico Emitido</span>
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold mt-1 ${
-                      selectedStudent.laudo ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-slate-400'
+                      selectedStudent.laudo ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-[var(--bg-card-alt)] text-[var(--text-muted)]'
                     }`}>
                       {selectedStudent.laudo ? 'Sim (Possui Laudo)' : 'Não'}
                     </span>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Restrições Alimentares</span>
-                    <p className="text-slate-300 mt-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Restrições Alimentares</span>
+                    <p className="text-[var(--text-body)] mt-1 bg-[var(--bg-card)] p-2.5 rounded-xl border border-[var(--border)]">
                       {selectedStudent.dietary_info || selectedStudent.dietary_restrictions || 'Nenhuma restrição registrada.'}
                     </p>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Anotações Médicas / Alergias</span>
-                    <p className="text-slate-300 mt-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Anotações Médicas / Alergias</span>
+                    <p className="text-[var(--text-body)] mt-1 bg-[var(--bg-card)] p-2.5 rounded-xl border border-[var(--border)]">
                       {selectedStudent.medical_notes || selectedStudent.allergies || 'Nenhuma observação cadastrada.'}
                     </p>
                   </div>
@@ -1614,49 +1583,49 @@ export function AdminEstudantes() {
               </div>
 
               {/* 4. ENDEREÇO RESIDENCIAL */}
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-                <h3 className="font-serif text-xs font-bold text-gold flex items-center gap-2 uppercase tracking-wider">
-                  <MapPin className="w-4 h-4 text-gold" /> Endereço Residencial
+              <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
+                <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
+                  <MapPin className="w-4 h-4 text-[var(--accent)]" /> Endereço Residencial
                 </h3>
                 {selectedStudent.address_street || selectedStudent.street ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="col-span-2">
-                      <span className="text-[10px] text-slate-500 uppercase font-bold block">Logradouro / Número</span>
-                      <span className="text-white font-medium">
+                      <span className="text-[12px] text-[var(--text-muted)] font-medium block">Logradouro / Número</span>
+                      <span className="text-[var(--text-heading)] font-medium">
                         {selectedStudent.address_street || selectedStudent.street}, Nº {selectedStudent.address_number || selectedStudent.number || 'S/N'}
                         {selectedStudent.address_complement ? ` (${selectedStudent.address_complement})` : ''}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase font-bold block">Bairro</span>
-                      <span className="text-slate-300">{selectedStudent.address_neighborhood || selectedStudent.neighborhood || '—'}</span>
+                      <span className="text-[12px] text-[var(--text-muted)] font-medium block">Bairro</span>
+                      <span className="text-[var(--text-body)]">{selectedStudent.address_neighborhood || selectedStudent.neighborhood || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase font-bold block">Cidade / UF</span>
-                      <span className="text-slate-300">
+                      <span className="text-[12px] text-[var(--text-muted)] font-medium block">Cidade / UF</span>
+                      <span className="text-[var(--text-body)]">
                         {selectedStudent.address_city || selectedStudent.city || '—'} / {selectedStudent.address_state || selectedStudent.state || '—'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase font-bold block">CEP</span>
-                      <span className="font-mono text-gold">{selectedStudent.address_cep || selectedStudent.cep || '—'}</span>
+                      <span className="text-[12px] text-[var(--text-muted)] font-medium block">CEP</span>
+                      <span className="font-mono text-[var(--accent)]">{selectedStudent.address_cep || selectedStudent.cep || '—'}</span>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-slate-500 italic">Endereço residencial não informado.</p>
+                  <p className="text-[var(--text-muted)] italic">Endereço residencial não informado.</p>
                 )}
               </div>
 
               {/* 5. TRANSPORTE ESCOLAR */}
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-                <h3 className="font-serif text-xs font-bold text-gold flex items-center gap-2 uppercase tracking-wider">
-                  <Truck className="w-4 h-4 text-gold" /> Transporte Escolar
+              <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
+                <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
+                  <Truck className="w-4 h-4 text-[var(--accent)]" /> Transporte Escolar
                 </h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Status do Transporte</span>
+                    <span className="text-[12px] text-[var(--text-muted)] font-medium block">Status do Transporte</span>
                     <span className={`font-bold uppercase flex items-center gap-1 mt-1 ${
-                      selectedStudent.uses_transport || selectedStudent.transport_required ? 'text-amber-400' : 'text-slate-500'
+                      selectedStudent.uses_transport || selectedStudent.transport_required ? 'text-amber-700' : 'text-[var(--text-muted)]'
                     }`}>
                       <Truck className="w-3.5 h-3.5" />
                       {selectedStudent.uses_transport || selectedStudent.transport_required ? 'Ativo (Utiliza Rota)' : 'Não Utiliza'}
@@ -1665,12 +1634,12 @@ export function AdminEstudantes() {
                   {(selectedStudent.uses_transport || selectedStudent.transport_required) && (
                     <>
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Linha / Rota</span>
-                        <span className="text-white font-medium">{selectedStudent.transport_line || 'Rota Principal 01'}</span>
+                        <span className="text-[12px] text-[var(--text-muted)] font-medium block">Linha / Rota</span>
+                        <span className="text-[var(--text-heading)] font-medium">{selectedStudent.transport_line || 'Rota Principal 01'}</span>
                       </div>
                       <div className="col-span-2">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Ponto de Embarque / Desembarque</span>
-                        <span className="text-slate-300">{selectedStudent.transport_stop || 'Ponto Central em frente à residência'}</span>
+                        <span className="text-[12px] text-[var(--text-muted)] font-medium block">Ponto de Embarque / Desembarque</span>
+                        <span className="text-[var(--text-body)]">{selectedStudent.transport_stop || 'Ponto Central em frente à residência'}</span>
                       </div>
                     </>
                   )}
@@ -1678,46 +1647,46 @@ export function AdminEstudantes() {
               </div>
 
               {/* 6. RESPONSÁVEIS VINCULADOS */}
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-                <h3 className="font-serif text-xs font-bold text-gold flex items-center gap-2 uppercase tracking-wider">
-                  <Users className="w-4 h-4 text-gold" /> Responsáveis Vinculados
+              <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
+                <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
+                  <Users className="w-4 h-4 text-[var(--accent)]" /> Responsáveis Vinculados
                 </h3>
                 {selectedStudent.guardians && selectedStudent.guardians.length > 0 ? (
                   <div className="space-y-3">
                     {selectedStudent.guardians.map((g, idx) => (
-                      <div key={g.id || idx} className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl space-y-1.5">
+                      <div key={g.id || idx} className="bg-[var(--bg-card)] border border-[var(--border)] p-3.5 rounded-xl space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-white text-xs">{g.full_name || g.name || 'Responsável'}</span>
+                          <span className="font-bold text-[var(--text-heading)] text-xs">{g.full_name || g.name || 'Responsável'}</span>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md uppercase font-bold">
+                            <span className="text-[9px] bg-[var(--bg-card-alt)] text-[var(--text-body)] px-2 py-0.5 rounded-md uppercase font-bold">
                               {g.relationship || 'Responsável'}
                             </span>
                             {g.is_financial && (
-                              <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-md uppercase font-bold">
+                              <span className="text-[9px] bg-[#ECFDF3] text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md uppercase font-bold">
                                 Resp. Financeiro
                               </span>
                             )}
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-400">
-                          {g.phone && <div>Tel: <span className="text-slate-200">{g.phone}</span></div>}
-                          {g.email && <div>E-mail: <span className="text-slate-200 truncate">{g.email}</span></div>}
-                          {g.document_number && <div>CPF: <span className="text-slate-200">{g.document_number}</span></div>}
+                        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-[var(--text-muted)]">
+                          {g.phone && <div>Tel: <span className="text-[var(--text-body)]">{g.phone}</span></div>}
+                          {g.email && <div>E-mail: <span className="text-[var(--text-body)] truncate">{g.email}</span></div>}
+                          {g.document_number && <div>CPF: <span className="text-[var(--text-body)]">{g.document_number}</span></div>}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-slate-500 italic">Nenhum responsável vinculado diretamente.</p>
+                  <p className="text-[var(--text-muted)] italic">Nenhum responsável vinculado diretamente.</p>
                 )}
               </div>
 
             </div>
 
-            <div className="p-4 bg-slate-950 border-t border-slate-800 text-center">
+            <div className="p-4 bg-[var(--bg-card-alt)] border-t border-[var(--border)] text-center">
               <button
                 onClick={() => setSelectedStudent(null)}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                className="w-full py-3 bg-[var(--bg-card-alt)] hover:bg-[var(--bg-card-alt)] text-[var(--text-heading)] rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
                 Fechar Ficha Dossiê
               </button>
@@ -1729,22 +1698,22 @@ export function AdminEstudantes() {
 
       {/* E) MODAL EXPANDIDO DE EDIÇÃO COMPLETA DO ESTUDANTE (CANETINHA) */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl w-full max-w-3xl shadow-2xl p-6 text-left space-y-6 my-auto max-h-[92vh] overflow-y-auto animate-fade-in">
+        <div className="fixed inset-0 bg-[rgba(16,24,40,0.45)] backdrop-blur-sm z-50 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
+          <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-[24px] w-full max-w-3xl shadow-2xl p-6 text-left space-y-6 my-auto max-h-[92vh] overflow-y-auto animate-fade-in">
             
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-4 border-b border-[var(--border)]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gold/10 border border-gold/30 flex items-center justify-center text-gold">
+                <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)]">
                   <Pencil className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-serif text-lg font-bold text-white">Editar Cadastro do Estudante</h3>
-                  <p className="text-[11px] text-slate-400">Atualize dados pessoais, turma, inclusão pedagógica, endereço e responsáveis</p>
+                  <h3 className="font-serif text-lg font-bold text-[var(--text-heading)]">Editar Cadastro do Estudante</h3>
+                  <p className="text-[11px] text-[var(--text-muted)]">Atualize dados pessoais, turma, inclusão pedagógica, endereço e responsáveis</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsEditModalOpen(false)} 
-                className="p-2 hover:bg-slate-900 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-2 hover:bg-[var(--bg-card-alt)] rounded-xl text-[var(--text-muted)] hover:text-[var(--text-heading)] transition-colors cursor-pointer"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -1753,51 +1722,51 @@ export function AdminEstudantes() {
             <form onSubmit={handleSaveStudentEdit} className="space-y-6 text-xs">
               
               {/* SEÇÃO 1: DADOS PESSOAIS */}
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-4">
-                <h4 className="font-bold text-gold uppercase tracking-wider text-[11px] flex items-center gap-2">
+              <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 space-y-4">
+                <h4 className="font-bold text-[var(--accent)] uppercase tracking-wider text-[11px] flex items-center gap-2">
                   <User className="w-4 h-4" /> 1. Dados Pessoais & Documentos
                 </h4>
                 
                 <div className="space-y-1">
-                  <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Nome Completo do Aluno *</label>
+                  <label className="text-[12px] text-[var(--text-muted)] font-medium">Nome Completo do Aluno *</label>
                   <input
                     type="text"
                     required
                     value={editForm.full_name}
                     onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                    className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Código de Matrícula (RA) *</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Código de Matrícula (RA) *</label>
                     <input
                       type="text"
                       required
                       value={editForm.registration_code}
                       onChange={(e) => setEditForm({ ...editForm, registration_code: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] font-mono outline-none focus:border-[var(--accent)]"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Data de Nascimento</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Data de Nascimento</label>
                     <input
                       type="date"
                       value={editForm.birth_date}
                       onChange={(e) => setEditForm({ ...editForm, birth_date: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">CPF / Documento</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">CPF / Documento</label>
                     <input
                       type="text"
                       value={editForm.document_number}
                       onChange={(e) => setEditForm({ ...editForm, document_number: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] font-mono outline-none focus:border-[var(--accent)]"
                       placeholder="000.000.000-00"
                     />
                   </div>
@@ -1805,11 +1774,11 @@ export function AdminEstudantes() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Sexo</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Sexo</label>
                     <select
                       value={editForm.sex}
                       onChange={(e) => setEditForm({ ...editForm, sex: e.target.value as 'M' | 'F' })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-semibold outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] font-semibold outline-none focus:border-[var(--accent)]"
                     >
                       <option value="M">Masculino (M)</option>
                       <option value="F">Feminino (F)</option>
@@ -1817,11 +1786,11 @@ export function AdminEstudantes() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Situação Acadêmica</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Situação Acadêmica</label>
                     <select
                       value={editForm.status}
                       onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-semibold outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] font-semibold outline-none focus:border-[var(--accent)]"
                     >
                       <option value="Matriculado">Matriculado</option>
                       <option value="Transferido">Transferido</option>
@@ -1833,29 +1802,29 @@ export function AdminEstudantes() {
               </div>
 
               {/* SEÇÃO 2: SITUAÇÃO ACADÊMICA & TURMA */}
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-4">
-                <h4 className="font-bold text-gold uppercase tracking-wider text-[11px] flex items-center gap-2">
+              <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 space-y-4">
+                <h4 className="font-bold text-[var(--accent)] uppercase tracking-wider text-[11px] flex items-center gap-2">
                   <BookOpen className="w-4 h-4" /> 2. Turma & Vínculo Escolar
                 </h4>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Turma do Aluno</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Turma do Aluno</label>
                     <input
                       type="text"
                       value={editForm.class_name}
                       onChange={(e) => setEditForm({ ...editForm, class_name: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                       placeholder="Ex: 8º Ano A"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ano Letivo</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Ano Letivo</label>
                     <select
                       value={editForm.academic_year}
                       onChange={(e) => setEditForm({ ...editForm, academic_year: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] font-mono outline-none focus:border-[var(--accent)]"
                     >
                       {availableYears.map(y => (
                         <option key={y} value={y}>{y}</option>
@@ -1864,11 +1833,11 @@ export function AdminEstudantes() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Turno</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Turno</label>
                     <select
                       value={editForm.shift}
                       onChange={(e) => setEditForm({ ...editForm, shift: e.target.value as any })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                     >
                       <option value="Matutino">Matutino</option>
                       <option value="Vespertino">Vespertino</option>
@@ -1880,34 +1849,34 @@ export function AdminEstudantes() {
               </div>
 
               {/* SEÇÃO 3: INCLUSÃO PEDAGÓGICA & SAÚDE */}
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-4">
-                <h4 className="font-bold text-gold uppercase tracking-wider text-[11px] flex items-center gap-2">
+              <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 space-y-4">
+                <h4 className="font-bold text-[var(--accent)] uppercase tracking-wider text-[11px] flex items-center gap-2">
                   <Activity className="w-4 h-4" /> 3. Inclusão Pedagógica & Saúde
                 </h4>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2 bg-[var(--bg-card-alt)] p-3 rounded-xl border border-[var(--border)]">
                     <input
                       type="checkbox"
                       id="edit_aee"
                       checked={editForm.aee}
                       onChange={(e) => setEditForm({ ...editForm, aee: e.target.checked })}
-                      className="w-4 h-4 rounded text-gold bg-slate-900 border-slate-800 cursor-pointer"
+                      className="w-4 h-4 rounded text-[var(--accent)] bg-[var(--bg-card)] border-[var(--border)] cursor-pointer"
                     />
-                    <label htmlFor="edit_aee" className="text-xs text-slate-200 font-bold cursor-pointer">
+                    <label htmlFor="edit_aee" className="text-xs text-[var(--text-body)] font-bold cursor-pointer">
                       AEE (Atendimento Educacional Especializado)
                     </label>
                   </div>
 
-                  <div className="flex items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2 bg-[var(--bg-card-alt)] p-3 rounded-xl border border-[var(--border)]">
                     <input
                       type="checkbox"
                       id="edit_laudo"
                       checked={editForm.laudo}
                       onChange={(e) => setEditForm({ ...editForm, laudo: e.target.checked })}
-                      className="w-4 h-4 rounded text-gold bg-slate-900 border-slate-800 cursor-pointer"
+                      className="w-4 h-4 rounded text-[var(--accent)] bg-[var(--bg-card)] border-[var(--border)] cursor-pointer"
                     />
-                    <label htmlFor="edit_laudo" className="text-xs text-slate-200 font-bold cursor-pointer">
+                    <label htmlFor="edit_laudo" className="text-xs text-[var(--text-body)] font-bold cursor-pointer">
                       Laudo Médico Emitido
                     </label>
                   </div>
@@ -1915,23 +1884,23 @@ export function AdminEstudantes() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Restrições Alimentares</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Restrições Alimentares</label>
                     <textarea
                       rows={2}
                       value={editForm.dietary_info}
                       onChange={(e) => setEditForm({ ...editForm, dietary_info: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                       placeholder="Ex: Intolerância à lactose, alergia a corantes..."
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Anotações Médicas / Alergias</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Anotações Médicas / Alergias</label>
                     <textarea
                       rows={2}
                       value={editForm.medical_notes}
                       onChange={(e) => setEditForm({ ...editForm, medical_notes: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                       placeholder="Ex: Uso diário de bombinha, alergia a picada de abelha..."
                     />
                   </div>
@@ -1939,17 +1908,17 @@ export function AdminEstudantes() {
               </div>
 
               {/* SEÇÃO 4: ENDEREÇO RESIDENCIAL (VIACEP) */}
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+              <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-gold uppercase tracking-wider text-[11px] flex items-center gap-2">
+                  <h4 className="font-bold text-[var(--accent)] uppercase tracking-wider text-[11px] flex items-center gap-2">
                     <MapPin className="w-4 h-4" /> 4. Endereço Residencial (ViaCEP Autocompletar)
                   </h4>
-                  {cepLoading && <span className="text-[10px] text-gold animate-pulse font-mono">Buscando CEP...</span>}
+                  {cepLoading && <span className="text-[10px] text-[var(--accent)] animate-pulse font-mono">Buscando CEP...</span>}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">CEP (Digite 8 números)</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">CEP (Digite 8 números)</label>
                     <input
                       type="text"
                       value={editForm.address_cep}
@@ -1961,101 +1930,101 @@ export function AdminEstudantes() {
                         }
                       }}
                       onBlur={() => handleFetchCepInEdit(editForm.address_cep)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] font-mono outline-none focus:border-[var(--accent)]"
                       placeholder="00000-000"
                     />
                   </div>
 
                   <div className="space-y-1 md:col-span-2">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Rua / Logradouro</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Rua / Logradouro</label>
                     <input
                       type="text"
                       value={editForm.address_street}
                       onChange={(e) => setEditForm({ ...editForm, address_street: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Número</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Número</label>
                     <input
                       type="text"
                       value={editForm.address_number}
                       onChange={(e) => setEditForm({ ...editForm, address_number: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Complemento</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Complemento</label>
                     <input
                       type="text"
                       value={editForm.address_complement}
                       onChange={(e) => setEditForm({ ...editForm, address_complement: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                       placeholder="Apt, Bloco..."
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Bairro</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Bairro</label>
                     <input
                       type="text"
                       value={editForm.address_neighborhood}
                       onChange={(e) => setEditForm({ ...editForm, address_neighborhood: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Cidade / UF</label>
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Cidade / UF</label>
                     <input
                       type="text"
                       value={editForm.address_city}
                       onChange={(e) => setEditForm({ ...editForm, address_city: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                     />
                   </div>
                 </div>
               </div>
 
               {/* SEÇÃO 5: TRANSPORTE ESCOLAR */}
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-4">
+              <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 space-y-4">
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     id="edit_transport_check"
                     checked={editForm.uses_transport}
                     onChange={(e) => setEditForm({ ...editForm, uses_transport: e.target.checked })}
-                    className="w-4 h-4 rounded text-amber-500 bg-slate-900 border-slate-800 cursor-pointer"
+                    className="w-4 h-4 rounded text-amber-500 bg-[var(--bg-card)] border-[var(--border)] cursor-pointer"
                   />
-                  <label htmlFor="edit_transport_check" className="text-xs text-amber-300 font-bold cursor-pointer flex items-center gap-1.5">
+                  <label htmlFor="edit_transport_check" className="text-xs text-amber-700 font-bold cursor-pointer flex items-center gap-1.5">
                     <Truck className="w-4 h-4" /> Estudante utiliza Transporte Escolar
                   </label>
                 </div>
 
                 {editForm.uses_transport && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-[var(--border)]">
                     <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Nome da Linha / Rota</label>
+                      <label className="text-[12px] text-[var(--text-muted)] font-medium">Nome da Linha / Rota</label>
                       <input
                         type="text"
                         value={editForm.transport_line}
                         onChange={(e) => setEditForm({ ...editForm, transport_line: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                        className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                         placeholder="Ex: Rota 04 - Zona Sul"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ponto de Embarque / Desembarque</label>
+                      <label className="text-[12px] text-[var(--text-muted)] font-medium">Ponto de Embarque / Desembarque</label>
                       <input
                         type="text"
                         value={editForm.transport_stop}
                         onChange={(e) => setEditForm({ ...editForm, transport_stop: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-gold"
+                        className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                         placeholder="Ex: Av. Principal nº 120"
                       />
                     </div>
@@ -2064,17 +2033,17 @@ export function AdminEstudantes() {
               </div>
 
               {/* BOTÕES FINAIS DE AÇÃO */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border)]">
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl font-bold transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-alt)] text-[var(--text-body)] rounded-xl font-bold transition-all cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-[#D4AF37] hover:bg-[#c5a030] text-slate-950 font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-gold/10"
+                  className="px-6 py-2.5 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-fg)] rounded-full font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm"
                 >
                   <CheckCircle2 className="w-4 h-4" /> Salvar Alterações
                 </button>
@@ -2087,18 +2056,18 @@ export function AdminEstudantes() {
 
       {/* F) MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (LIXEIRINHA) */}
       {studentToDelete && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-950 border border-rose-900/50 rounded-3xl w-full max-w-md shadow-2xl p-6 text-left space-y-5 animate-fade-in relative overflow-hidden">
-            <div className="w-12 h-12 rounded-2xl bg-rose-950/80 border border-rose-800/80 flex items-center justify-center text-rose-400">
+        <div className="fixed inset-0 bg-[rgba(16,24,40,0.45)] backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card-alt)] border border-[#F5C2C0] rounded-[24px] w-full max-w-md shadow-2xl p-6 text-left space-y-5 animate-fade-in relative overflow-hidden">
+            <div className="w-12 h-12 rounded-2xl bg-[#FEF3F2] border border-[#F5C2C0] flex items-center justify-center text-rose-700">
               <AlertTriangle className="w-6 h-6" />
             </div>
 
             <div>
-              <h3 className="font-serif text-lg font-bold text-white">Excluir estudante?</h3>
-              <p className="text-xs text-slate-300 mt-1">
-                Estudante: <strong className="text-rose-300">{studentToDelete.full_name || studentToDelete.name}</strong> (RA: {studentToDelete.registration_code || 'N/A'})
+              <h3 className="font-serif text-lg font-bold text-[var(--text-heading)]">Excluir estudante?</h3>
+              <p className="text-xs text-[var(--text-body)] mt-1">
+                Estudante: <strong className="text-rose-700">{studentToDelete.full_name || studentToDelete.name}</strong> (RA: {studentToDelete.registration_code || 'N/A'})
               </p>
-              <div className="text-xs text-rose-300/90 mt-3 bg-rose-950/60 p-3.5 rounded-xl border border-rose-900/50 leading-relaxed">
+              <div className="text-xs text-rose-700 mt-3 bg-[#FEF3F2] p-3.5 rounded-xl border border-[#F5C2C0] leading-relaxed">
                 Você está prestes a excluir este estudante do sistema. Esta ação removerá o cadastro da plataforma e do banco de dados institucional. Deseja continuar?
               </div>
             </div>
@@ -2108,7 +2077,7 @@ export function AdminEstudantes() {
                 type="button"
                 onClick={() => setStudentToDelete(null)}
                 disabled={isDeleting}
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl font-bold transition-all cursor-pointer disabled:opacity-50"
+                className="px-4 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-alt)] text-[var(--text-body)] rounded-xl font-bold transition-all cursor-pointer disabled:opacity-50"
               >
                 Cancelar
               </button>
@@ -2116,7 +2085,7 @@ export function AdminEstudantes() {
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-rose-900/30 disabled:opacity-50"
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-[var(--text-heading)] font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer  disabled:opacity-50"
               >
                 {isDeleting ? (
                   <>
@@ -2137,23 +2106,23 @@ export function AdminEstudantes() {
 
       {/* QUICK LINK CLASS MODAL */}
       {isLinkModalOpen && studentToLink && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-950 border border-gold/40 rounded-3xl w-full max-w-md shadow-2xl p-6 text-left space-y-5 animate-fade-in relative overflow-hidden">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 bg-[rgba(16,24,40,0.45)] backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-[24px] w-full max-w-md shadow-2xl p-6 text-left space-y-5 animate-fade-in relative overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-gold/10 border border-gold/30 flex items-center justify-center text-gold">
+                <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)]">
                   <GraduationCap className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-serif text-base font-bold text-white">Vincular Turma ao Estudante</h3>
-                  <p className="text-[11px] text-slate-400 truncate max-w-[240px]">
+                  <h3 className="font-serif text-base font-bold text-[var(--text-heading)]">Vincular Turma ao Estudante</h3>
+                  <p className="text-[11px] text-[var(--text-muted)] truncate max-w-[240px]">
                     {studentToLink.full_name || studentToLink.name} (RA: {studentToLink.registration_code || 'N/A'})
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => { setIsLinkModalOpen(false); setStudentToLink(null); }}
-                className="p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 hover:bg-[var(--bg-card-alt)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-heading)] transition-colors cursor-pointer"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -2161,7 +2130,7 @@ export function AdminEstudantes() {
 
             <div className="space-y-4 text-xs">
               <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Selecione a Turma *</label>
+                <label className="text-[12px] text-[var(--text-muted)] font-medium">Selecione a Turma *</label>
                 <select
                   value={linkClassForm.selectedClassId}
                   onChange={(e) => {
@@ -2173,7 +2142,7 @@ export function AdminEstudantes() {
                       shift: (selectedCls?.shift as any) || prev.shift
                     }));
                   }}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white font-semibold outline-none focus:border-gold cursor-pointer"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] font-semibold outline-none focus:border-[var(--accent)] cursor-pointer"
                 >
                   <option value="">-- Selecione uma Turma --</option>
                   {realOrgClasses.map(cls => (
@@ -2187,24 +2156,24 @@ export function AdminEstudantes() {
 
               {linkClassForm.selectedClassId === '__custom__' && (
                 <div className="space-y-1">
-                  <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Nome da Nova Turma *</label>
+                  <label className="text-[12px] text-[var(--text-muted)] font-medium">Nome da Nova Turma *</label>
                   <input
                     type="text"
                     value={linkClassForm.customClassName}
                     onChange={(e) => setLinkClassForm({ ...linkClassForm, customClassName: e.target.value })}
                     placeholder="Ex: 8º Ano B"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white outline-none focus:border-gold"
+                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Turno Escolar</label>
+                  <label className="text-[12px] text-[var(--text-muted)] font-medium">Turno Escolar</label>
                   <select
                     value={linkClassForm.shift}
                     onChange={(e) => setLinkClassForm({ ...linkClassForm, shift: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white font-semibold outline-none focus:border-gold cursor-pointer"
+                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] font-semibold outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
                     <option value="Matutino">Matutino</option>
                     <option value="Vespertino">Vespertino</option>
@@ -2214,11 +2183,11 @@ export function AdminEstudantes() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ano Letivo</label>
+                  <label className="text-[12px] text-[var(--text-muted)] font-medium">Ano Letivo</label>
                   <select
                     value={linkClassForm.academicYear}
                     onChange={(e) => setLinkClassForm({ ...linkClassForm, academicYear: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white font-mono outline-none focus:border-gold cursor-pointer"
+                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] font-mono outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
                     {availableYears.map(y => (
                       <option key={y} value={y}>{y}</option>
@@ -2228,12 +2197,12 @@ export function AdminEstudantes() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border)]">
               <button
                 type="button"
                 onClick={() => { setIsLinkModalOpen(false); setStudentToLink(null); }}
                 disabled={isLinkingClass}
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl font-bold transition-all cursor-pointer text-xs"
+                className="px-4 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-alt)] text-[var(--text-body)] rounded-xl font-bold transition-all cursor-pointer text-xs"
               >
                 Cancelar
               </button>
@@ -2241,7 +2210,7 @@ export function AdminEstudantes() {
                 type="button"
                 onClick={handleSaveQuickLink}
                 disabled={isLinkingClass}
-                className="px-5 py-2.5 bg-[#D4AF37] hover:bg-[#c5a030] text-slate-950 font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-gold/10 text-xs"
+                className="px-5 py-2.5 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-fg)] rounded-full font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm text-xs"
               >
                 {isLinkingClass ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                 Confirmar Vinculação
@@ -2293,8 +2262,8 @@ export function AdminEstudantes() {
 
       {/* TOAST NOTIFICATION */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 bg-slate-950 border border-gold/40 text-white px-5 py-3.5 rounded-2xl flex items-center gap-2.5 shadow-2xl animate-slide-up">
-          <BadgeCheck className="w-5 h-5 text-gold shrink-0" />
+        <div className="fixed bottom-5 right-5 z-50 bg-[var(--bg-card-alt)] border border-[var(--border)] text-[var(--text-heading)] px-5 py-3.5 rounded-2xl flex items-center gap-2.5 shadow-2xl animate-slide-up">
+          <BadgeCheck className="w-5 h-5 text-[var(--accent)] shrink-0" />
           <span className="text-xs font-semibold">{toastMessage}</span>
         </div>
       )}

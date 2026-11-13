@@ -7,6 +7,7 @@ import { useAccess } from '../auth/AccessProvider';
 import { usePortalNav } from '../navigation/portalNav';
 import { openCommandPalette } from './header/CommandPalette';
 import { BrandShield } from './BrandShield';
+import { moduloDaAba, useMuralNaoLidos } from './escolaEscuta';
 
 /*
  * Os menus moram em src/navigation/portalNav.ts (o mesmo mapa que o Header e a URL usam).
@@ -23,6 +24,9 @@ export function Sidebar() {
   const { access } = useAccess();
   const { setMode, mode } = usePlatform();
   const nav = usePortalNav();
+  // contador de recados não lidos no item "Mural de Recados" (Família e Docente)
+  const novidadesMural = useMuralNaoLidos(nav.portal === 'professor' ? 'docente' : 'familia');
+  const tagMural = nav.portal !== 'admin' && novidadesMural > 0 ? (novidadesMural > 9 ? '9+' : String(novidadesMural)) : undefined;
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
@@ -46,10 +50,16 @@ export function Sidebar() {
     () =>
       nav.sidebarSections.map((s) => ({
         title: s.title,
-        items: s.items.map((i) => ({ ...i, key: String(i.id), active: nav.activeId === i.id, onClick: () => nav.go(i.id) })),
+        items: s.items.map((i) => ({
+          ...i,
+          tag: moduloDaAba(i.id) === 'mural' ? tagMural : i.tag,
+          key: String(i.id),
+          active: nav.activeId === i.id,
+          onClick: () => nav.go(i.id),
+        })),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nav.sidebarSections, nav.activeId, nav.portal],
+    [nav.sidebarSections, nav.activeId, nav.portal, tagMural],
   );
 
   const handleLogout = async () => {

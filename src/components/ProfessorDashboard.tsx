@@ -14,6 +14,7 @@ import { EducaCarreiraEBeneficios } from './carreira/EducaCarreiraEBeneficios';
 import { StudentDossierModal } from './professor/StudentDossierModal';
 import { ClassroomStudentActionModal } from './professor/ClassroomStudentActionModal';
 import { TeacherSettingsTab } from './professor/TeacherSettingsTab';
+import { EE_ABA, EscolaEscutaAba, EscolaEscutaAtalhos, MuralDestaque, moduloDaAba, type Modulo } from './escolaEscuta';
 import { Alert, Avatar, Badge, BrandHero, Button, Card, CardHeader, EmptyState, Field, Modal, Page, PageSkeleton, Toggle, inputCls, EASE, cx } from './ui/kit';
 import {
   AlertCircle,
@@ -131,6 +132,14 @@ export function ProfessorDashboard() {
   const [activeShiftFilter, setActiveShiftFilter] = useState<'Matutino' | 'Vespertino'>('Matutino');
   // a lista de turmas do turno para substituição vem da coordenação (ainda não há fonte de dados)
   const [shiftClasses] = useState<ShiftClass[]>([]);
+
+  // Escola Escuta (Mural, Agenda Diária, Participa): são abas do menu (src/navigation/portalNav.ts)
+  const moduloEE = moduloDaAba(activeTab);
+  const [recadoEE, setRecadoEE] = useState<string | null>(null);
+  const abrirEE = (m: Modulo) => setActiveTab(EE_ABA[m] as any);
+  useEffect(() => {
+    if (activeTab !== 'ee-mural') setRecadoEE(null);
+  }, [activeTab]);
 
   const handleLogout = useCallback(() => {
     if (typeof logout === 'function') logout();
@@ -586,6 +595,29 @@ export function ProfessorDashboard() {
       {showTeacherHero && hasClasses && <ClassPicker classes={classesInfo} selected={substitutionMode ? '' : selectedClass} onPick={pickClass} />}
 
       <motion.div key={activeTab as string} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: EASE }} className="min-h-[420px]">
+        {moduloEE && (
+          <EscolaEscutaAba
+            portal="docente"
+            embutido
+            recadoInicialId={recadoEE}
+            organizationId={profile?.organization_id || profile?.school_id || undefined}
+          />
+        )}
+
+        {activeTab === 'dashboard' && (
+          <div className="mb-6 space-y-4">
+            <MuralDestaque
+              portal="docente"
+              organizationId={profile?.organization_id || profile?.school_id || undefined}
+              onAbrir={(id) => {
+                setRecadoEE(id);
+                abrirEE('mural');
+              }}
+            />
+            <EscolaEscutaAtalhos portal="docente" onAbrir={abrirEE} />
+          </div>
+        )}
+
         {activeTab === 'dashboard' && (
           <DashboardTab
             teacherName={profile?.name || currentTeacher.name}

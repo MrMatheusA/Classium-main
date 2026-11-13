@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   Users, Sparkles, Clock, LayoutTemplate, FileText, Plus, Search, Star, Edit3, 
   Copy, MoreHorizontal, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, 
@@ -426,9 +426,17 @@ export function CommunicationEditor() {
   }, [activeTab, editorSubTab]);
 
   // Real data arrays from Supabase audience
-  const realClasses: AudienceClass[] = audienceData?.classes || [];
-  const realStudents: AudienceStudent[] = audienceData?.students || [];
-  const realGuardians: AudienceGuardian[] = audienceData?.guardians || [];
+  // useMemo: referências estáveis — as abas (memo) não redesenham a cada render do editor
+  const realClasses: AudienceClass[] = useMemo(() => audienceData?.classes || [], [audienceData]);
+  const realStudents: AudienceStudent[] = useMemo(() => audienceData?.students || [], [audienceData]);
+  const realGuardians: AudienceGuardian[] = useMemo(() => audienceData?.guardians || [], [audienceData]);
+
+  // callback estável para "onSuccessPublished" (antes era uma função nova a cada render)
+  const loadAudienceRef = useRef(loadAudience);
+  loadAudienceRef.current = loadAudience;
+  const reloadAudience = useCallback(() => {
+    loadAudienceRef.current();
+  }, []);
 
   // Calculations for reached students & guardians
   const getReachedStudents = (): AudienceStudent[] => {
@@ -2197,7 +2205,7 @@ export function CommunicationEditor() {
             senderName={docState.signatureName || 'Coordenação Escolar'}
             senderRole={docState.signatureRole || 'Direção'}
             organizationId={audienceData?.organization_id}
-            onSuccessPublished={loadAudience}
+            onSuccessPublished={reloadAudience}
           />
         </div>
       )}
@@ -2212,7 +2220,7 @@ export function CommunicationEditor() {
             senderName={docState.signatureName || 'Secretaria Escolar'}
             senderRole={docState.signatureRole || 'Direção'}
             organizationId={audienceData?.organization_id}
-            onSuccessPublished={loadAudience}
+            onSuccessPublished={reloadAudience}
           />
         </div>
       )}
@@ -2227,7 +2235,7 @@ export function CommunicationEditor() {
             senderName={docState.signatureName || 'Equipe Pedagógica'}
             senderRole={docState.signatureRole || 'Coordenação'}
             organizationId={audienceData?.organization_id}
-            onSuccessPublished={loadAudience}
+            onSuccessPublished={reloadAudience}
           />
         </div>
       )}
@@ -2242,7 +2250,7 @@ export function CommunicationEditor() {
             senderName={docState.signatureName || 'Gestão Escolar'}
             senderRole={docState.signatureRole || 'Direção'}
             organizationId={audienceData?.organization_id}
-            onSuccessPublished={loadAudience}
+            onSuccessPublished={reloadAudience}
           />
         </div>
       )}
@@ -2260,7 +2268,10 @@ export function CommunicationEditor() {
           <AdminComunicacao organizationId={audienceData?.organization_id} />
         </div>
       )}
-      {/* Dedicated Printable Rifas Batch Document (Hidden on screen, full pages printed) */}
+      {/* Lote de rifas para impressão: só existe na aba de rifas.
+          Antes ficava montado sempre (1.000 bilhetes escondidos no DOM),
+          deixando TODAS as abas de Comunicação lentas. */}
+      {(activeTab === 'midia' || isPreparingPrint) && (
       <PrintableRifasBatch
         pages={batchPages}
         rifaInfo={{
@@ -2286,6 +2297,7 @@ export function CommunicationEditor() {
         rifasPorFolha={rifasPorFolha}
         paperFormat={rifaPaperFormat}
       />
+      )}
     </div>
   );
 }

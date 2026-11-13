@@ -26,6 +26,8 @@ import {
   EASE,
 } from './ui/kit';
 import { Bell, BookOpen, Building2, CalendarDays, GraduationCap, Inbox, Megaphone, RefreshCw, Send, Users } from 'lucide-react';
+import { EE_ABA, EscolaEscutaAtalhos } from './escolaEscuta';
+import { usePortalNav } from '../navigation/portalNav';
 
 interface GestorKpis {
   totalAlunos: number;
@@ -74,6 +76,9 @@ export function GestorDashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Escola Escuta: os módulos são abas do menu (src/navigation/portalNav.ts)
+  const nav = usePortalNav();
 
   const userId: string | undefined = currentUser?.id || authUser?.id;
 
@@ -200,6 +205,9 @@ export function GestorDashboard() {
         <StatCard index={2} label="Turmas" value={<CountUp to={kpis?.totalTurmas ?? 0} />} hint={`${kpis?.totalDisciplinas ?? 0} disciplinas`} icon={BookOpen} tone="neutral" />
         <StatCard index={3} label="Comunicados" value={<CountUp to={kpis?.comunicados ?? 0} />} hint={`${kpis?.totalResponsaveis ?? 0} responsáveis cadastrados`} icon={Bell} tone="warning" />
       </div>
+
+      {/* Escola Escuta: Mural, Agenda Família, Agenda Diária e Participa */}
+      <EscolaEscutaAtalhos portal="gestor" onAbrir={(m) => nav.go(EE_ABA[m])} />
 
       {/* Comunicação */}
       <div className="grid gap-6 lg:grid-cols-5">

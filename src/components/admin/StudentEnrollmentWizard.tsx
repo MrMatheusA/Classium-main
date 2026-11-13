@@ -1,25 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  User, Users, GraduationCap, FileCheck, CheckCircle2, XCircle, 
-  ArrowLeft, ArrowRight, Save, Trash2, Plus, Info, RefreshCw, 
-  Check, Play, ShieldAlert, BookOpen, Truck, Utensils, Search, AlertCircle, MapPin
+import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Check,
+  CheckCircle2,
+  FileCheck,
+  GraduationCap,
+  HeartPulse,
+  Info,
+  Loader2,
+  MapPin,
+  Plus,
+  RefreshCw,
+  Save,
+  ShieldAlert,
+  Trash2,
+  Truck,
+  User,
+  Users,
+  Utensils,
+  X,
+  type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { getSupabaseEnvConfig } from '../../lib/supabase/config';
 import { usePlatform } from '../../context/PlatformContext';
 import { studentsService } from '../../services/students/students.service';
-import { guardiansService } from '../../services/guardians/guardians.service';
-import { communicationsService } from '../../services/communications/communications.service';
-import { notificationsService } from '../../services/notifications/notifications.service';
-import { maskCPF, maskDate, maskCellPhone, maskRG, maskCEP } from '../../utils/masks';
+import { maskCPF, maskDate, maskCellPhone, maskCEP } from '../../utils/masks';
+import { Alert, Badge, Field, cx, inputCls, EASE } from '../ui/kit';
 
 function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
@@ -35,7 +51,6 @@ interface GuardianInput {
 }
 
 interface EnrollmentFormState {
-  // Aluno
   studentName: string;
   studentCpf: string;
   studentBirthDate: string;
@@ -45,8 +60,7 @@ interface EnrollmentFormState {
   studentLaudo: boolean;
   studentDietaryInfo: string;
   studentMedicalNotes: string;
-  
-  // Endereço Residencial (ViaCEP)
+
   addressCep: string;
   addressStreet: string;
   addressNumber: string;
@@ -55,10 +69,8 @@ interface EnrollmentFormState {
   addressState: string;
   addressComplement: string;
 
-  // Responsáveis
   guardians: GuardianInput[];
-  
-  // Escola / Turma
+
   schoolId: string;
   grade: string;
   academicYear: string;
@@ -71,13 +83,11 @@ const initialFormState: EnrollmentFormState = {
   studentCpf: '',
   studentBirthDate: '',
   studentSex: 'M',
-  studentPhotoUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=150',
+  studentPhotoUrl: '',
   studentAee: false,
   studentLaudo: false,
   studentDietaryInfo: '',
   studentMedicalNotes: '',
-  
-  // Endereço Residencial
   addressCep: '',
   addressStreet: '',
   addressNumber: '',
@@ -85,18 +95,117 @@ const initialFormState: EnrollmentFormState = {
   addressCity: '',
   addressState: '',
   addressComplement: '',
-
-  guardians: [
-    { name: '', cpf: '', email: '', phone: '', relationship: 'Mãe', isFinancial: true }
-  ],
+  guardians: [{ name: '', cpf: '', email: '', phone: '', relationship: 'Mãe', isFinancial: true }],
   schoolId: '',
   grade: '',
   academicYear: '2026',
   shift: 'Matutino',
-  transportRequired: false
+  transportRequired: false,
 };
 
+const DRAFT_KEY = 'educaplus_enrollment_draft';
+const NO_CLASS_LABEL = 'Sem turma (vincular depois)';
 
+const STEPS: { number: number; label: string; hint: string; icon: LucideIcon }[] = [
+  { number: 1, label: 'Estudante', hint: 'Dados pessoais e endereço', icon: User },
+  { number: 2, label: 'Responsáveis', hint: 'Quem responde pelo aluno', icon: Users },
+  { number: 3, label: 'Turma', hint: 'Turma, turno e serviços', icon: GraduationCap },
+  { number: 4, label: 'Revisão', hint: 'Confira e confirme', icon: FileCheck },
+];
+
+const RELATIONSHIPS = ['Mãe', 'Pai', 'Padrasto', 'Madrasta', 'Avô/Avó', 'Tio/Tia', 'Outro'];
+
+/* ------------------------------------------------------------------ */
+/* Peças de layout                                                     */
+/* ------------------------------------------------------------------ */
+
+function Section({ icon: Icon, title, subtitle, action, children }: { icon: LucideIcon; title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:p-5">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">
+            <Icon className="h-4 w-4" />
+          </span>
+          <div>
+            <h3 className="text-[15px] font-semibold text-[var(--text-heading)]">{title}</h3>
+            {subtitle && <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--text-muted)]">{subtitle}</p>}
+          </div>
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function OkPill({ children }: { children: React.ReactNode }) {
+  return <span className="inline-flex items-center rounded-full bg-[#ECFDF3] px-2.5 py-0.5 text-[12px] font-medium text-[#067647]">{children}</span>;
+}
+
+function ErrorText({ children }: { children?: React.ReactNode }) {
+  if (!children) return null;
+  return (
+    <p role="alert" className="mt-1 flex items-center gap-1 text-[12px] font-medium text-[#B42318]">
+      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+      {children}
+    </p>
+  );
+}
+
+function SwitchRow({ label, hint, checked, onChange, icon: Icon }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; icon?: LucideIcon }) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card-alt)] px-3.5 py-3 transition-colors hover:border-[var(--accent)]">
+      <span className="flex min-w-0 items-center gap-3">
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />}
+        <span className="min-w-0">
+          <span className="block text-[13px] font-semibold text-[var(--text-heading)]">{label}</span>
+          {hint && <span className="block text-[12px] text-[var(--text-muted)]">{hint}</span>}
+        </span>
+      </span>
+      <input type="checkbox" className="sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span aria-hidden className={cx('flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors', checked ? 'bg-[var(--accent)]' : 'bg-[var(--border)]')}>
+        <span className={cx('h-4 w-4 rounded-full bg-white shadow transition-transform', checked && 'translate-x-4')} />
+      </span>
+    </label>
+  );
+}
+
+function SummaryRow({ label, value, tone }: { label: string; value: React.ReactNode; tone?: 'ok' | 'muted' }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1.5 text-[13px]">
+      <dt className="text-[var(--text-muted)]">{label}</dt>
+      <dd className={cx('text-right font-medium', tone === 'ok' ? 'text-[#067647]' : tone === 'muted' ? 'text-[var(--text-muted)]' : 'text-[var(--text-heading)]')}>{value}</dd>
+    </div>
+  );
+}
+
+function Avatar({ name, url, size = 'lg' }: { name: string; url?: string; size?: 'lg' | 'sm' }) {
+  const initials =
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase())
+      .join('') || 'E';
+  const cls = size === 'lg' ? 'h-24 w-24 text-[26px]' : 'h-11 w-11 text-[14px]';
+  return url ? (
+    <img src={url} alt="" referrerPolicy="no-referrer" className={cx(cls, 'rounded-[22px] border border-[var(--border)] object-cover')} />
+  ) : (
+    <span className={cx(cls, 'flex items-center justify-center rounded-[22px] bg-[var(--accent-soft)] font-semibold text-[var(--accent)]')}>{initials}</span>
+  );
+}
+
+const btnPrimary =
+  'inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--accent)] px-5 text-[14px] font-semibold text-[var(--accent-fg)] shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60';
+const btnSecondary =
+  'inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-5 text-[14px] font-semibold text-[var(--text-body)] transition-colors hover:bg-[var(--bg-card-alt)] disabled:cursor-not-allowed disabled:opacity-60';
+const btnGhost = 'inline-flex h-10 items-center justify-center gap-2 rounded-full px-3 text-[13px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-alt)] hover:text-[var(--text-heading)]';
+
+/* ------------------------------------------------------------------ */
+/* Componente                                                          */
+/* ------------------------------------------------------------------ */
 
 interface StudentEnrollmentWizardProps {
   onClose: () => void;
@@ -104,426 +213,294 @@ interface StudentEnrollmentWizardProps {
   schoolsList?: { id: string; name: string }[];
 }
 
-export function StudentEnrollmentWizard({ onClose, onSuccess, schoolsList = [] }: StudentEnrollmentWizardProps) {
+type LogStatus = 'pending' | 'running' | 'success' | 'failed';
+
+export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmentWizardProps) {
   const { currentUser } = usePlatform();
+  const organizationId = currentUser?.organizationId || '11111111-1111-1111-1111-111111111111';
+
   const [step, setStep] = useState<number>(1);
   const [formData, setFormData] = useState<EnrollmentFormState>(initialFormState);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
-  const [schools, setSchools] = useState<{ id: string; name: string }[]>(schoolsList);
-  
-  // Real DB data states
-  const [dbClasses, setDbClasses] = useState<{ id: string; name: string; shift?: string; room?: string; course_id?: string; academic_year_id?: string; organization_id?: string; is_active?: boolean }[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [academicYearId, setAcademicYearId] = useState<string>('');
-  const [classLoadError, setClassLoadError] = useState<string | null>(null);
-  const [academicYearError, setAcademicYearError] = useState<string | null>(null);
 
-  // CEP lookup states
-  const [cepLoading, setCepLoading] = useState<boolean>(false);
-  const [cepSuccess, setCepSuccess] = useState<boolean>(false);
+  const [dbClasses, setDbClasses] = useState<{ id: string; name: string; shift?: string; room?: string }[]>([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
+
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepStatus, setCepStatus] = useState<'ok' | 'notfound' | null>(null);
+
+  const [executionLog, setExecutionLog] = useState<{ step: number; label: string; status: LogStatus }[]>([]);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionSuccess, setExecutionSuccess] = useState<boolean | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [createdRegCode, setCreatedRegCode] = useState<string>('');
+
+  const update = <K extends keyof EnrollmentFormState>(key: K, value: EnrollmentFormState[K]) => setFormData((prev) => ({ ...prev, [key]: value }));
+
+  const flash = (msg: string) => {
+    setDraftMessage(msg);
+    window.setTimeout(() => setDraftMessage(null), 3500);
+  };
+
+  // Esc fecha (menos durante a gravação)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isExecuting) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isExecuting, onClose]);
+
+  // Rascunho + ano letivo + turmas
+  useEffect(() => {
+    let cancelled = false;
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setFormData({ ...initialFormState, ...parsed, guardians: parsed.guardians?.length ? parsed.guardians : initialFormState.guardians });
+        flash('Rascunho anterior carregado.');
+      } catch {
+        localStorage.removeItem(DRAFT_KEY);
+      }
+    }
+
+    (async () => {
+      const [{ data: years }, { data: classes }] = await Promise.all([
+        supabase.from('academic_years').select('id,name,is_current').eq('organization_id', organizationId),
+        supabase.from('classes').select('id,name,shift,room').eq('organization_id', organizationId).eq('is_active', true).order('name'),
+      ]);
+      if (cancelled) return;
+
+      const year = years?.find((y: any) => y.is_current) ?? years?.[0];
+      if (year?.name) setFormData((prev) => ({ ...prev, academicYear: year.name }));
+
+      const list = (classes as any[]) || [];
+      setDbClasses(list);
+      setClassesLoading(false);
+      // não pré-seleciona turma: evita matricular na turma errada sem perceber
+      setSelectedClassId('');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
 
   const handleFetchCep = async (cepInput: string) => {
     const cleanCep = cepInput.replace(/\D/g, '');
-    if (cleanCep.length !== 8) return;
-
+    if (cleanCep.length !== 8 || cepLoading) return;
     setCepLoading(true);
-    setCepSuccess(false);
+    setCepStatus(null);
     try {
       const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
       const data = await res.json();
-      if (!data.erro) {
-        setFormData(prev => ({
+      if (data.erro) {
+        setCepStatus('notfound');
+      } else {
+        setFormData((prev) => ({
           ...prev,
           addressStreet: data.logradouro || prev.addressStreet,
           addressNeighborhood: data.bairro || prev.addressNeighborhood,
           addressCity: data.localidade || prev.addressCity,
-          addressState: data.uf || prev.addressState
+          addressState: data.uf || prev.addressState,
         }));
-        setCepSuccess(true);
-        setTimeout(() => setCepSuccess(false), 3000);
+        setCepStatus('ok');
       }
-    } catch (err) {
-      console.warn('Erro ao consultar ViaCEP:', err);
+    } catch {
+      setCepStatus('notfound');
     } finally {
       setCepLoading(false);
     }
   };
 
-  // Transaction execution states
-  const [resolvedOrgIdLog, setResolvedOrgIdLog] = useState<string | null>(null);
-  const [executionLog, setExecutionLog] = useState<{ step: number; label: string; status: 'pending' | 'running' | 'success' | 'failed'; details?: string }[]>([]);
-  const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [executionSuccess, setExecutionSuccess] = useState<boolean | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [rolledBack, setRolledBack] = useState<boolean>(false);
-  const [createdProfileIdsLog, setCreatedProfileIdsLog] = useState<string[]>([]);
-  const [createdGuardianIdsLog, setCreatedGuardianIdsLog] = useState<string[]>([]);
-  const [createdStudentIdsLog, setCreatedStudentIdsLog] = useState<string[]>([]);
-
-  // Load draft on mount and fetch real classes and academic year
-  useEffect(() => {
-    const fetchRealDataAndDraft = async () => {
-      // 1. Load draft
-      const savedDraft = localStorage.getItem('educaplus_enrollment_draft');
-      if (savedDraft) {
-        try {
-          const parsed = JSON.parse(savedDraft);
-          setFormData(parsed);
-          setDraftMessage('Rascunho de matrícula anterior carregado automaticamente.');
-          setTimeout(() => setDraftMessage(null), 4000);
-        } catch (err) {
-          console.error('Failed to parse saved enrollment draft', err);
-        }
-      }
-
-      const organizationId = currentUser?.organizationId || '11111111-1111-1111-1111-111111111111';
-
-      // 2. Fetch academic years
-      const { data: years } = await supabase
-        .from('academic_years')
-        .select('id,name,starts_on,ends_on,is_current,organization_id')
-        .eq('organization_id', organizationId);
-
-      const resolvedAcademicYearId =
-        years?.find(y => y.is_current)?.id ??
-        years?.[0]?.id ??
-        null;
-
-      if (!resolvedAcademicYearId) {
-        setAcademicYearId('');
-        setAcademicYearError('Ano letivo não encontrado');
-      } else {
-        setAcademicYearId(resolvedAcademicYearId);
-        setAcademicYearError(null);
-        const matchedYearObj = years?.find(y => y.id === resolvedAcademicYearId);
-        setFormData(prev => ({
-          ...prev,
-          academicYear: matchedYearObj?.name || '2026'
-        }));
-      }
-
-      // 3. Fetch classes
-      const { data: classes, error: classesError } = await supabase
-        .from('classes')
-        .select('id,name,shift,room,course_id,academic_year_id,organization_id,is_active')
-        .eq('organization_id', organizationId)
-        .eq('is_active', true)
-        .order('name');
-
-      console.log('[MATRÍCULA CLASSES]', classes);
-
-      if (classesError || !classes || classes.length === 0) {
-        setDbClasses([]);
-        setSelectedClassId('');
-        setClassLoadError(null);
-        setFormData(prev => ({
-          ...prev,
-          grade: 'Sem turma vinculada (Pendente)',
-          shift: prev.shift || 'Matutino'
-        }));
-      } else {
-        setDbClasses(classes as any);
-        setSelectedClassId(classes[0]?.id || '');
-        setClassLoadError(null);
-        setFormData(prev => ({
-          ...prev,
-          grade: classes[0]?.name || 'Sem turma vinculada',
-          shift: (classes[0]?.shift as any) || prev.shift
-        }));
-      }
-    };
-
-    fetchRealDataAndDraft();
-  }, [currentUser?.organizationId]);
-
-  // Save Draft
   const handleSaveDraft = () => {
     setIsSavingDraft(true);
-    localStorage.setItem('educaplus_enrollment_draft', JSON.stringify(formData));
-    setTimeout(() => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(formData));
+    window.setTimeout(() => {
       setIsSavingDraft(false);
-      setDraftMessage('Rascunho salvo com sucesso localmente!');
-      setTimeout(() => setDraftMessage(null), 3000);
-    }, 800);
+      flash('Rascunho salvo neste navegador.');
+    }, 400);
   };
 
-  // Clear Draft
   const handleClearDraft = () => {
-    localStorage.removeItem('educaplus_enrollment_draft');
-    setFormData(initialFormState);
-    setDraftMessage('Campos resetados e rascunho limpo.');
-    setTimeout(() => setDraftMessage(null), 3000);
+    localStorage.removeItem(DRAFT_KEY);
+    setFormData((prev) => ({ ...initialFormState, academicYear: prev.academicYear }));
+    setValidationErrors({});
+    setStep(1);
+    flash('Formulário limpo.');
   };
 
-  // CPF Validator
   const isValidCPF = (cpf: string): boolean => {
-    const cleanCpf = cpf.replace(/\D/g, '');
-    if (cleanCpf.length !== 11) return false;
-    if (/^(\d)\1{10}$/.test(cleanCpf)) return false;
-    
+    const c = cpf.replace(/\D/g, '');
+    if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
     let sum = 0;
-    let remainder;
-    for (let i = 1; i <= 9; i++) {
-      sum += parseInt(cleanCpf.substring(i - 1, i)) * (11 - i);
-    }
-    remainder = (sum * 10) % 11;
-    if (remainder === 10 || remainder === 11) remainder = 0;
-    if (remainder !== parseInt(cleanCpf.substring(9, 10))) return false;
-    
+    for (let i = 1; i <= 9; i++) sum += parseInt(c.substring(i - 1, i)) * (11 - i);
+    let rem = (sum * 10) % 11;
+    if (rem === 10 || rem === 11) rem = 0;
+    if (rem !== parseInt(c.substring(9, 10))) return false;
     sum = 0;
-    for (let i = 1; i <= 10; i++) {
-      sum += parseInt(cleanCpf.substring(i - 1, i)) * (12 - i);
-    }
-    remainder = (sum * 10) % 11;
-    if (remainder === 10 || remainder === 11) remainder = 0;
-    if (remainder !== parseInt(cleanCpf.substring(10, 11))) return false;
-    
-    return true;
+    for (let i = 1; i <= 10; i++) sum += parseInt(c.substring(i - 1, i)) * (12 - i);
+    rem = (sum * 10) % 11;
+    if (rem === 10 || rem === 11) rem = 0;
+    return rem === parseInt(c.substring(10, 11));
   };
 
-  // Validate Step data
   const validateStep = (currentStep: number): boolean => {
     const errors: Record<string, string> = {};
-    
     if (currentStep === 1) {
-      if (!formData.studentName.trim()) {
-        errors.studentName = 'Nome do aluno é obrigatório.';
-      }
-      if (formData.studentCpf && !isValidCPF(formData.studentCpf)) {
-        errors.studentCpf = 'CPF informado é inválido.';
-      }
-      if (!formData.studentBirthDate.trim()) {
-        errors.studentBirthDate = 'Data de nascimento é obrigatória.';
-      } else {
-        const regex = /^\d{2}\/\d{2}\/\d{4}$/;
-        if (!regex.test(formData.studentBirthDate)) {
-          errors.studentBirthDate = 'Formato inválido. Use DD/MM/AAAA.';
-        }
-      }
+      if (!formData.studentName.trim()) errors.studentName = 'Informe o nome completo.';
+      if (formData.studentCpf && !isValidCPF(formData.studentCpf)) errors.studentCpf = 'CPF inválido.';
+      if (!formData.studentBirthDate.trim()) errors.studentBirthDate = 'Informe a data de nascimento.';
+      else if (!/^\d{2}\/\d{2}\/\d{4}$/.test(formData.studentBirthDate)) errors.studentBirthDate = 'Use o formato DD/MM/AAAA.';
     }
-    
     if (currentStep === 2) {
-      if (formData.guardians.length === 0) {
-        errors.guardians = 'É necessário cadastrar pelo menos um responsável.';
-      } else {
-        formData.guardians.forEach((g, idx) => {
-          if (!g.name.trim()) {
-            errors[`guardian_${idx}_name`] = 'Nome é obrigatório.';
-          }
-          if (!g.cpf.trim()) {
-            errors[`guardian_${idx}_cpf`] = 'CPF é obrigatório.';
-          } else if (!isValidCPF(g.cpf)) {
-            errors[`guardian_${idx}_cpf`] = 'CPF inválido.';
-          }
-          if (!g.email.trim()) {
-            errors[`guardian_${idx}_email`] = 'E-mail é obrigatório.';
-          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) {
-            errors[`guardian_${idx}_email`] = 'E-mail inválido.';
-          }
-          if (!g.phone.trim()) {
-            errors[`guardian_${idx}_phone`] = 'Celular é obrigatório.';
-          }
-        });
-        
-        const hasFinancial = formData.guardians.some(g => g.isFinancial);
-        if (!hasFinancial) {
-          errors.financial = 'Pelo menos um responsável deve ser o responsável financeiro.';
-        }
-      }
+      if (formData.guardians.length === 0) errors.guardians = 'Cadastre pelo menos um responsável.';
+      formData.guardians.forEach((g, idx) => {
+        if (!g.name.trim()) errors[`guardian_${idx}_name`] = 'Informe o nome.';
+        if (!g.cpf.trim()) errors[`guardian_${idx}_cpf`] = 'Informe o CPF.';
+        else if (!isValidCPF(g.cpf)) errors[`guardian_${idx}_cpf`] = 'CPF inválido.';
+        if (!g.email.trim()) errors[`guardian_${idx}_email`] = 'Informe o e-mail.';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) errors[`guardian_${idx}_email`] = 'E-mail inválido.';
+        if (g.phone.replace(/\D/g, '').length < 10) errors[`guardian_${idx}_phone`] = 'Informe o celular com DDD.';
+      });
+      if (!formData.guardians.some((g) => g.isFinancial)) errors.financial = 'Marque quem é o responsável financeiro.';
     }
-
-    if (currentStep === 3) {
-      // Classes and academic year are optional at registration time.
-      // Students can be registered without a class and linked later.
-    }
-
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const nextStep = () => {
-    if (validateStep(step)) {
-      setStep(prev => prev + 1);
+  const goTo = (target: number) => {
+    // só avança se as etapas anteriores estiverem válidas
+    if (target > step) {
+      for (let s = step; s < target; s++) {
+        if (!validateStep(s)) {
+          setStep(s);
+          return;
+        }
+      }
     }
-  };
-
-  const prevStep = () => {
-    setStep(prev => prev - 1);
+    setValidationErrors({});
+    setStep(target);
   };
 
   const handleGuardianChange = (index: number, field: keyof GuardianInput, value: any) => {
-    const updated = [...formData.guardians];
-    
-    if (field === 'isFinancial' && value === true) {
-      // Only one can be financial
-      updated.forEach((g, idx) => {
-        g.isFinancial = idx === index;
+    setFormData((prev) => {
+      const updated = prev.guardians.map((g, i) => {
+        if (field === 'isFinancial') return { ...g, isFinancial: value ? i === index : i === index ? false : g.isFinancial };
+        return i === index ? { ...g, [field]: value } : g;
       });
-    } else {
-      updated[index] = {
-        ...updated[index],
-        [field]: value
-      };
-    }
-    
-    setFormData({
-      ...formData,
-      guardians: updated
+      return { ...prev, guardians: updated };
     });
   };
 
-  const addGuardian = () => {
-    setFormData({
-      ...formData,
-      guardians: [
-        ...formData.guardians,
-        { name: '', cpf: '', email: '', phone: '', relationship: 'Pai', isFinancial: false }
-      ]
-    });
-  };
+  const addGuardian = () =>
+    setFormData((prev) => ({ ...prev, guardians: [...prev.guardians, { name: '', cpf: '', email: '', phone: '', relationship: 'Pai', isFinancial: false }] }));
 
-  const removeGuardian = (index: number) => {
-    if (formData.guardians.length === 1) return;
-    const updated = formData.guardians.filter((_, idx) => idx !== index);
-    
-    // If we removed the financial one, make the first one financial
-    if (!updated.some(g => g.isFinancial)) {
-      updated[0].isFinancial = true;
-    }
-    
-    setFormData({
-      ...formData,
-      guardians: updated
+  const removeGuardian = (index: number) =>
+    setFormData((prev) => {
+      if (prev.guardians.length === 1) return prev;
+      const updated = prev.guardians.filter((_, i) => i !== index);
+      if (!updated.some((g) => g.isFinancial)) updated[0] = { ...updated[0], isFinancial: true };
+      return { ...prev, guardians: updated };
     });
-  };
 
-  // HYBRID TRANSACTION EXECUTION: MULTI-TABLE PERSISTENCE WITH DETAILED LOGS AND ROLLBACK
+  const selectedClass = useMemo(() => dbClasses.find((c) => c.id === selectedClassId) || null, [dbClasses, selectedClassId]);
+
+  /* ---------------- gravação (mesma sequência de antes, com rollback completo) ---------------- */
   const executeEnrollmentTransaction = async () => {
     setIsExecuting(true);
     setExecutionSuccess(null);
     setErrorMessage(null);
-    setRolledBack(false);
 
-    // Dynamic clean progress logs
-    const initialLogs = [
-      { step: 1, label: 'Validando dados cadastrais e autorização multi-tenant...', status: 'running' as const },
-      { step: 2, label: 'Registrando responsável(is) em public.guardians...', status: 'pending' as const },
-      { step: 3, label: 'Persistindo dados do estudante em public.students...', status: 'pending' as const },
-      { step: 4, label: 'Vinculando responsável(is) (student_responsible_links & family_links)...', status: 'pending' as const },
-      { step: 5, label: 'Alocando estudante na turma (public.class_students)...', status: 'pending' as const },
-      { step: 6, label: 'Finalizando sincronização em tempo real...', status: 'pending' as const }
-    ];
-    setExecutionLog(initialLogs);
+    setExecutionLog([
+      { step: 1, label: 'Conferindo os dados', status: 'running' },
+      { step: 2, label: 'Salvando responsáveis', status: 'pending' },
+      { step: 3, label: 'Salvando o estudante', status: 'pending' },
+      { step: 4, label: 'Vinculando responsáveis ao estudante', status: 'pending' },
+      { step: 5, label: 'Colocando na turma', status: 'pending' },
+      { step: 6, label: 'Atualizando as outras telas', status: 'pending' },
+    ]);
+    const advance = (done: number, label?: string) =>
+      setExecutionLog((prev) =>
+        prev.map((l) => (l.step === done ? { ...l, status: 'success', label: label || l.label } : l.step === done + 1 ? { ...l, status: 'running' } : l)),
+      );
 
     const createdGuardians: string[] = [];
     let createdStudentId: string | null = null;
-    const createdLinks: { srlIds: string[]; flIds: string[]; csIds: string[] } = {
-      srlIds: [],
-      flIds: [],
-      csIds: []
-    };
+    const created = { srl: [] as string[], fl: [] as string[], cs: [] as string[] };
 
     try {
       const primaryGuardian = formData.guardians[0];
-      const cleanedStudentCpf = formData.studentCpf ? formData.studentCpf.replace(/\D/g, '') : null;
-      const cleanedGuardianCpf = primaryGuardian ? primaryGuardian.cpf.replace(/\D/g, '') : '';
+      if (!primaryGuardian?.name.trim()) throw new Error('Os dados do responsável são obrigatórios.');
 
-      if (!primaryGuardian || !primaryGuardian.name.trim()) {
-        throw new Error('Os dados do responsável são obrigatórios.');
-      }
+      const birthDate = formData.studentBirthDate.includes('/') ? formData.studentBirthDate.split('/').reverse().join('-') : formData.studentBirthDate || null;
+      advance(1);
 
-      const organizationId = currentUser?.organizationId || '11111111-1111-1111-1111-111111111111';
-      setResolvedOrgIdLog(organizationId);
-
-      const birthDateFormatted = formData.studentBirthDate.includes('/') 
-        ? formData.studentBirthDate.split('/').reverse().join('-') 
-        : (formData.studentBirthDate || null);
-
-      // STEP 1: VALIDATION
-      setExecutionLog(prev => prev.map(l => l.step === 1 ? { ...l, status: 'success' as const, label: 'Dados validados com sucesso.' } : l.step === 2 ? { ...l, status: 'running' as const } : l));
-
-      // STEP 2: GUARDIANS (public.guardians)
-      const guardianRecords: Array<{ id: string; name: string; relationship: string; isPrimary: boolean; isFinancial: boolean }> = [];
-      for (const g of formData.guardians) {
+      // 2. Responsáveis — reaproveita quem já existe (CPF com ou sem máscara, na mesma escola)
+      const guardianRecords: { id: string; name: string; relationship: string; isPrimary: boolean; isFinancial: boolean }[] = [];
+      for (const [idx, g] of formData.guardians.entries()) {
         const gName = g.name.trim();
-        const gCpf = (g.cpf || '').replace(/\D/g, '');
         if (!gName) continue;
-
+        const cpfDigits = g.cpf.replace(/\D/g, '');
         let gId: string | null = null;
-        if (gCpf) {
-          try {
-            const { data: existingG } = await supabase
-              .from('guardians')
-              .select('id')
-              .eq('cpf', gCpf)
-              .maybeSingle();
-            if (existingG) {
-              gId = existingG.id;
-            }
-          } catch (_) {}
+
+        if (cpfDigits) {
+          const { data: existing } = await supabase
+            .from('guardians')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .or(`cpf.eq.${cpfDigits},cpf.eq.${maskCPF(cpfDigits)}`)
+            .limit(1);
+          if (existing && existing.length > 0) gId = existing[0].id;
         }
 
         if (!gId) {
           gId = generateUUID();
-          try {
-            const { error: gErr } = await supabase.from('guardians').insert({
-              id: gId,
-              organization_id: organizationId,
-              school_id: organizationId,
-              full_name: gName,
-              name: gName,
-              cpf: g.cpf || null,
-              email: g.email || null,
-              phone: g.phone || null,
-              kinship: g.relationship || 'Responsável',
-              status: 'active'
-            });
-            if (!gErr) {
-              createdGuardians.push(gId);
-            }
-          } catch (e) {
-            console.warn('[Wizard] Guardians insert notice:', e);
-          }
+          const { error: gErr } = await supabase.from('guardians').insert({
+            id: gId,
+            organization_id: organizationId,
+            school_id: organizationId,
+            full_name: gName,
+            name: gName,
+            cpf: g.cpf || null,
+            email: g.email || null,
+            phone: g.phone || null,
+            kinship: g.relationship || 'Responsável',
+            status: 'active',
+          });
+          if (gErr) throw new Error(`Não foi possível salvar o responsável ${gName}: ${gErr.message}`);
+          createdGuardians.push(gId);
         }
 
-        guardianRecords.push({
-          id: gId,
-          name: gName,
-          relationship: g.relationship || 'Responsável',
-          isPrimary: true,
-          isFinancial: !!g.isFinancial
-        });
+        guardianRecords.push({ id: gId, name: gName, relationship: g.relationship || 'Responsável', isPrimary: idx === 0, isFinancial: !!g.isFinancial });
       }
+      advance(2, `${guardianRecords.length} responsável(is) salvo(s)`);
 
-      setCreatedGuardianIdsLog(guardianRecords.map(g => g.id));
-      setExecutionLog(prev => prev.map(l => l.step === 2 ? { ...l, status: 'success' as const, label: `${guardianRecords.length} responsável(is) processado(s).` } : l.step === 3 ? { ...l, status: 'running' as const } : l));
-
-      // STEP 3: STUDENT (public.students)
-      const newStudentUuid = generateUUID();
-      createdStudentId = newStudentUuid;
-      const regCode = `RA-2026-${Math.floor(100 + Math.random() * 900)}`;
-      const selectedClassObj = dbClasses.find(c => c.id === selectedClassId);
-      const className = selectedClassObj 
-        ? selectedClassObj.name 
-        : (formData.grade && formData.grade !== 'Sem turma vinculada (Pendente)' ? formData.grade : 'Sem Turma');
-      const classShift = selectedClassObj ? selectedClassObj.shift : formData.shift;
+      // 3. Estudante
+      const newStudentId = generateUUID();
+      createdStudentId = newStudentId;
+      const regCode = `RA-${(formData.academicYear || '2026').replace(/\D/g, '').slice(0, 4) || '2026'}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const className = selectedClass ? selectedClass.name : 'Sem Turma';
+      const classShift = selectedClass?.shift || formData.shift;
 
       const studentPayload: any = {
-        id: newStudentUuid,
+        id: newStudentId,
         organization_id: organizationId,
         school_id: organizationId,
-        full_name: formData.studentName,
-        name: formData.studentName,
+        full_name: formData.studentName.trim(),
+        name: formData.studentName.trim(),
         registration_code: regCode,
-        birth_date: birthDateFormatted,
-        cpf: cleanedStudentCpf,
+        birth_date: birthDate,
+        cpf: formData.studentCpf ? formData.studentCpf.replace(/\D/g, '') : null,
         sex: formData.studentSex || 'M',
         gender: formData.studentSex || 'M',
         status: 'Matriculado',
-        class_id: selectedClassObj ? selectedClassObj.id : null,
-        address: formData.addressStreet || null,
+        class_id: selectedClass ? selectedClass.id : null,
+        address: formData.addressStreet ? [formData.addressStreet, formData.addressNumber, formData.addressComplement].filter(Boolean).join(', ') : null,
         neighborhood: formData.addressNeighborhood || null,
         city: formData.addressCity || null,
         state: formData.addressState || null,
@@ -535,972 +512,717 @@ export function StudentEnrollmentWizard({ onClose, onSuccess, schoolsList = [] }
         guardian_name: primaryGuardian.name,
         guardian_phone: primaryGuardian.phone,
         guardian_relationship: primaryGuardian.relationship,
-        guardian_cpf: primaryGuardian.cpf
+        guardian_cpf: primaryGuardian.cpf,
       };
+      if (formData.studentPhotoUrl.trim()) studentPayload.avatar_url = formData.studentPhotoUrl.trim();
 
-      const { error: stInsertErr } = await supabase.from('students').insert(studentPayload);
-      if (stInsertErr) {
-        throw new Error(`Erro ao salvar estudante no Supabase: ${stInsertErr.message}`);
+      let { error: stErr } = await supabase.from('students').insert(studentPayload);
+      if (stErr && /avatar_url/.test(stErr.message)) {
+        delete studentPayload.avatar_url; // coluna opcional
+        ({ error: stErr } = await supabase.from('students').insert(studentPayload));
       }
+      if (stErr) throw new Error(`Não foi possível salvar o estudante: ${stErr.message}`);
+      advance(3);
 
-      setCreatedStudentIdsLog([newStudentUuid]);
-      setExecutionLog(prev => prev.map(l => l.step === 3 ? { ...l, status: 'success' as const, label: 'Estudante persistido com sucesso no Supabase.' } : l.step === 4 ? { ...l, status: 'running' as const } : l));
-
-      // STEP 4: GUARDIAN LINKS (student_responsible_links & family_links)
+      // 4. Vínculos
       for (const g of guardianRecords) {
         const srlId = generateUUID();
-        const flId = generateUUID();
-        
         const { error: srlErr } = await supabase.from('student_responsible_links').insert({
           id: srlId,
           organization_id: organizationId,
-          student_id: newStudentUuid,
+          student_id: newStudentId,
           guardian_id: g.id,
           guardian_name: g.name,
           relationship: g.relationship,
           is_primary_contact: g.isPrimary,
           is_financial_responsible: g.isFinancial,
           is_pedagogical_responsible: true,
-          can_pickup: true
+          can_pickup: true,
         });
         if (srlErr) throw new Error(`Erro ao vincular responsável: ${srlErr.message}`);
-        createdLinks.srlIds.push(srlId);
+        created.srl.push(srlId);
 
-        const { error: flErr } = await supabase.from('family_links').insert({
-          id: flId,
-          organization_id: organizationId,
-          student_id: newStudentUuid,
-          guardian_id: g.id
-        });
+        const flId = generateUUID();
+        const { error: flErr } = await supabase.from('family_links').insert({ id: flId, organization_id: organizationId, student_id: newStudentId, guardian_id: g.id });
         if (flErr) throw new Error(`Erro ao criar vínculo familiar: ${flErr.message}`);
-        createdLinks.flIds.push(flId);
+        created.fl.push(flId);
       }
+      advance(4);
 
-      setExecutionLog(prev => prev.map(l => l.step === 4 ? { ...l, status: 'success' as const, label: 'Vínculos familiares registrados com sucesso.' } : l.step === 5 ? { ...l, status: 'running' as const } : l));
-
-      // STEP 5: CLASS ALLOCATION (class_students)
-      if (selectedClassObj && selectedClassObj.id) {
+      // 5. Turma
+      if (selectedClass) {
         const csId = generateUUID();
-        const { error: csErr } = await supabase.from('class_students').insert([{
-          id: csId,
-          organization_id: organizationId,
-          class_id: selectedClassObj.id,
-          student_id: newStudentUuid,
-          status: 'active'
-        }]);
-        if (csErr) throw new Error(`Erro ao alocar estudante na turma: ${csErr.message}`);
-        createdLinks.csIds.push(csId);
-        setExecutionLog(prev => prev.map(l => l.step === 5 ? { ...l, status: 'success' as const, label: `Estudante alocado na turma ${selectedClassObj.name}.` } : l.step === 6 ? { ...l, status: 'running' as const } : l));
+        const { error: csErr } = await supabase
+          .from('class_students')
+          .insert([{ id: csId, organization_id: organizationId, class_id: selectedClass.id, student_id: newStudentId, status: 'active' }]);
+        if (csErr) throw new Error(`Erro ao colocar na turma: ${csErr.message}`);
+        created.cs.push(csId);
+        advance(5, `Na turma ${selectedClass.name}`);
       } else {
-        setExecutionLog(prev => prev.map(l => l.step === 5 ? { ...l, status: 'success' as const, label: 'Sem turma vinculada no momento (Pendente).' } : l.step === 6 ? { ...l, status: 'running' as const } : l));
+        advance(5, 'Sem turma por enquanto');
       }
 
-      // STEP 6: BACKEND API SYNC & FINALIZATION
-      const servicePayload = {
-        ...studentPayload,
-        class_name: className,
-        shift: classShift || 'Matutino',
-        academic_year: formData.academicYear || '2026',
-        guardians: formData.guardians.map(g => ({
-          full_name: g.name,
-          name: g.name,
-          relationship: g.relationship,
-          phone: g.phone,
-          email: g.email,
-          document_number: g.cpf,
-          cpf: g.cpf,
-          is_primary: true,
-          is_financial: !!g.isFinancial
-        }))
-      };
-
-      await studentsService.createStudent(servicePayload);
+      // 6. Sincronização do serviço. O estudante já está salvo: se esta etapa falhar,
+      // não desfazemos a matrícula — só registramos o aviso.
+      try {
+        await studentsService.createStudent({
+          ...studentPayload,
+          class_name: className,
+          shift: classShift || 'Matutino',
+          academic_year: formData.academicYear || '2026',
+          guardians: formData.guardians.map((g, i) => ({
+            full_name: g.name,
+            name: g.name,
+            relationship: g.relationship,
+            phone: g.phone,
+            email: g.email,
+            document_number: g.cpf,
+            cpf: g.cpf,
+            is_primary: i === 0,
+            is_financial: !!g.isFinancial,
+          })),
+        });
+      } catch (syncErr) {
+        console.warn('[Matrícula] studentsService.createStudent falhou (estudante já salvo):', syncErr);
+      }
 
       window.dispatchEvent(new CustomEvent('classium_students_updated'));
       window.dispatchEvent(new CustomEvent('classium_school_updated'));
+      advance(6, 'Tudo atualizado');
 
-      setExecutionLog(prev => prev.map(l => l.step === 6 ? { ...l, status: 'success' as const, label: 'Matrícula confirmada e sincronizada em tempo real!' } : l));
+      setCreatedRegCode(regCode);
       setExecutionSuccess(true);
-      setIsExecuting(false);
-      localStorage.removeItem('educaplus_enrollment_draft');
-
+      localStorage.removeItem(DRAFT_KEY);
     } catch (err: any) {
-      console.error('[TRANSACTION FAILURE]:', err);
-
-      // Perform automatic compensatory rollback of newly created records
+      console.error('[Matrícula] falhou:', err);
+      // Desfaz o que foi criado nesta tentativa, na ordem inversa
       try {
-        if (createdLinks.csIds.length > 0) {
-          await supabase.from('class_students').delete().in('id', createdLinks.csIds);
-        }
-        if (createdLinks.flIds.length > 0) {
-          await supabase.from('family_links').delete().in('id', createdLinks.flIds);
-        }
-        if (createdLinks.srlIds.length > 0) {
-          await supabase.from('student_responsible_links').delete().in('id', createdLinks.srlIds);
-        }
-        if (createdStudentId) {
-          await supabase.from('students').delete().eq('id', createdStudentId);
-        }
-        setRolledBack(true);
+        if (created.cs.length) await supabase.from('class_students').delete().in('id', created.cs);
+        if (created.fl.length) await supabase.from('family_links').delete().in('id', created.fl);
+        if (created.srl.length) await supabase.from('student_responsible_links').delete().in('id', created.srl);
+        if (createdStudentId) await supabase.from('students').delete().eq('id', createdStudentId);
+        if (createdGuardians.length) await supabase.from('guardians').delete().in('id', createdGuardians);
       } catch (rollbackErr) {
-        console.warn('[Wizard] Compensatory rollback notice:', rollbackErr);
+        console.warn('[Matrícula] rollback parcial:', rollbackErr);
       }
-
-      setExecutionLog(prev => prev.map(l => l.status === 'running' ? { ...l, status: 'failed' as const } : l));
+      setExecutionLog((prev) => prev.map((l) => (l.status === 'running' ? { ...l, status: 'failed' } : l)));
       setExecutionSuccess(false);
-      setErrorMessage(err.message || 'Erro na transação de matrícula.');
+      setErrorMessage(err?.message || 'Não foi possível concluir a matrícula.');
+    } finally {
       setIsExecuting(false);
     }
   };
 
+  const doneCount = executionLog.filter((l) => l.status === 'success').length;
+  const progress = executionLog.length ? Math.round((doneCount / executionLog.length) * 100) : 0;
+
+  /* ------------------------------------------------------------------ */
 
   return (
-    <div className="fixed inset-0 bg-[#060b19]/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#0b1329] border border-slate-800 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col my-8 max-h-[90vh]">
-        
-        {/* Wizard Header */}
-        <div className="p-6 bg-gradient-to-r from-slate-950 to-[#0c1630] border-b border-slate-800 flex items-center justify-between shrink-0">
-          <div className="space-y-1 text-left">
-            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 bg-gold/10 border border-gold/30 rounded-full text-gold text-[9px] font-black uppercase tracking-widest">
-              <GraduationCap className="w-3.5 h-3.5" />
-              <span>SISTEMA INTEGRADO DE MATRÍCULA CORPORATIVA</span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[rgba(16,24,40,0.45)] p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-labelledby="enroll-title">
+      <motion.div
+        initial={{ opacity: 0, y: 12, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.22, ease: EASE }}
+        className="my-auto flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_32px_80px_-32px_rgba(16,24,40,0.45)]"
+      >
+        {/* Cabeçalho */}
+        <header className="relative shrink-0 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-7">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage: 'linear-gradient(to right, var(--accent-soft) 1px, transparent 1px), linear-gradient(to bottom, var(--accent-soft) 1px, transparent 1px)',
+              backgroundSize: '40px 40px',
+              maskImage: 'radial-gradient(ellipse 55% 90% at 100% 0%, black, transparent)',
+              WebkitMaskImage: 'radial-gradient(ellipse 55% 90% at 100% 0%, black, transparent)',
+            }}
+          />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-[0_12px_24px_-14px_rgba(16,24,40,0.6)]" style={{ background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)' }}>
+                <GraduationCap className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 id="enroll-title" className="font-serif text-[22px] font-semibold leading-tight tracking-[-0.015em] text-[var(--text-heading)]">
+                  Nova matrícula
+                </h2>
+                <p className="mt-0.5 text-[14px] text-[var(--text-muted)]">Cadastre o estudante, os responsáveis e a turma em 4 passos.</p>
+              </div>
             </div>
-            <h2 className="text-lg md:text-xl font-serif font-bold text-white">Fluxo de Matrícula do Aluno</h2>
+            <button type="button" onClick={onClose} disabled={isExecuting} aria-label="Fechar" className="rounded-full p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-alt)] hover:text-[var(--text-heading)] disabled:opacity-40">
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-slate-900 rounded-xl text-slate-400 hover:text-white transition-colors"
-            disabled={isExecuting}
-          >
-            <XCircle className="w-5 h-5" />
-          </button>
-        </div>
 
-        {/* Wizard Progress Steps Indicator Bar */}
-        {step < 5 && (
-          <div className="px-6 py-4 bg-slate-950/40 border-b border-slate-900 shrink-0">
-            <div className="flex items-center justify-between max-w-2xl mx-auto">
-              {[
-                { number: 1, label: 'Aluno', icon: User },
-                { number: 2, label: 'Responsáveis', icon: Users },
-                { number: 3, label: 'Vínculo Escolar', icon: GraduationCap },
-                { number: 4, label: 'Revisão', icon: FileCheck },
-              ].map((s) => {
+          {/* Passos */}
+          {step < 5 && (
+            <ol className="relative mt-5 grid grid-cols-4 gap-1.5 rounded-[20px] bg-[var(--bg-card-alt)] p-1">
+              {STEPS.map((s) => {
                 const Icon = s.icon;
-                const isCompleted = step > s.number;
-                const isActive = step === s.number;
-                
+                const done = step > s.number;
+                const active = step === s.number;
                 return (
-                  <div key={s.number} className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                      isCompleted ? 'bg-gold text-slate-950 font-black' :
-                      isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 ring-2 ring-blue-400/40' :
-                      'bg-slate-900 text-slate-500 border border-slate-800'
-                    }`}>
-                      {isCompleted ? <Check className="w-4.5 h-4.5 stroke-[3]" /> : s.number}
-                    </div>
-                    <span className={`text-[11px] font-bold hidden sm:inline ${isActive ? 'text-white' : 'text-slate-500'}`}>
-                      {s.label}
-                    </span>
-                    {s.number < 4 && <div className="w-8 md:w-16 h-0.5 bg-slate-800 mx-1"></div>}
-                  </div>
+                  <li key={s.number}>
+                    <button
+                      type="button"
+                      onClick={() => goTo(s.number)}
+                      aria-current={active ? 'step' : undefined}
+                      className={cx(
+                        'flex w-full items-center gap-2.5 rounded-2xl px-2.5 py-2 text-left transition-colors sm:px-3',
+                        active ? 'bg-[var(--bg-card)] shadow-sm' : 'hover:bg-[var(--bg-card)]/60',
+                      )}
+                    >
+                      <span
+                        className={cx(
+                          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold',
+                          done ? 'bg-[#067647] text-white' : active ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)]',
+                        )}
+                      >
+                        {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Icon className="h-3.5 w-3.5" />}
+                      </span>
+                      <span className="hidden min-w-0 sm:block">
+                        <span className={cx('block truncate text-[13px] font-semibold', active ? 'text-[var(--text-heading)]' : 'text-[var(--text-body)]')}>{s.label}</span>
+                        <span className="hidden truncate text-[11px] text-[var(--text-muted)] lg:block">{s.hint}</span>
+                      </span>
+                    </button>
+                  </li>
                 );
               })}
-            </div>
-          </div>
-        )}
+            </ol>
+          )}
+        </header>
 
-        {/* Toast / Draft Notifications */}
-        {draftMessage && (
-          <div className="bg-gold/10 border-y border-gold/30 px-6 py-2.5 text-center text-[11px] text-gold font-semibold flex items-center justify-center gap-2 animate-fade-in shrink-0">
-            <Info className="w-4 h-4 shrink-0" />
-            <span>{draftMessage}</span>
-          </div>
-        )}
+        <AnimatePresence>
+          {draftMessage && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="shrink-0 overflow-hidden">
+              <p className="flex items-center justify-center gap-2 border-b border-[var(--border)] bg-[var(--accent-soft)] px-6 py-2 text-[13px] font-medium text-[var(--accent)]">
+                <Info className="h-4 w-4" />
+                {draftMessage}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Wizard Main Content (Scrollable) */}
-        <div className="p-6 md:p-8 overflow-y-auto flex-1 text-left space-y-6 text-xs text-slate-200">
-          
-          {/* STEP 1: ALUNO DADOS */}
-          {step === 1 && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="border-b border-slate-800 pb-2">
-                <h3 className="text-sm font-bold text-white">Etapa 1: Dados do Aluno</h3>
-                <p className="text-[11px] text-slate-400">Insira as informações do novo estudante. O CPF é opcional, mas se digitado será validado.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Photo Roster Selection */}
-                <div className="space-y-4 md:col-span-1 flex flex-col items-center justify-center bg-slate-950/40 p-6 rounded-2xl border border-slate-850">
-                  <img 
-                    src={formData.studentPhotoUrl || "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=150"} 
-                    className="w-28 h-28 rounded-full object-cover border-2 border-gold/40 shadow-xl" 
-                    alt="Foto do Aluno" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="space-y-1 w-full text-center">
-                    <label className="text-[10px] text-slate-400 uppercase font-black tracking-widest block">URL da Foto</label>
-                    <input 
-                      type="text"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-[10px] text-slate-300 text-center focus:border-gold/30 outline-none"
-                      value={formData.studentPhotoUrl}
-                      onChange={(e) => setFormData({ ...formData, studentPhotoUrl: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                {/* Form fields */}
-                <div className="space-y-4 md:col-span-2">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Nome Completo do Aluno *</label>
-                    <input 
-                      type="text"
-                      className={`w-full bg-slate-900 border ${validationErrors.studentName ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none transition-all`}
-                      placeholder="Ex: Pedro Henrique de Souza Alencar"
-                      value={formData.studentName}
-                      onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                    />
-                    {validationErrors.studentName && <span className="text-[10px] text-rose-500 font-bold block">{validationErrors.studentName}</span>}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">CPF (Opcional)</label>
-                      <input 
-                        type="text"
-                        className={`w-full bg-slate-900 border ${validationErrors.studentCpf ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none`}
-                        placeholder="000.000.000-00"
-                        value={formData.studentCpf}
-                        onChange={(e) => setFormData({ ...formData, studentCpf: maskCPF(e.target.value) })}
-                      />
-                      {validationErrors.studentCpf && <span className="text-[10px] text-rose-500 font-bold block">{validationErrors.studentCpf}</span>}
-                    </div>
- 
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Nascimento * (DD/MM/AAAA)</label>
-                      <input 
-                        type="text"
-                        className={`w-full bg-slate-900 border ${validationErrors.studentBirthDate ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none`}
-                        placeholder="14/12/2012"
-                        value={formData.studentBirthDate}
-                        onChange={(e) => setFormData({ ...formData, studentBirthDate: maskDate(e.target.value) })}
-                      />
-                      {validationErrors.studentBirthDate && <span className="text-[10px] text-rose-500 font-bold block">{validationErrors.studentBirthDate}</span>}
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Sexo</label>
-                      <select 
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                        value={formData.studentSex}
-                        onChange={(e) => setFormData({ ...formData, studentSex: e.target.value as any })}
-                      >
-                        <option value="M">Masculino</option>
-                        <option value="F">Feminino</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-850/60 space-y-3">
-                      <h4 className="text-[10px] text-gold uppercase font-black tracking-widest">Inclusão Pedagógica</h4>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-300">AEE (Atendimento Especializado)</span>
-                        <input 
-                          type="checkbox"
-                          className="w-4 h-4 rounded text-[#D4AF37] bg-slate-900 border-slate-800 focus:ring-0 cursor-pointer"
-                          checked={formData.studentAee}
-                          onChange={(e) => setFormData({ ...formData, studentAee: e.target.checked })}
+        {/* Conteúdo */}
+        <div className="flex-1 overflow-y-auto bg-[var(--bg-card-alt)] px-4 py-5 text-left sm:px-7 sm:py-6">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div key={step} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18, ease: EASE }} className="space-y-4">
+              {/* PASSO 1 */}
+              {step === 1 && (
+                <>
+                  <Section icon={User} title="Dados do estudante" subtitle="O CPF é opcional; se for digitado, é conferido.">
+                    <div className="grid gap-5 md:grid-cols-[160px_1fr]">
+                      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg-card-alt)] p-4">
+                        <Avatar name={formData.studentName} url={formData.studentPhotoUrl} />
+                        <input
+                          type="url"
+                          value={formData.studentPhotoUrl}
+                          onChange={(e) => update('studentPhotoUrl', e.target.value)}
+                          placeholder="Link da foto (opcional)"
+                          aria-label="Link da foto do estudante"
+                          className={cx(inputCls, 'h-9 text-center text-[12px]')}
                         />
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-300">Laudo Médico Emitido</span>
-                        <input 
-                          type="checkbox"
-                          className="w-4 h-4 rounded text-[#D4AF37] bg-slate-900 border-slate-800 focus:ring-0 cursor-pointer"
-                          checked={formData.studentLaudo}
-                          onChange={(e) => setFormData({ ...formData, studentLaudo: e.target.checked })}
-                        />
+
+                      <div className="space-y-4">
+                        <div>
+                          <Field label="Nome completo *">
+                            {(id) => (
+                              <input
+                                id={id}
+                                type="text"
+                                autoFocus
+                                value={formData.studentName}
+                                onChange={(e) => update('studentName', e.target.value)}
+                                placeholder="Ex.: Pedro Henrique de Souza"
+                                aria-invalid={!!validationErrors.studentName}
+                                className={cx(inputCls, validationErrors.studentName && 'border-[#F04438]')}
+                              />
+                            )}
+                          </Field>
+                          <ErrorText>{validationErrors.studentName}</ErrorText>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div>
+                            <Field label="Data de nascimento *">
+                              {(id) => (
+                                <input
+                                  id={id}
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.studentBirthDate}
+                                  onChange={(e) => update('studentBirthDate', maskDate(e.target.value))}
+                                  placeholder="DD/MM/AAAA"
+                                  aria-invalid={!!validationErrors.studentBirthDate}
+                                  className={cx(inputCls, 'tabular-nums', validationErrors.studentBirthDate && 'border-[#F04438]')}
+                                />
+                              )}
+                            </Field>
+                            <ErrorText>{validationErrors.studentBirthDate}</ErrorText>
+                          </div>
+                          <div>
+                            <Field label="CPF (opcional)">
+                              {(id) => (
+                                <input
+                                  id={id}
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.studentCpf}
+                                  onChange={(e) => update('studentCpf', maskCPF(e.target.value))}
+                                  placeholder="000.000.000-00"
+                                  aria-invalid={!!validationErrors.studentCpf}
+                                  className={cx(inputCls, 'tabular-nums', validationErrors.studentCpf && 'border-[#F04438]')}
+                                />
+                              )}
+                            </Field>
+                            <ErrorText>{validationErrors.studentCpf}</ErrorText>
+                          </div>
+                          <Field label="Sexo">
+                            {(id) => (
+                              <select id={id} value={formData.studentSex} onChange={(e) => update('studentSex', e.target.value as 'M' | 'F')} className={inputCls}>
+                                <option value="M">Masculino</option>
+                                <option value="F">Feminino</option>
+                              </select>
+                            )}
+                          </Field>
+                        </div>
                       </div>
                     </div>
+                  </Section>
 
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Restrições Alimentares</label>
-                        <input 
-                          type="text"
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                          placeholder="Ex: Intolerância a lactose, alergia a corantes"
-                          value={formData.studentDietaryInfo}
-                          onChange={(e) => setFormData({ ...formData, studentDietaryInfo: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Anotações Médicas / Alergias</label>
-                        <input 
-                          type="text"
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                          placeholder="Ex: Faz uso contínuo de bombinha para asma"
-                          value={formData.studentMedicalNotes}
-                          onChange={(e) => setFormData({ ...formData, studentMedicalNotes: e.target.value })}
-                        />
-                      </div>
+                  <Section icon={HeartPulse} title="Saúde e inclusão" subtitle="Aparece para a equipe e para a cozinha (alergias).">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <SwitchRow label="Atendimento Educacional Especializado (AEE)" checked={formData.studentAee} onChange={(v) => update('studentAee', v)} />
+                      <SwitchRow label="Possui laudo médico" checked={formData.studentLaudo} onChange={(v) => update('studentLaudo', v)} />
                     </div>
-                  </div>
-
-                  {/* SEÇÃO ENDEREÇO RESIDENCIAL COM VIA CEP */}
-                  <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-850 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-900 pb-2">
-                      <h4 className="text-[10px] text-gold uppercase font-black tracking-widest flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-gold" /> Endereço Residencial do Estudante (ViaCEP)
-                      </h4>
-                      {cepSuccess && (
-                        <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Endereço Localizado!
-                        </span>
-                      )}
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <Field label="Restrições alimentares">
+                        {(id) => (
+                          <input id={id} type="text" value={formData.studentDietaryInfo} onChange={(e) => update('studentDietaryInfo', e.target.value)} placeholder="Ex.: intolerância à lactose" className={inputCls} />
+                        )}
+                      </Field>
+                      <Field label="Observações médicas e alergias">
+                        {(id) => (
+                          <input id={id} type="text" value={formData.studentMedicalNotes} onChange={(e) => update('studentMedicalNotes', e.target.value)} placeholder="Ex.: usa bombinha para asma" className={inputCls} />
+                        )}
+                      </Field>
                     </div>
+                  </Section>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {/* CEP */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">CEP (Autocompletar)</label>
-                        <div className="relative flex items-center">
+                  <Section
+                    icon={MapPin}
+                    title="Endereço"
+                    subtitle="Digite o CEP para preencher o resto."
+                    action={
+                      cepLoading ? (
+                        <Badge>
+                          <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> Buscando
+                        </Badge>
+                      ) : cepStatus === 'ok' ? (
+                        <OkPill>Endereço encontrado</OkPill>
+                      ) : cepStatus === 'notfound' ? (
+                        <Badge tone="warning">CEP não encontrado</Badge>
+                      ) : null
+                    }
+                  >
+                    <div className="grid gap-4 sm:grid-cols-[160px_1fr_120px]">
+                      <Field label="CEP">
+                        {(id) => (
                           <input
+                            id={id}
                             type="text"
-                            className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 pr-8 text-white focus:border-[#D4AF37] outline-none font-mono"
-                            placeholder="00000-000"
+                            inputMode="numeric"
                             value={formData.addressCep}
                             onChange={(e) => {
                               const masked = maskCEP(e.target.value);
-                              setFormData({ ...formData, addressCep: masked });
-                              if (masked.replace(/\D/g, '').length === 8) {
-                                handleFetchCep(masked);
-                              }
+                              update('addressCep', masked);
+                              if (masked.replace(/\D/g, '').length === 8) handleFetchCep(masked);
                             }}
-                            onBlur={() => handleFetchCep(formData.addressCep)}
+                            placeholder="00000-000"
+                            className={cx(inputCls, 'tabular-nums')}
                           />
-                          {cepLoading && (
-                            <RefreshCw className="w-4 h-4 text-gold animate-spin absolute right-3 pointer-events-none" />
+                        )}
+                      </Field>
+                      <Field label="Rua">
+                        {(id) => <input id={id} type="text" value={formData.addressStreet} onChange={(e) => update('addressStreet', e.target.value)} className={inputCls} />}
+                      </Field>
+                      <Field label="Número">
+                        {(id) => <input id={id} type="text" value={formData.addressNumber} onChange={(e) => update('addressNumber', e.target.value)} className={inputCls} />}
+                      </Field>
+                    </div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_1fr_90px]">
+                      <Field label="Complemento">
+                        {(id) => <input id={id} type="text" value={formData.addressComplement} onChange={(e) => update('addressComplement', e.target.value)} placeholder="Apto, bloco…" className={inputCls} />}
+                      </Field>
+                      <Field label="Bairro">
+                        {(id) => <input id={id} type="text" value={formData.addressNeighborhood} onChange={(e) => update('addressNeighborhood', e.target.value)} className={inputCls} />}
+                      </Field>
+                      <Field label="Cidade">
+                        {(id) => <input id={id} type="text" value={formData.addressCity} onChange={(e) => update('addressCity', e.target.value)} className={inputCls} />}
+                      </Field>
+                      <Field label="UF">
+                        {(id) => (
+                          <input id={id} type="text" maxLength={2} value={formData.addressState} onChange={(e) => update('addressState', e.target.value.toUpperCase())} className={cx(inputCls, 'text-center uppercase')} />
+                        )}
+                      </Field>
+                    </div>
+                  </Section>
+                </>
+              )}
+
+              {/* PASSO 2 */}
+              {step === 2 && (
+                <>
+                  {(validationErrors.financial || validationErrors.guardians) && <Alert tone="warning">{validationErrors.financial || validationErrors.guardians}</Alert>}
+
+                  {formData.guardians.map((g, idx) => {
+                    const err = (f: string) => validationErrors[`guardian_${idx}_${f}`];
+                    return (
+                      <Section
+                        key={idx}
+                        icon={Users}
+                        title={g.name.trim() || `Responsável ${idx + 1}`}
+                        subtitle={idx === 0 ? 'Contato principal: recebe os avisos e o acesso ao Portal da Família' : 'Responsável adicional'}
+                        action={
+                          <div className="flex items-center gap-2">
+                            {g.isFinancial && <OkPill>Financeiro</OkPill>}
+                            {formData.guardians.length > 1 && (
+                              <button type="button" onClick={() => removeGuardian(idx)} aria-label={`Remover responsável ${idx + 1}`} className="rounded-full p-2 text-[var(--text-muted)] transition-colors hover:bg-[#FEF3F2] hover:text-[#B42318]">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        }
+                      >
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="lg:col-span-2">
+                            <Field label="Nome completo *">
+                              {(id) => (
+                                <input id={id} type="text" value={g.name} onChange={(e) => handleGuardianChange(idx, 'name', e.target.value)} placeholder="Ex.: Fernanda Alencar de Souza" aria-invalid={!!err('name')} className={cx(inputCls, err('name') && 'border-[#F04438]')} />
+                              )}
+                            </Field>
+                            <ErrorText>{err('name')}</ErrorText>
+                          </div>
+                          <Field label="Parentesco">
+                            {(id) => (
+                              <select id={id} value={g.relationship} onChange={(e) => handleGuardianChange(idx, 'relationship', e.target.value)} className={inputCls}>
+                                {RELATIONSHIPS.map((r) => (
+                                  <option key={r} value={r}>
+                                    {r}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </Field>
+                          <div>
+                            <Field label="CPF *">
+                              {(id) => (
+                                <input id={id} type="text" inputMode="numeric" value={g.cpf} onChange={(e) => handleGuardianChange(idx, 'cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" aria-invalid={!!err('cpf')} className={cx(inputCls, 'tabular-nums', err('cpf') && 'border-[#F04438]')} />
+                              )}
+                            </Field>
+                            <ErrorText>{err('cpf')}</ErrorText>
+                          </div>
+                          <div>
+                            <Field label="Celular / WhatsApp *">
+                              {(id) => (
+                                <input id={id} type="tel" value={g.phone} onChange={(e) => handleGuardianChange(idx, 'phone', maskCellPhone(e.target.value))} placeholder="(82) 99999-0000" aria-invalid={!!err('phone')} className={cx(inputCls, 'tabular-nums', err('phone') && 'border-[#F04438]')} />
+                              )}
+                            </Field>
+                            <ErrorText>{err('phone')}</ErrorText>
+                          </div>
+                          <div>
+                            <Field label="E-mail * (login do portal)">
+                              {(id) => (
+                                <input id={id} type="email" value={g.email} onChange={(e) => handleGuardianChange(idx, 'email', e.target.value)} placeholder="nome@email.com" aria-invalid={!!err('email')} className={cx(inputCls, err('email') && 'border-[#F04438]')} />
+                              )}
+                            </Field>
+                            <ErrorText>{err('email')}</ErrorText>
+                          </div>
+                        </div>
+                        <div className="mt-4">
+                          <SwitchRow label="Responsável financeiro" hint="Recebe boletos e avisos de mensalidade" checked={g.isFinancial} onChange={(v) => handleGuardianChange(idx, 'isFinancial', v)} />
+                        </div>
+                      </Section>
+                    );
+                  })}
+
+                  <button type="button" onClick={addGuardian} className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-dashed border-[var(--border)] bg-[var(--bg-card)] py-4 text-[14px] font-semibold text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]">
+                    <Plus className="h-4 w-4" /> Adicionar outro responsável
+                  </button>
+                </>
+              )}
+
+              {/* PASSO 3 */}
+              {step === 3 && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Section icon={GraduationCap} title="Turma" subtitle="Se a turma ainda não existir, matricule agora e vincule depois.">
+                    {!classesLoading && dbClasses.length === 0 && (
+                      <div className="mb-4">
+                        <Alert tone="info">Nenhuma turma cadastrada ainda. O estudante fica como “Sem turma” e você vincula depois na lista.</Alert>
+                      </div>
+                    )}
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Ano letivo">
+                          {(id) => <input id={id} type="text" readOnly value={formData.academicYear || '2026'} className={cx(inputCls, 'cursor-not-allowed bg-[var(--bg-card-alt)] tabular-nums')} />}
+                        </Field>
+                        <Field label="Turno">
+                          {(id) => (
+                            <select id={id} value={selectedClass?.shift || formData.shift} disabled={!!selectedClass?.shift} onChange={(e) => update('shift', e.target.value as EnrollmentFormState['shift'])} className={inputCls}>
+                              <option value="Matutino">Matutino</option>
+                              <option value="Vespertino">Vespertino</option>
+                              <option value="Integral">Integral</option>
+                              <option value="Noturno">Noturno</option>
+                            </select>
                           )}
-                        </div>
+                        </Field>
                       </div>
 
-                      {/* RUA / LOGRADOURO */}
-                      <div className="space-y-1 sm:col-span-2">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Rua / Avenida / Logradouro</label>
-                        <input
-                          type="text"
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                          placeholder="Ex: Av. Paulista, Rua Flores"
-                          value={formData.addressStreet}
-                          onChange={(e) => setFormData({ ...formData, addressStreet: e.target.value })}
-                        />
+                      <div>
+                        <p className="mb-2 text-[13px] font-medium text-[var(--text-body)]">Escolha a turma</p>
+                        {classesLoading ? (
+                          <div className="space-y-2">
+                            {[0, 1, 2].map((i) => (
+                              <div key={i} className="h-12 animate-pulse rounded-2xl bg-[var(--bg-card-alt)]" />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                            {[{ id: '', name: NO_CLASS_LABEL, shift: '', room: '' }, ...dbClasses].map((c) => {
+                              const active = selectedClassId === c.id;
+                              return (
+                                <button
+                                  key={c.id || 'none'}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedClassId(c.id);
+                                    setFormData((prev) => ({ ...prev, grade: c.id ? c.name : '', shift: ((c.shift as any) || prev.shift) as EnrollmentFormState['shift'] }));
+                                  }}
+                                  aria-pressed={active}
+                                  className={cx(
+                                    'flex w-full items-center justify-between gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition-colors',
+                                    active ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] bg-[var(--bg-card)] hover:bg-[var(--bg-card-alt)]',
+                                  )}
+                                >
+                                  <span className="min-w-0">
+                                    <span className={cx('block truncate text-[14px] font-semibold', c.id ? 'text-[var(--text-heading)]' : 'text-[var(--text-muted)]')}>{c.name}</span>
+                                    {c.id && <span className="block truncate text-[12px] text-[var(--text-muted)]">{[c.shift, c.room].filter(Boolean).join(' · ') || 'Turno não informado'}</span>}
+                                  </span>
+                                  {active && <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--accent)]" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
+                  </Section>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      {/* NÚMERO */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Número</label>
-                        <input
-                          type="text"
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                          placeholder="Ex: 102"
-                          value={formData.addressNumber}
-                          onChange={(e) => setFormData({ ...formData, addressNumber: e.target.value })}
-                        />
-                      </div>
-
-                      {/* COMPLEMENTO */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Complemento</label>
-                        <input
-                          type="text"
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                          placeholder="Apt 42, Bloco B"
-                          value={formData.addressComplement}
-                          onChange={(e) => setFormData({ ...formData, addressComplement: e.target.value })}
-                        />
-                      </div>
-
-                      {/* BAIRRO */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Bairro</label>
-                        <input
-                          type="text"
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                          placeholder="Ex: Bela Vista"
-                          value={formData.addressNeighborhood}
-                          onChange={(e) => setFormData({ ...formData, addressNeighborhood: e.target.value })}
-                        />
-                      </div>
-
-                      {/* CIDADE / UF */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Cidade / UF</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            className="w-2/3 bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none"
-                            placeholder="Cidade"
-                            value={formData.addressCity}
-                            onChange={(e) => setFormData({ ...formData, addressCity: e.target.value })}
-                          />
-                          <input
-                            type="text"
-                            className="w-1/3 bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] outline-none uppercase font-mono text-center"
-                            placeholder="UF"
-                            maxLength={2}
-                            value={formData.addressState}
-                            onChange={(e) => setFormData({ ...formData, addressState: e.target.value.toUpperCase() })}
-                          />
+                  <Section icon={BookOpen} title="Serviços" subtitle="Liberados junto com a matrícula.">
+                    <div className="space-y-2.5">
+                      <div className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card-alt)] px-3.5 py-3">
+                        <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+                        <div>
+                          <p className="text-[13px] font-semibold text-[var(--text-heading)]">Biblioteca</p>
+                          <p className="text-[12px] text-[var(--text-muted)]">Cartão de leitor com até 3 empréstimos.</p>
                         </div>
                       </div>
+                      <div className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card-alt)] px-3.5 py-3">
+                        <Utensils className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+                        <div>
+                          <p className="text-[13px] font-semibold text-[var(--text-heading)]">Alimentação</p>
+                          <p className="text-[12px] text-[var(--text-muted)]">As alergias informadas vão para a cozinha.</p>
+                        </div>
+                      </div>
+                      <SwitchRow icon={Truck} label="Usa transporte escolar" hint="O aluno aparece no menu Transporte para alocar na rota" checked={formData.transportRequired} onChange={(v) => update('transportRequired', v)} />
                     </div>
+                  </Section>
+                </div>
+              )}
+
+              {/* PASSO 4 */}
+              {step === 4 && (
+                <>
+                  <div className="flex items-center gap-4 rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:p-5">
+                    <Avatar name={formData.studentName} url={formData.studentPhotoUrl} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-serif text-[20px] font-semibold text-[var(--text-heading)]">{formData.studentName || 'Sem nome'}</p>
+                      <p className="text-[13px] text-[var(--text-muted)]">
+                        {formData.studentBirthDate || '—'} · {selectedClass ? selectedClass.name : 'Sem turma'} · {selectedClass?.shift || formData.shift}
+                      </p>
+                    </div>
+                    <Badge tone="accent">Ano {formData.academicYear || '2026'}</Badge>
                   </div>
 
-                </div>
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <Section icon={User} title="Estudante" action={<button type="button" onClick={() => goTo(1)} className={btnGhost}>Editar</button>}>
+                      <dl className="divide-y divide-[var(--border)]">
+                        <SummaryRow label="CPF" value={formData.studentCpf || 'Não informado'} tone={formData.studentCpf ? undefined : 'muted'} />
+                        <SummaryRow label="Sexo" value={formData.studentSex === 'M' ? 'Masculino' : 'Feminino'} />
+                        <SummaryRow label="AEE" value={formData.studentAee ? 'Sim' : 'Não'} tone={formData.studentAee ? 'ok' : 'muted'} />
+                        <SummaryRow label="Laudo" value={formData.studentLaudo ? 'Sim' : 'Não'} tone={formData.studentLaudo ? 'ok' : 'muted'} />
+                        <SummaryRow label="Alimentação" value={formData.studentDietaryInfo || 'Sem restrição'} tone={formData.studentDietaryInfo ? undefined : 'muted'} />
+                        <SummaryRow
+                          label="Endereço"
+                          value={formData.addressStreet ? `${formData.addressStreet}, ${formData.addressNumber || 's/n'} — ${formData.addressCity || ''}/${formData.addressState || ''}` : 'Não informado'}
+                          tone={formData.addressStreet ? undefined : 'muted'}
+                        />
+                      </dl>
+                    </Section>
 
-              </div>
-            </div>
-          )}
+                    <Section icon={Users} title="Responsáveis" action={<button type="button" onClick={() => goTo(2)} className={btnGhost}>Editar</button>}>
+                      <ul className="space-y-2.5">
+                        {formData.guardians.map((g, idx) => (
+                          <li key={idx} className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card-alt)] p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-[14px] font-semibold text-[var(--text-heading)]">{g.name}</p>
+                              <Badge>{g.relationship}</Badge>
+                            </div>
+                            <p className="mt-1 text-[12px] tabular-nums text-[var(--text-muted)]">
+                              {g.phone} · {g.email}
+                            </p>
+                            {g.isFinancial && <p className="mt-1 text-[12px] font-medium text-[#067647]">Responsável financeiro</p>}
+                          </li>
+                        ))}
+                      </ul>
+                    </Section>
 
-          {/* STEP 2: RESPONSÁVEIS */}
-          {step === 2 && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                <div>
-                  <h3 className="text-sm font-bold text-white">Etapa 2: Responsáveis Legais e Financeiros</h3>
-                  <p className="text-[11px] text-slate-400">Cadastre a filiação ou responsáveis pelo aluno. Pelo menos um deve ser o responsável financeiro.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={addGuardian}
-                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl font-bold text-[10px] uppercase tracking-wider text-[#D4AF37] flex items-center gap-1.5 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Adicionar Responsável
-                </button>
-              </div>
+                    <Section icon={GraduationCap} title="Turma e serviços" action={<button type="button" onClick={() => goTo(3)} className={btnGhost}>Editar</button>}>
+                      <dl className="divide-y divide-[var(--border)]">
+                        <SummaryRow label="Turma" value={selectedClass ? selectedClass.name : 'Sem turma'} tone={selectedClass ? undefined : 'muted'} />
+                        <SummaryRow label="Turno" value={selectedClass?.shift || formData.shift} />
+                        <SummaryRow label="Ano letivo" value={formData.academicYear || '2026'} />
+                        <SummaryRow label="Transporte" value={formData.transportRequired ? 'Sim' : 'Não'} tone={formData.transportRequired ? 'ok' : 'muted'} />
+                      </dl>
+                    </Section>
+                  </div>
 
-              {validationErrors.financial && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 font-semibold rounded-xl text-center">
-                  {validationErrors.financial}
-                </div>
+                  <Alert tone="info">Ao confirmar, o estudante é matriculado e os responsáveis passam a receber os comunicados da escola.</Alert>
+                </>
               )}
 
-              {validationErrors.guardians && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 font-semibold rounded-xl text-center">
-                  {validationErrors.guardians}
-                </div>
-              )}
+              {/* PASSO 5: gravação */}
+              {step === 5 && (
+                <div className="mx-auto max-w-xl py-4">
+                  {executionSuccess === null && (
+                    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-6">
+                      <div className="flex items-center gap-3">
+                        <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
+                        <div>
+                          <p className="text-[16px] font-semibold text-[var(--text-heading)]">Matriculando {formData.studentName.split(' ')[0]}…</p>
+                          <p className="text-[13px] text-[var(--text-muted)]">Não feche esta janela.</p>
+                        </div>
+                      </div>
+                      <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-[var(--bg-card-alt)]">
+                        <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300" style={{ width: `${progress}%` }} />
+                      </div>
+                      <ol className="mt-5 space-y-2.5">
+                        {executionLog.map((l) => (
+                          <li key={l.step} className="flex items-center gap-3 text-[14px]">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                              {l.status === 'success' && <CheckCircle2 className="h-5 w-5 text-[#067647]" />}
+                              {l.status === 'running' && <Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />}
+                              {l.status === 'pending' && <span className="h-2 w-2 rounded-full bg-[var(--border)]" />}
+                              {l.status === 'failed' && <AlertCircle className="h-5 w-5 text-[#B42318]" />}
+                            </span>
+                            <span className={l.status === 'pending' ? 'text-[var(--text-muted)]' : 'text-[var(--text-heading)]'}>{l.label}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
 
-              <div className="space-y-4">
-                {formData.guardians.map((g, idx) => (
-                  <div key={idx} className="bg-slate-950/60 p-5 rounded-2xl border border-slate-850 space-y-4 relative">
-                    
-                    {/* Card Title & Delete */}
-                    <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                      <span className="font-bold text-[11px] text-white flex items-center gap-2">
-                        <Users className="w-4 h-4 text-gold" /> Responsável #{idx + 1} {g.isFinancial && <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold rounded-full">✓ Financeiro</span>}
-                      </span>
-                      
-                      {formData.guardians.length > 1 && (
+                  {executionSuccess === true && (
+                    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-6 text-center sm:p-8">
+                      <motion.span initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18 }} className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#ECFDF3] text-[#067647]">
+                        <CheckCircle2 className="h-9 w-9" />
+                      </motion.span>
+                      <h3 className="mt-4 font-serif text-[22px] font-semibold text-[var(--text-heading)]">Matrícula concluída</h3>
+                      <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-body)]">
+                        <strong>{formData.studentName}</strong> foi matriculado(a) {selectedClass ? <>na turma <strong>{selectedClass.name}</strong>.</> : <>sem turma — vincule na lista de estudantes quando quiser.</>}
+                      </p>
+                      {createdRegCode && (
+                        <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--bg-card-alt)] px-3 py-1.5 text-[13px] text-[var(--text-muted)]">
+                          Matrícula <strong className="tabular-nums text-[var(--text-heading)]">{createdRegCode}</strong>
+                        </p>
+                      )}
+                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
                         <button
                           type="button"
-                          onClick={() => removeGuardian(idx)}
-                          className="text-slate-500 hover:text-rose-500 transition-colors"
+                          className={btnSecondary}
+                          onClick={() => {
+                            setFormData((prev) => ({ ...initialFormState, academicYear: prev.academicYear }));
+                            setSelectedClassId('');
+                            setExecutionSuccess(null);
+                            setExecutionLog([]);
+                            setStep(1);
+                          }}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Plus className="h-4 w-4" /> Matricular outro
                         </button>
-                      )}
-                    </div>
-
-                    {/* Inputs Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Nome Completo *</label>
-                        <input 
-                          type="text"
-                          className={`w-full bg-slate-900 border ${validationErrors[`guardian_${idx}_name`] ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2.5 text-white focus:border-[#D4AF37] outline-none`}
-                          placeholder="Ex: Fernanda Alencar de Souza"
-                          value={g.name}
-                          onChange={(e) => handleGuardianChange(idx, 'name', e.target.value)}
-                        />
-                        {validationErrors[`guardian_${idx}_name`] && <span className="text-[9px] text-rose-500 font-bold block">{validationErrors[`guardian_${idx}_name`]}</span>}
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">CPF *</label>
-                        <input 
-                          type="text"
-                          className={`w-full bg-slate-900 border ${validationErrors[`guardian_${idx}_cpf`] ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2.5 text-white focus:border-[#D4AF37] outline-none`}
-                          placeholder="000.000.000-00"
-                          value={g.cpf}
-                          onChange={(e) => handleGuardianChange(idx, 'cpf', maskCPF(e.target.value))}
-                        />
-                        {validationErrors[`guardian_${idx}_cpf`] && <span className="text-[9px] text-rose-500 font-bold block">{validationErrors[`guardian_${idx}_cpf`]}</span>}
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">E-mail * (Para login do Portal)</label>
-                        <input 
-                          type="email"
-                          className={`w-full bg-slate-900 border ${validationErrors[`guardian_${idx}_email`] ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2.5 text-white focus:border-[#D4AF37] outline-none`}
-                          placeholder="fernanda@email.com"
-                          value={g.email}
-                          onChange={(e) => handleGuardianChange(idx, 'email', e.target.value)}
-                        />
-                        {validationErrors[`guardian_${idx}_email`] && <span className="text-[9px] text-rose-500 font-bold block">{validationErrors[`guardian_${idx}_email`]}</span>}
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Celular / WhatsApp *</label>
-                        <input 
-                          type="text"
-                          className={`w-full bg-slate-900 border ${validationErrors[`guardian_${idx}_phone`] ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2.5 text-white focus:border-[#D4AF37] outline-none`}
-                          placeholder="(11) 99999-0000"
-                          value={g.phone}
-                          onChange={(e) => handleGuardianChange(idx, 'phone', maskCellPhone(e.target.value))}
-                        />
-                        {validationErrors[`guardian_${idx}_phone`] && <span className="text-[9px] text-rose-500 font-bold block">{validationErrors[`guardian_${idx}_phone`]}</span>}
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Grau de Parentesco</label>
-                        <select
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white focus:border-[#D4AF37]"
-                          value={g.relationship}
-                          onChange={(e) => handleGuardianChange(idx, 'relationship', e.target.value)}
+                        <button
+                          type="button"
+                          className={btnPrimary}
+                          onClick={() => {
+                            onClose();
+                            onSuccess?.();
+                          }}
                         >
-                          <option value="Mãe">Mãe</option>
-                          <option value="Pai">Pai</option>
-                          <option value="Padrasto">Padrasto</option>
-                          <option value="Madrasta">Madrasta</option>
-                          <option value="Avô/Avó">Avô/Avó</option>
-                          <option value="Tio/Tia">Tio/Tia</option>
-                          <option value="Outro">Outro Legal</option>
-                        </select>
-                      </div>
-
-                      <div className="flex items-center gap-3 pt-5 pl-1">
-                        <input 
-                          type="checkbox"
-                          id={`financial_check_${idx}`}
-                          className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-800 focus:ring-0 cursor-pointer"
-                          checked={g.isFinancial}
-                          onChange={(e) => handleGuardianChange(idx, 'isFinancial', e.target.checked)}
-                        />
-                        <label htmlFor={`financial_check_${idx}`} className="text-[10px] text-slate-300 font-bold tracking-wide cursor-pointer uppercase">Responsável Financeiro</label>
-                      </div>
-
-                    </div>
-
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          )}
-
-          {/* STEP 3: VÍNCULO ESCOLAR */}
-          {step === 3 && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="border-b border-slate-800 pb-2">
-                <h3 className="text-sm font-bold text-white">Etapa 3: Alocação Acadêmica e Serviços</h3>
-                <p className="text-[11px] text-slate-400">Indique em qual unidade física, turma e ano letivo o aluno será inserido. Caso a escola ainda não tenha turmas cadastradas, o aluno pode ser matriculado e vinculado posteriormente.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* School unit & class inputs */}
-                <div className="space-y-4 bg-slate-950/40 p-5 rounded-2xl border border-slate-850">
-                  <h4 className="text-[10px] text-gold uppercase font-black tracking-widest border-b border-slate-900 pb-1">Nó da Rede Escolar</h4>
-
-                  {dbClasses.length === 0 && (
-                    <div className="p-3.5 bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-xl text-xs flex items-start gap-2.5">
-                      <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-bold text-white text-xs">Nenhuma turma cadastrada no momento</p>
-                        <p className="text-[11px] text-blue-200/80 mt-0.5 leading-relaxed">
-                          O cadastro pode ser realizado normalmente agora sem vínculo a uma turma. Assim que as turmas forem criadas, você poderá vinculá-lo a qualquer momento na listagem de estudantes.
-                        </p>
+                          Voltar para a lista
+                        </button>
                       </div>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ano Letivo de Ingresso</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={formData.academicYear || '2026'}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-slate-300 font-bold cursor-not-allowed"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Série & Turma Alocada</label>
-                      <select
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37] font-bold"
-                        value={selectedClassId}
-                        onChange={(e) => {
-                          const classId = e.target.value;
-                          setSelectedClassId(classId);
-                          if (!classId) {
-                            setFormData(prev => ({
-                              ...prev,
-                              grade: 'Sem turma vinculada (Pendente)'
-                            }));
-                          } else {
-                            const cls = dbClasses.find(c => c.id === classId);
-                            if (cls) {
-                              setFormData(prev => ({
-                                ...prev,
-                                grade: cls.name,
-                                shift: (cls.shift as any) || prev.shift
-                              }));
-                            }
-                          }
-                        }}
-                      >
-                        <option value="">Sem turma vinculada (Vincular posteriormente)</option>
-                        {dbClasses.map(cls => (
-                          <option key={cls.id} value={cls.id}>
-                            {`${cls.name} · ${cls.shift || '-'} · ${cls.room || '-'}`}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Turno Acadêmico</label>
-                    <select
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white focus:border-[#D4AF37]"
-                      value={formData.shift}
-                      onChange={(e) => setFormData({ ...formData, shift: e.target.value as any })}
-                    >
-                      <option value="Matutino">Matutino (Manhã)</option>
-                      <option value="Vespertino">Vespertino (Tarde)</option>
-                      <option value="Integral">Integral (Manhã + Tarde)</option>
-                      <option value="Noturno">Noturno (Noite)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Services & Modules list */}
-                <div className="space-y-4 bg-slate-950/40 p-5 rounded-2xl border border-slate-850 flex flex-col justify-between">
-                  <div>
-                    <h4 className="text-[10px] text-gold uppercase font-black tracking-widest border-b border-slate-900 pb-1 mb-3">Ativação Automática de Módulos</h4>
-                    <p className="text-[11px] text-slate-400 leading-relaxed mb-4">Ao confirmar, o sistema provisionará automaticamente os acessos integrados do aluno aos seguintes serviços:</p>
-                    
-                    <div className="space-y-3">
-                      <div className="flex items-start gap-3 p-2 bg-slate-900/60 rounded-xl border border-slate-850">
-                        <BookOpen className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold text-[11px] text-white">Biblioteca Geral (Library)</p>
-                          <p className="text-[10px] text-slate-500">Cartão de leitor gerado com limite de 3 empréstimos simultâneos.</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start gap-3 p-2 bg-slate-900/60 rounded-xl border border-slate-850">
-                        <Utensils className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold text-[11px] text-white">Refeitório & Alimentação (Meals)</p>
-                          <p className="text-[10px] text-slate-500">Cartão de consumo digital ativado. Alergias vinculadas à cozinha escolar.</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start gap-3 p-2 bg-slate-900/60 rounded-xl border border-slate-850">
-                        <Truck className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <div className="flex justify-between items-center">
-                            <p className="font-bold text-[11px] text-white">Rotas de Transporte Escolar</p>
-                            <input 
-                              type="checkbox"
-                              className="w-4 h-4 rounded text-blue-500 bg-slate-900 border-slate-800 focus:ring-0 cursor-pointer"
-                              checked={formData.transportRequired}
-                              onChange={(e) => setFormData({ ...formData, transportRequired: e.target.checked })}
-                            />
-                          </div>
-                          <p className="text-[10px] text-slate-500">Solicitar credencial de acesso ao transporte de ônibus escolar.</p>
-                        </div>
+                  {executionSuccess === false && (
+                    <div className="rounded-[22px] border border-[#F5C2C0] bg-[var(--bg-card)] p-6 text-center sm:p-8">
+                      <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#FEF3F2] text-[#B42318]">
+                        <ShieldAlert className="h-8 w-8" />
+                      </span>
+                      <h3 className="mt-4 font-serif text-[22px] font-semibold text-[var(--text-heading)]">Não deu para concluir</h3>
+                      <p className="mx-auto mt-3 max-w-md rounded-2xl bg-[#FEF3F2] p-3 text-left text-[13px] text-[#B42318]">{errorMessage}</p>
+                      <p className="mt-3 text-[13px] text-[var(--text-muted)]">Nada ficou pela metade e o que você digitou continua aqui.</p>
+                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                        <button type="button" className={btnSecondary} onClick={() => setStep(4)}>
+                          Revisar dados
+                        </button>
+                        <button type="button" className={btnPrimary} onClick={executeEnrollmentTransaction}>
+                          <RefreshCw className="h-4 w-4" /> Tentar de novo
+                        </button>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-xl text-[10px] flex items-center gap-2">
-                    <Info className="w-4 h-4 shrink-0" />
-                    <span>Os módulos complementares serão associados no nó central em tempo real.</span>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: REVISÃO */}
-          {step === 4 && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="border-b border-slate-800 pb-2">
-                <h3 className="text-sm font-bold text-white">Etapa 4: Revisar e Consolidar Contrato</h3>
-                <p className="text-[11px] text-slate-400">Verifique os dados antes de prosseguir. A matrícula será confirmada e gravada no sistema institucional.</p>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                {/* Student summary */}
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                    <span className="font-bold text-[11px] text-[#D4AF37] uppercase font-mono tracking-wider">Dados do Estudante</span>
-                    <button onClick={() => setStep(1)} className="text-[10px] text-blue-400 hover:underline">Editar</button>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <img src={formData.studentPhotoUrl || "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=150"} className="w-12 h-12 rounded-full object-cover border border-slate-800" alt="" referrerPolicy="no-referrer" />
-                    <div>
-                      <h4 className="font-serif font-bold text-white text-xs">{formData.studentName}</h4>
-                      <p className="text-[10px] text-slate-400">Nascimento: {formData.studentBirthDate}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5 text-[10px] text-slate-300">
-                    <p>CPF: <strong className="text-white">{formData.studentCpf || 'Não informado'}</strong></p>
-                    <p>Sexo: <strong className="text-white">{formData.studentSex === 'M' ? 'Masculino' : 'Feminino'}</strong></p>
-                    <p>Inclusão AEE: <strong className={formData.studentAee ? 'text-emerald-400' : 'text-slate-500'}>{formData.studentAee ? 'Sim' : 'Não'}</strong></p>
-                    <p>Anotações Alimentares: <strong className="text-white">{formData.studentDietaryInfo || 'Nenhuma'}</strong></p>
-                  </div>
-                </div>
-
-                {/* Guardians summary */}
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                    <span className="font-bold text-[11px] text-[#D4AF37] uppercase font-mono tracking-wider">Responsáveis Legais</span>
-                    <button onClick={() => setStep(2)} className="text-[10px] text-blue-400 hover:underline">Editar</button>
-                  </div>
-
-                  <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
-                    {formData.guardians.map((g, idx) => (
-                      <div key={idx} className="p-2 bg-slate-900/40 rounded-xl border border-slate-850">
-                        <div className="flex justify-between items-start">
-                          <p className="font-bold text-[11px] text-white leading-tight">{g.name}</p>
-                          <span className="text-[8px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 font-bold">{g.relationship}</span>
-                        </div>
-                        <p className="text-[9px] text-slate-500 mt-1">CPF: {g.cpf} • {g.phone}</p>
-                        {g.isFinancial && <p className="text-[8px] text-emerald-400 font-bold mt-1">✓ Responsável Financeiro</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Schooling summary */}
-                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                    <span className="font-bold text-[11px] text-[#D4AF37] uppercase font-mono tracking-wider">Alocação de Vaga</span>
-                    <button onClick={() => setStep(3)} className="text-[10px] text-blue-400 hover:underline">Editar</button>
-                  </div>
-
-                  <div className="space-y-2 text-[10px] text-slate-300">
-                    <p>Série/Turma: <strong className="text-white">{formData.grade || 'Sem turma vinculada (Pendente)'}</strong></p>
-                    <p>Ano Letivo: <strong className="text-white">{formData.academicYear || '2026'}</strong></p>
-                    <p>Turno: <strong className="text-white">{formData.shift}</strong></p>
-                    <p>Transporte Solicitado: <strong className={formData.transportRequired ? 'text-emerald-400' : 'text-slate-500'}>{formData.transportRequired ? 'Sim' : 'Não'}</strong></p>
-                  </div>
-
-                  <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 rounded-xl text-[10px] leading-relaxed">
-                    <strong>Atenção:</strong> A finalização deste assistente irá cadastrar o aluno e notificar os canais da escola.
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
-
-          {/* STEP 5: CONFIRMAÇÃO & EXECUÇÃO DO CONTRATO */}
-          {step === 5 && (
-            <div className="space-y-6 animate-fade-in">
-              
-              {resolvedOrgIdLog && (
-                <div id="debug-org-id" className="bg-slate-900/90 border border-[#D4AF37]/30 p-3.5 rounded-xl text-xs text-[#D4AF37] flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-2 w-2 rounded-full bg-[#D4AF37] animate-pulse"></span>
-                    <span><strong>Organização Resolvida (Debug):</strong> <code className="font-mono bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">{resolvedOrgIdLog}</code></span>
-                  </div>
-                  <span className="text-[9px] uppercase font-mono tracking-wider text-slate-500 font-bold">LOG ATIVO</span>
+                  )}
                 </div>
               )}
-              
-              {/* Active execution list */}
-              {isExecuting && (
-                <div className="space-y-4">
-                  <div className="text-center py-4 space-y-2">
-                    <RefreshCw className="w-10 h-10 text-gold animate-spin mx-auto" />
-                    <h3 className="text-base font-serif font-bold text-white">Processando Matrícula...</h3>
-                    <p className="text-xs text-slate-400 max-w-lg mx-auto">Gravando os dados do estudante, responsáveis e serviços no banco de dados.</p>
-                  </div>
-
-                  <div className="bg-slate-950/80 border border-slate-850 rounded-2xl p-4.5 max-h-[300px] overflow-y-auto space-y-2 font-mono text-[10px]">
-                    {executionLog.map((l) => (
-                      <div key={l.step} className="flex items-start justify-between gap-3 py-1.5 border-b border-slate-900/60 last:border-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-500">Etapa {l.step}:</span>
-                          <span className="text-slate-200 font-sans font-bold">{l.label}</span>
-                        </div>
-                        
-                        <div className="shrink-0 flex items-center gap-2">
-                          {l.status === 'pending' && <span className="text-slate-600">Aguardando</span>}
-                          {l.status === 'running' && (
-                            <span className="text-gold flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-gold animate-ping"></span>
-                              Processando
-                            </span>
-                          )}
-                          {l.status === 'success' && <span className="text-emerald-400 font-bold">✓ Sucesso</span>}
-                          {l.status === 'failed' && <span className="text-rose-500 font-bold">❌ Falha</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* SUCCESS STATE */}
-              {executionSuccess === true && (
-                <div className="text-center py-8 space-y-6 max-w-xl mx-auto">
-                  <div className="w-16 h-16 bg-emerald-500/15 border-2 border-emerald-500 text-emerald-400 rounded-full flex items-center justify-center mx-auto animate-bounce shadow-lg shadow-emerald-500/10">
-                    <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-serif font-bold text-white">Matrícula Efetuada com Sucesso!</h3>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      O estudante <strong>{formData.studentName}</strong> foi devidamente matriculado no sistema {selectedClassId ? (
-                        <>na turma <strong>{formData.grade}</strong>.</>
-                      ) : (
-                        <>sem turma vinculada (você poderá vinculá-lo a uma turma a qualquer momento na lista de estudantes).</>
-                      )} O cadastro foi concluído com êxito.
-                    </p>
-                  </div>
-
-                  {/* Rastro Transacional de Auditoria (Debug Log) */}
-                  <div className="p-4 bg-slate-950/80 border border-slate-850 rounded-2xl text-left space-y-2.5 font-mono text-[10px]">
-                    <div className="text-slate-400 font-bold border-b border-slate-900 pb-1.5 uppercase font-sans text-[10px] tracking-wider flex items-center gap-1">
-                      <FileCheck className="w-3.5 h-3.5 text-gold" />
-                      <span>Confirmação da Gravação</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      <p className="flex justify-between gap-4"><span className="text-slate-500">organization_id:</span> <span className="text-[#D4AF37] break-all text-right">{resolvedOrgIdLog || 'N/A'}</span></p>
-                      <p className="flex justify-between gap-4"><span className="text-slate-500">profile_id:</span> <span className="text-emerald-400 break-all text-right">{createdProfileIdsLog.join(', ') || 'N/A'}</span></p>
-                      <p className="flex justify-between gap-4"><span className="text-slate-500">guardian_id:</span> <span className="text-blue-400 break-all text-right">{createdGuardianIdsLog.join(', ') || 'N/A'}</span></p>
-                      <p className="flex justify-between gap-4"><span className="text-slate-500">student_id:</span> <span className="text-purple-400 break-all text-right">{createdStudentIdsLog.join(', ') || 'N/A'}</span></p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={() => {
-                        onClose();
-                        if (onSuccess) onSuccess();
-                      }}
-                      className="flex-1 py-3 bg-gradient-to-r from-[#D4AF37] to-[#AA7C11] hover:from-[#e5bf3c] hover:to-[#be8c18] text-slate-950 font-black uppercase tracking-wider rounded-xl transition-all"
-                    >
-                      Concluir e Voltar para Alunos
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* FAILURE STATE */}
-              {executionSuccess === false && (
-                <div className="text-center py-8 space-y-6 max-w-xl mx-auto">
-                  <div className="w-16 h-16 bg-rose-500/15 border-2 border-rose-500 text-rose-400 rounded-full flex items-center justify-center mx-auto animate-pulse">
-                    <ShieldAlert className="w-10 h-10 stroke-[2.5]" />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-serif font-bold text-white">Falha ao Realizar Matrícula</h3>
-                    <p className="text-xs text-rose-400 font-bold uppercase tracking-wider">Erro no Servidor / RPC</p>
-                    <p className="text-xs text-slate-300 leading-relaxed mt-2 bg-slate-950 p-3 rounded-xl border border-rose-900/50 font-mono text-left">
-                      {errorMessage}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-2">
-                      Os dados digitados não foram perdidos. Você pode revisar o formulário e tentar novamente.
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={() => setStep(4)}
-                      className="flex-1 py-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-white font-bold uppercase tracking-wider rounded-xl transition-all"
-                    >
-                      Revisar Dados
-                    </button>
-                    <button 
-                      onClick={executeEnrollmentTransaction}
-                      className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold uppercase tracking-wider rounded-xl transition-all"
-                    >
-                      Tentar Novamente
-                    </button>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          )}
-
+            </motion.div>
+          </AnimatePresence>
         </div>
 
-        {/* Wizard Footer Actions */}
+        {/* Rodapé */}
         {step < 5 && (
-          <div className="p-6 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0">
-            
-            {/* Left controls */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                disabled={isSavingDraft}
-                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
-                title="Salvar campos preenchidos localmente"
-              >
-                {isSavingDraft ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5 text-gold" />}
-                <span>Salvar Rascunho</span>
+          <footer className="flex shrink-0 flex-col-reverse gap-3 border-t border-[var(--border)] bg-[var(--bg-card)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={handleSaveDraft} disabled={isSavingDraft} className={btnGhost}>
+                {isSavingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Salvar rascunho
               </button>
-              
-              <button
-                type="button"
-                onClick={handleClearDraft}
-                className="px-3 py-2 text-slate-500 hover:text-slate-300 text-xs font-semibold transition-colors"
-                title="Limpar campos e rascunho salvo"
-              >
-                Limpar Rascunho
+              <button type="button" onClick={handleClearDraft} className={btnGhost}>
+                Limpar
               </button>
             </div>
 
-            {/* Navigation buttons */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="mr-2 hidden text-[13px] tabular-nums text-[var(--text-muted)] md:inline">Passo {step} de 4</span>
               {step > 1 && (
-                <button
-                  type="button"
-                  onClick={prevStep}
-                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-colors flex items-center gap-1.5"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Voltar
+                <button type="button" onClick={() => goTo(step - 1)} className={btnSecondary}>
+                  <ArrowLeft className="h-4 w-4" /> Voltar
                 </button>
               )}
-
               {step < 4 ? (
-                <button
-                  type="button"
-                  onClick={nextStep}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-colors flex items-center gap-1.5 shadow-lg shadow-blue-500/10"
-                >
-                  Avançar <ArrowRight className="w-4 h-4" />
+                <button type="button" onClick={() => goTo(step + 1)} className={btnPrimary}>
+                  Continuar <ArrowRight className="h-4 w-4" />
                 </button>
               ) : (
                 <button
@@ -1509,17 +1231,15 @@ export function StudentEnrollmentWizard({ onClose, onSuccess, schoolsList = [] }
                     setStep(5);
                     executeEnrollmentTransaction();
                   }}
-                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+                  className={cx(btnPrimary, 'bg-[#067647] text-white')}
                 >
-                  <Play className="w-4 h-4 text-emerald-100 fill-emerald-100" /> Confirmar Matrícula
+                  <Check className="h-4 w-4" /> Confirmar matrícula
                 </button>
               )}
             </div>
-
-          </div>
+          </footer>
         )}
-
-      </div>
+      </motion.div>
     </div>
   );
 }
