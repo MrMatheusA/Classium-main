@@ -20,6 +20,11 @@ import { SuperIaCenter } from './admin/SuperIaCenter';
 import { ClassiumIntegrationHub } from './admin/EducaPlusIntegrationHub';
 import { AdminTransporte } from './admin/AdminTransporte';
 import { AdminGestaoParceiros } from './admin/AdminGestaoParceiros';
+import { AdminFuncionarios } from './admin/AdminFuncionarios';
+import { AdminTurmas } from './admin/AdminTurmas';
+import { AdminConfiguracoes } from './admin/AdminConfiguracoes';
+import { MuralGestor } from './escolaEscuta/MuralGestor';
+import { ParticipaGestor } from './escolaEscuta/ParticipaGestor';
 import AdminSmartHorarios from './admin/AdminSmartHorarios';
 import { ErrorBoundary } from './common/ErrorBoundary';
 import { Button, Card, EmptyState, Page, PillNav, EASE } from './ui/kit';
@@ -37,6 +42,11 @@ const HAS_OWN_HERO = [
   'comunicacao',
   'agenda',
   'intelligence_center',
+  'turmas',
+  'funcionarios',
+  'configuracoes',
+  'ee-mural',
+  'ee-participa',
 ];
 
 export function AdminDashboard() {
@@ -94,6 +104,11 @@ export function AdminDashboard() {
             {activeAdminTab === 'integration_hub' && <ClassiumIntegrationHub />}
             {activeAdminTab === 'super_ia_center' && <SuperIaCenter />}
             {activeAdminTab === 'pessoas' && <AdminEstudantes />}
+            {activeAdminTab === 'turmas' && <AdminTurmas />}
+            {activeAdminTab === 'funcionarios' && <AdminFuncionarios />}
+            {activeAdminTab === 'configuracoes' && <AdminConfiguracoes />}
+            {activeAdminTab === 'ee-mural' && <MuralGestor organizationId={organizationId || undefined} />}
+            {activeAdminTab === 'ee-participa' && <ParticipaGestor organizationId={organizationId || undefined} />}
             {activeAdminTab === 'pedagogico' && <AdminPedagogico organizationId={organizationId || undefined} schoolInfo={schoolInfo} />}
             {activeAdminTab === 'relatorios' && <AdminRelatorios />}
             {activeAdminTab === 'documentos' && <AdminSecretaria initialView="documentos" />}
@@ -106,7 +121,7 @@ export function AdminDashboard() {
             {activeAdminTab === 'comunicacao' && <CommunicationEditor />}
             {activeAdminTab === 'transporte' && <AdminTransporte selectedUnit={selectedUnit} />}
             {(activeAdminTab === 'gestao-parceiros' || activeAdminTab === 'comercial') && <AdminGestaoParceiros />}
-            {['agenda', 'alimentacao', 'ia', 'configuracoes', 'achados-perdidos', 'portaria-qrcode'].includes(activeAdminTab) && (
+            {['agenda', 'alimentacao', 'ia', 'achados-perdidos', 'portaria-qrcode'].includes(activeAdminTab) && (
               <AdminOutros tab={activeAdminTab} demoMode={demoMode} selectedUnit={selectedUnit} setSelectedUnit={setSelectedUnit} />
             )}
           </motion.div>

@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase';
-import { RealtimeChannel } from '@supabase/supabase-js';
 import { RealtimeService } from './RealtimeService';
+import { resolveOrgId, NO_SCHOOL_ERROR, formatFileSize, safeFileName, friendlyDbError, isUuid } from './tenant';
+
+const BUCKET = 'cardapios';
+const MAX_SIZE_BYTES = 50 * 1024 * 1024;
 
 export interface PublishMenuPayload {
   title: string;
@@ -11,6 +14,8 @@ export interface PublishMenuPayload {
   school_id?: string;
   thumbnailDataUrl?: string;
   is_published?: boolean;
+  nutritionist_name?: string;
+  nutritionist_crn?: string;
 }
 
 export interface PublishedMenuResponse {
@@ -41,347 +46,226 @@ export interface ActiveMenuDocument {
   organization_id?: string;
   school_id?: string;
   orientation?: 'portrait' | 'landscape';
+  storage_path?: string;
 }
 
-let activeMenuChannel: RealtimeChannel | null = null;
+function isPdfFile(file: File) {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+}
+
+function isImageFile(file: File) {
+  return /^image\/(png|jpe?g|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name);
+}
+
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+  if (!match) return null;
+  const bin = atob(match[2]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: match[1] });
+}
+
+function mapRow(row: any): ActiveMenuDocument | null {
+  const info = row.nutritional_info || {};
+  const fileUrl: string = row.file_url || info.file_url || '';
+  if (!fileUrl || fileUrl.startsWith('blob:')) return null;
+
+  const fileName: string = row.file_name || info.file_name || '';
+  const rawType: string = row.file_type || info.file_type || '';
+  const isImage = rawType === 'image' || /\.(png|jpe?g|webp)$/i.test(fileName || fileUrl);
+  const isPublished = row.is_published !== false && row.status !== 'Rascunho';
+
+  return {
+    id: row.id,
+    school_menu_id: row.id,
+    title: row.title || 'Cardápio',
+    file_url: fileUrl,
+    thumbnail_url: row.thumbnail_url || info.thumbnail_url || undefined,
+    file_name: fileName || undefined,
+    file_size: row.file_size || info.file_size || undefined,
+    file_type: isImage ? 'image' : 'pdf',
+    published_at: row.published_at || row.created_at,
+    is_published: isPublished,
+    status: isPublished ? 'Publicado' : 'Rascunho',
+    nutritionist_name: row.nutritionist_name || undefined,
+    nutritionist_crn: row.nutritionist_crn || undefined,
+    organization_id: row.organization_id,
+    school_id: row.school_id,
+    orientation: row.orientation || undefined,
+    storage_path: info.storage_path || undefined,
+  };
+}
 
 export const menuService = {
   /**
-   * Upload file to permanent storage and persist metadata in Supabase table school_menus.
+   * Envia o arquivo para o espaço "cardapios" e registra o cardápio do mês.
+   * Se o registro falhar, o arquivo enviado é removido.
    */
   async uploadAndPublishMenu(payload: PublishMenuPayload): Promise<PublishedMenuResponse> {
-    const { title, file, year, month, organization_id, school_id } = payload;
+    const { title, file, year, month } = payload;
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      throw new Error('Sessão expirada ou usuário não autenticado.');
+    if (!session?.access_token) throw new Error('Sua sessão expirou. Entre de novo.');
+
+    const orgId = await resolveOrgId(payload.organization_id || payload.school_id);
+    if (!orgId) throw new Error(NO_SCHOOL_ERROR);
+    const schoolId = isUuid(payload.school_id) ? payload.school_id : orgId;
+
+    const isPdf = isPdfFile(file);
+    if (!isPdf && !isImageFile(file)) {
+      throw new Error('Formato não aceito. Envie PDF, PNG, JPG ou WEBP.');
     }
-
-    if (!organization_id) {
-      throw new Error('Organização não informada para o upload do cardápio.');
-    }
-
-    // 1. File Validation
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name);
-
-    if (!isPdf && !isImage) {
-      throw new Error('Formato não suportado. Por favor, envie arquivos PDF, PNG, JPG ou WEBP.');
-    }
-
-    const MAX_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
     if (file.size > MAX_SIZE_BYTES) {
-      throw new Error('O tamanho do arquivo excede o limite máximo permitido de 50MB.');
+      throw new Error('O arquivo passa de 50 MB. Reduza o tamanho e envie de novo.');
     }
 
-    const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const timestamp = Date.now();
-    const menuTitle = title || `Cardápio Escolar Oficial — ${month}/${year}`;
-    const targetSchoolId = school_id || undefined;
-    const targetOrgId = organization_id;
-    const fileSizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+    const monthStr = String(month).padStart(2, '0');
+    const stamp = Date.now();
+    const storagePath = `${orgId}/${year}-${monthStr}/${stamp}_${safeFileName(file.name)}`;
 
-    // 2. Convert File to base64 Data URL for transmission
-    const base64Data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (err) => reject(new Error('Erro ao ler o arquivo selecionado: ' + err));
-      reader.readAsDataURL(file);
-    });
+    const { error: upErr } = await supabase.storage
+      .from(BUCKET)
+      .upload(storagePath, file, { cacheControl: '3600', upsert: false, contentType: file.type || undefined });
+    if (upErr) throw new Error(friendlyDbError(upErr.message, 'Não foi possível enviar o arquivo. Tente de novo.'));
 
-    let publicFileUrl = '';
-    let savedRecordId = `menu-${timestamp}`;
+    const fileUrl = supabase.storage.from(BUCKET).getPublicUrl(storagePath).data.publicUrl;
 
-    // 3. Upload to backend storage API (/api/menu-attachments/upload) with Bearer token
-    const resp = await fetch('/api/menu-attachments/upload', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`
-      },
-      body: JSON.stringify({
-        fileName: cleanFileName,
-        fileData: base64Data,
-        month: Number(month),
+    let thumbnailUrl: string | undefined;
+    let thumbPath: string | undefined;
+    if (payload.thumbnailDataUrl) {
+      const blob = dataUrlToBlob(payload.thumbnailDataUrl);
+      if (blob) {
+        thumbPath = `${orgId}/${year}-${monthStr}/${stamp}_miniatura.png`;
+        const { error: thumbErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(thumbPath, blob, { cacheControl: '3600', upsert: true, contentType: blob.type });
+        if (!thumbErr) thumbnailUrl = supabase.storage.from(BUCKET).getPublicUrl(thumbPath).data.publicUrl;
+        else thumbPath = undefined;
+      }
+    }
+
+    const publishedAt = new Date().toISOString();
+    const menuTitle = title?.trim() || `Cardápio ${monthStr}/${year}`;
+    const fileSize = formatFileSize(file.size);
+    const fileType = isPdf ? 'pdf' : 'image';
+    const isPublished = payload.is_published !== false;
+
+    const { data: row, error: insErr } = await supabase
+      .from('school_menus')
+      .insert([{
+        organization_id: orgId,
+        school_id: schoolId,
+        title: menuTitle,
         year: Number(year),
-        schoolId: targetSchoolId,
-        organizationId: targetOrgId,
-        title: menuTitle
-      })
-    });
+        month: Number(month),
+        date: `${year}-${monthStr}-01`,
+        file_url: fileUrl,
+        file_name: file.name,
+        file_type: fileType,
+        file_size: fileSize,
+        thumbnail_url: thumbnailUrl ?? null,
+        status: isPublished ? 'Publicado' : 'Rascunho',
+        is_published: isPublished,
+        published_at: publishedAt,
+        nutritionist_name: payload.nutritionist_name?.trim() || null,
+        nutritionist_crn: payload.nutritionist_crn?.trim() || null,
+        nutritional_info: {
+          file_url: fileUrl,
+          file_name: file.name,
+          file_size: fileSize,
+          file_type: fileType,
+          storage_path: storagePath,
+          thumbnail_path: thumbPath ?? null,
+        },
+      }])
+      .select('id')
+      .single();
 
-    const json = await resp.json().catch(() => null);
-    if (!resp.ok || !json?.success) {
-      const errorMsg = json?.error || `Falha no upload (Código HTTP ${resp.status})`;
-      throw new Error(errorMsg);
+    if (insErr || !row) {
+      await supabase.storage.from(BUCKET).remove([storagePath, ...(thumbPath ? [thumbPath] : [])]);
+      throw new Error(friendlyDbError(insErr?.message, 'O arquivo foi enviado, mas o cardápio não foi registrado. Tente de novo.'));
     }
 
-    if (json?.document?.file_url) {
-      publicFileUrl = json.document.file_url;
-    }
-    if (json?.document?.id) {
-      savedRecordId = json.document.id;
-    }
-
-    if (!publicFileUrl) {
-      publicFileUrl = `/api/menu-attachments/file/${cleanFileName}`;
-    }
-
-
-
-    // 5. Broadcast instant local event for real-time reactive UI update
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('classium_menu_published', {
-          detail: {
-            id: savedRecordId,
-            school_menu_id: savedRecordId,
-            school_id: targetSchoolId,
-            title: menuTitle,
-            file_url: publicFileUrl,
-            file_name: file.name,
-            file_type: isPdf ? 'pdf' : 'image',
-            year: Number(year),
-            month: Number(month),
-            published_at: new Date().toISOString()
-          }
-        })
-      );
+      window.dispatchEvent(new CustomEvent('classium_menu_published', {
+        detail: { id: row.id, school_id: schoolId, year: Number(year), month: Number(month) },
+      }));
     }
 
     return {
-      school_menu_id: savedRecordId,
-      menu_document_id: savedRecordId,
+      school_menu_id: row.id,
+      menu_document_id: row.id,
       title: menuTitle,
-      file_url: publicFileUrl,
+      file_url: fileUrl,
+      thumbnail_url: thumbnailUrl,
       year: Number(year),
       month: Number(month),
-      published_at: new Date().toISOString()
+      published_at: publishedAt,
     };
   },
 
   /**
-   * Fetches published menus for year & month from Supabase and backend cache.
+   * Cardápios do mês, do mais antigo para o mais recente. Lança erro se a consulta falhar, para a tela mostrar o aviso certo.
    */
   async getMenuDocumentsForMonth(year: number, month: number, schoolId?: string): Promise<ActiveMenuDocument[]> {
-    const documentsList: ActiveMenuDocument[] = [];
-    const seenIds = new Set<string>();
+    const orgId = await resolveOrgId(schoolId);
+    if (!orgId) throw new Error(NO_SCHOOL_ERROR);
 
-    const addDoc = (doc: ActiveMenuDocument) => {
-      if (!doc.id || seenIds.has(doc.id)) return;
-      // Filter out invalid or transient blob: URLs from past sessions
-      if (doc.file_url && doc.file_url.startsWith('blob:')) return;
-      seenIds.add(doc.id);
-      documentsList.push(doc);
-    };
+    const { data, error } = await supabase
+      .from('school_menus')
+      .select('*')
+      .or(`organization_id.eq.${orgId},school_id.eq.${orgId}`)
+      .eq('year', Number(year))
+      .eq('month', Number(month))
+      .order('published_at', { ascending: true });
 
-    // 1. Query Supabase table school_menus
-    try {
-      let query = supabase
-        .from('school_menus')
-        .select('*')
-        .eq('year', Number(year))
-        .eq('month', Number(month))
-        .order('created_at', { ascending: false });
+    if (error) throw new Error(friendlyDbError(error.message, 'Não foi possível carregar os cardápios.'));
 
-      if (schoolId) {
-        query = query.eq('school_id', schoolId);
-      }
-
-      const { data: records, error } = await query;
-
-      if (!error && records && records.length > 0) {
-        records.forEach((row: any) => {
-          const nutInfo = row.nutritional_info || {};
-          let fileUrl = nutInfo.file_url || row.file_url || row.description || '';
-          let fileName = nutInfo.file_name || row.file_name || row.title || `cardapio_${month}_${year}.pdf`;
-
-          if (fileUrl.startsWith('http') && fileUrl.includes('/api/menu-attachments/file/')) {
-            fileUrl = '/api/menu-attachments/file/' + fileUrl.split('/api/menu-attachments/file/')[1];
-          }
-          const fileSize = nutInfo.file_size || '2.4 MB';
-          const isImg = nutInfo.file_type === 'image' || (/\.(png|jpe?g|webp)$/i.test(fileName) && !fileName.toLowerCase().includes('cardapio'));
-          const isPub = row.status !== 'Rascunho' && row.is_published !== false;
-
-          if (fileUrl) {
-            addDoc({
-              id: row.id,
-              school_menu_id: row.id,
-              title: row.title || `Cardápio Escolar Oficial`,
-              file_url: fileUrl,
-              file_name: fileName,
-              file_size: fileSize,
-              file_type: isImg ? 'image' : 'pdf',
-              published_at: row.published_at || row.created_at || new Date().toISOString(),
-              is_published: isPub,
-              status: isPub ? 'Publicado' : 'Rascunho',
-              nutritionist_name: row.nutritionist_name || 'Dra. Ana Paula Mendonça (CRN-3 48.920)',
-              nutritionist_crn: row.nutritionist_crn || 'CRN-3 48.920',
-              school_id: row.school_id,
-              organization_id: row.organization_id
-            });
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('[menuService] Query Supabase school_menus error:', err);
-    }
-
-    // 2. Query Supabase table school_menus_pnae_documents if still empty
-    if (documentsList.length === 0) {
-      try {
-        let queryPnae = supabase
-          .from('school_menus_pnae_documents')
-          .select('*')
-          .eq('year', Number(year))
-          .eq('month', String(month))
-          .order('created_at', { ascending: false });
-
-        if (schoolId) {
-          queryPnae = queryPnae.eq('school_id', schoolId);
-        }
-
-        const { data: pnaeRecords, error: pnaeErr } = await queryPnae;
-
-        if (!pnaeErr && pnaeRecords && pnaeRecords.length > 0) {
-          pnaeRecords.forEach((row: any) => {
-            let fileUrl = row.file_url || '';
-            let fileName = row.file_name || row.title || `cardapio_${month}_${year}.pdf`;
-
-            if (fileUrl.startsWith('http') && fileUrl.includes('/api/menu-attachments/file/')) {
-              fileUrl = '/api/menu-attachments/file/' + fileUrl.split('/api/menu-attachments/file/')[1];
-            }
-
-            const isImg = row.file_type === 'image' || (/\.(png|jpe?g|webp)$/i.test(fileName) && !fileName.toLowerCase().includes('cardapio'));
-
-            if (fileUrl) {
-              addDoc({
-                id: row.id,
-                school_menu_id: row.id,
-                title: row.title || `Cardápio Escolar Oficial`,
-                file_url: fileUrl,
-                file_name: fileName,
-                file_size: row.file_size || '2.4 KB',
-                file_type: isImg ? 'image' : 'pdf',
-                published_at: row.published_at || row.created_at || new Date().toISOString(),
-                is_published: true,
-                status: row.status || 'Publicado',
-                nutritionist_name: row.nutritionist_name || 'Dra. Ana Paula Mendonça (CRN-3 48.920)',
-                nutritionist_crn: row.nutritionist_crn || 'CRN-3 48.920',
-                school_id: row.school_id,
-                organization_id: row.organization_id
-              });
-            }
-          });
-        }
-      } catch (pnaeEx) {
-        console.warn('[menuService] Query school_menus_pnae_documents error:', pnaeEx);
-      }
-    }
-
-    // 3. Query backend API /api/food/menus with Bearer token
-    if (documentsList.length === 0) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
-        const resp = await fetch(`/api/food/menus?year=${year}&month=${month}${schoolId ? `&school_id=${schoolId}` : ''}`, {
-          headers
-        });
-        if (resp.ok) {
-          const json = await resp.json();
-          if (json?.menus && Array.isArray(json.menus)) {
-            json.menus.forEach((row: any) => {
-              const nutInfo = row.nutritional_info || {};
-              let fileUrl = nutInfo.file_url || row.file_url || row.description || '';
-              let fileName = nutInfo.file_name || row.file_name || row.title || `cardapio_${month}_${year}.pdf`;
-
-              if (fileUrl.startsWith('http') && fileUrl.includes('/api/menu-attachments/file/')) {
-                fileUrl = '/api/menu-attachments/file/' + fileUrl.split('/api/menu-attachments/file/')[1];
-              }
-
-              const isImg = nutInfo.file_type === 'image' || row.file_type === 'image';
-              if (fileUrl) {
-                addDoc({
-                  id: row.id,
-                  school_menu_id: row.id,
-                  title: row.title || `Cardápio Escolar Oficial`,
-                  file_url: fileUrl,
-                  file_name: fileName,
-                  file_size: nutInfo.file_size || row.file_size || '2.4 KB',
-                  file_type: isImg ? 'image' : 'pdf',
-                  published_at: row.published_at || row.created_at || new Date().toISOString(),
-                  is_published: true,
-                  status: row.status || 'Publicado',
-                  nutritionist_name: row.nutritionist_name || 'Dra. Ana Paula Mendonça (CRN-3 48.920)',
-                  nutritionist_crn: row.nutritionist_crn || 'CRN-3 48.920',
-                  school_id: row.school_id,
-                  organization_id: row.organization_id
-                });
-              }
-            });
-          }
-        }
-      } catch (apiErr) {
-        console.warn('[menuService] Backend API food/menus error:', apiErr);
-      }
-    }
-
-    return documentsList;
+    return ((data || []) as any[]).map(mapRow).filter((d): d is ActiveMenuDocument => d !== null);
   },
 
-  /**
-   * Obtém o cardápio ativo e publicado para determinado ano e mês
-   */
+  /** Cardápio publicado mais recente do mês (para o portal da família) */
   async getActiveMenuDocument(year: number, month: number, schoolId?: string): Promise<ActiveMenuDocument | null> {
     const all = await this.getMenuDocumentsForMonth(year, month, schoolId);
-    if (all.length > 0) {
-      return all[0];
-    }
-    return null;
+    const published = all.filter(d => d.is_published);
+    return published.length > 0 ? published[published.length - 1] : null;
   },
 
-  /**
-   * Exclui um cardápio e remove o arquivo
-   */
-  async deleteMenuDocument(id: string, fileUrl?: string) {
-    if (!id) return;
+  /** Exclui o cardápio e os arquivos dele */
+  async deleteMenuDocument(id: string, _fileUrl?: string) {
+    if (!isUuid(id)) throw new Error('Cardápio inválido. Atualize a tela.');
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`;
+    const { data: row } = await supabase
+      .from('school_menus')
+      .select('nutritional_info')
+      .eq('id', id)
+      .maybeSingle();
+
+    const { data: deleted, error } = await supabase
+      .from('school_menus')
+      .delete()
+      .eq('id', id)
+      .select('id');
+
+    if (error) throw new Error(friendlyDbError(error.message, 'Não foi possível excluir o cardápio.'));
+    if (!deleted || deleted.length === 0) {
+      throw new Error('O cardápio não foi excluído. Verifique se você tem permissão ou atualize a tela.');
     }
 
-    // 1. Delete from backend API (authoritative)
-    const delResp = await fetch(`/api/food/menus/${id}`, {
-      method: 'DELETE',
-      headers
-    });
-
-    const delJson = await delResp.json().catch(() => null);
-    if (!delResp.ok || !delJson?.success) {
-      throw new Error(delJson?.error || `Falha ao excluir cardápio (HTTP ${delResp.status})`);
+    const info = (row as any)?.nutritional_info || {};
+    const paths = [info.storage_path, info.thumbnail_path].filter(Boolean) as string[];
+    if (paths.length > 0) {
+      const { error: rmErr } = await supabase.storage.from(BUCKET).remove(paths);
+      if (rmErr) console.warn('[menuService] Arquivo não removido do storage:', rmErr.message);
     }
 
-    // 2. Also delete from Supabase school_menus directly if needed
-    try {
-      await supabase.from('school_menus').delete().eq('id', id);
-    } catch (err) {
-      console.warn('[menuService] Delete from school_menus:', err);
-    }
-
-    // 3. Broadcast removal event
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('classium_menu_published', { detail: { id, deleted: true } }));
     }
   },
 
-  /**
-   * Subscribes to real-time changes on school_menus in Supabase
-   */
+  /** Atualiza a tela quando um cardápio é publicado ou excluído */
   subscribeToMenuChanges(
     year: number,
     month: number,
@@ -389,48 +273,33 @@ export const menuService = {
     schoolId?: string
   ) {
     const realtimeService = RealtimeService.getInstance();
-    const filter = schoolId ? `school_id=eq.${schoolId}` : undefined;
+    const filter = isUuid(schoolId) ? `organization_id=eq.${schoolId}` : undefined;
 
-    const unsubMenus = realtimeService.subscribe(
-      `cardapio_sync_${month}_${year}_${schoolId || 'global'}`,
-      { table: 'school_menus', filter },
-      async () => {
-        const fresh = await menuService.getActiveMenuDocument(year, month, schoolId);
-        callback(fresh);
-      }
-    );
-
-    const unsubPnae = realtimeService.subscribe(
-      `cardapio_pnae_${month}_${year}_${schoolId || 'global'}`,
-      { table: 'school_menus_pnae_documents', filter },
-      async () => {
-        const fresh = await menuService.getActiveMenuDocument(year, month, schoolId);
-        callback(fresh);
-      }
-    );
-
-    const localEventHandler = async (e: Event) => {
-      const customEvt = e as CustomEvent;
-      if (customEvt.detail) {
-        if (!schoolId || !customEvt.detail.school_id || customEvt.detail.school_id === schoolId) {
-          const fresh = await menuService.getActiveMenuDocument(year, month, schoolId);
-          callback(fresh);
-        }
+    const refresh = async () => {
+      try {
+        callback(await menuService.getActiveMenuDocument(year, month, schoolId));
+      } catch (err) {
+        console.warn('[menuService] Falha ao atualizar cardápio:', err);
       }
     };
 
+    const unsubMenus = realtimeService.subscribe(
+      `cardapio_sync_${month}_${year}_${schoolId || 'escola'}`,
+      { table: 'school_menus', filter },
+      refresh
+    );
+
     if (typeof window !== 'undefined') {
-      window.addEventListener('classium_menu_published', localEventHandler);
-      window.addEventListener('classium_menu_updated', localEventHandler);
+      window.addEventListener('classium_menu_published', refresh);
+      window.addEventListener('classium_menu_updated', refresh);
     }
 
     return () => {
       unsubMenus();
-      unsubPnae();
       if (typeof window !== 'undefined') {
-        window.removeEventListener('classium_menu_published', localEventHandler);
-        window.removeEventListener('classium_menu_updated', localEventHandler);
+        window.removeEventListener('classium_menu_published', refresh);
+        window.removeEventListener('classium_menu_updated', refresh);
       }
     };
-  }
+  },
 };

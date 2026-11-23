@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { resolveOrgId, NO_SCHOOL_ERROR, friendlyDbError, isUuid } from './tenant';
 
 export interface AudienceClass {
   id: string;
@@ -54,6 +55,7 @@ export interface CommunicationAudienceTotals {
   total_guardians?: number;
   app_enabled_guardians?: number;
   skipped_no_profile_guardians?: number;
+  students_without_guardian?: number;
   [key: string]: any;
 }
 
@@ -99,6 +101,8 @@ export interface PublishAnnouncementParams {
   p_sender_name?: string;
   p_sender_role?: string;
   p_attachments?: Array<{ file_name: string; file_url: string; file_type?: string; file_size?: string; mime_type?: string }>;
+  /** Data e hora do envio agendado (ISO). Usado quando p_publish_now = false. */
+  p_scheduled_at?: string | null;
   organization_id?: string;
 }
 
@@ -165,141 +169,129 @@ export interface FetchAnnouncementsResult {
   organization_id?: string;
 }
 
-/**
- * Resolves the active organization / school ID
- */
-async function resolveOrganizationId(targetOrgId?: string): Promise<string | null> {
-  if (targetOrgId && targetOrgId !== 'default' && targetOrgId.trim() !== '') {
-    return targetOrgId;
-  }
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.user_metadata?.school_id) return user.user_metadata.school_id;
-    if (user?.user_metadata?.organization_id) return user.user_metadata.organization_id;
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('school_id, organization_id')
-      .eq('id', user?.id)
-      .maybeSingle();
-    if (profile?.school_id) return profile.school_id;
-    if (profile?.organization_id) return profile.organization_id;
-  } catch (e) {
-    console.warn('[resolveOrganizationId] Warning:', e);
-  }
-  return '11111111-1111-1111-1111-111111111111';
+type OpResult = { success: boolean; error: string | null };
+
+interface GuardianRow {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  user_id?: string | null;
+  profile_id?: string | null;
 }
 
-/**
- * Automatically purges communications older than 30 days
- */
-export async function purgeExpiredCommunications(targetOrgId?: string): Promise<{ success: boolean; purged_count: number; error: string | null }> {
-  try {
-    const orgId = await resolveOrganizationId(targetOrgId);
-    // Call server endpoint or Supabase direct
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    
-    let query = supabase
-      .from('communications')
-      .select('id')
-      .lt('created_at', cutoff);
-
-    if (orgId && orgId !== 'default') {
-      query = query.eq('organization_id', orgId);
-    }
-
-    const { data: expiredList, error: queryErr } = await query;
-    if (queryErr) {
-      return { success: false, purged_count: 0, error: queryErr.message };
-    }
-
-    if (expiredList && expiredList.length > 0) {
-      const expiredIds = expiredList.map(e => e.id);
-      // Delete recipients
-      await supabase.from('communication_recipients').delete().in('communication_id', expiredIds);
-      // Delete communications
-      await supabase.from('communications').delete().in('id', expiredIds);
-      return { success: true, purged_count: expiredIds.length, error: null };
-    }
-
-    return { success: true, purged_count: 0, error: null };
-  } catch (err: any) {
-    console.warn('[purgeExpiredCommunications] Error:', err);
-    return { success: false, purged_count: 0, error: err.message || 'Erro ao expurgar comunicados antigos' };
-  }
+interface RecipientRow {
+  organization_id: string;
+  communication_id: string;
+  recipient_id: string;
+  recipient_type: string;
+  student_id: string | null;
+  guardian_id: string | null;
+  profile_id: string | null;
+  is_read: boolean;
+  is_signed: boolean;
 }
 
-/**
- * Fetches audience (classes, students, guardians) for multi-tenant delivery
- */
+function guardianFromJoin(raw: any): GuardianRow | null {
+  const g = Array.isArray(raw) ? raw[0] : raw;
+  if (!g?.id) return null;
+  return {
+    id: g.id,
+    name: g.full_name || g.name || '',
+    email: g.email || undefined,
+    phone: g.phone || undefined,
+    user_id: g.user_id || null,
+    profile_id: g.profile_id || null,
+  };
+}
+
+/** Turmas, estudantes e responsáveis da escola, com os vínculos reais (sem nomes ou telefones inventados) */
 export async function fetchCommunicationAudience(
   targetOrgId?: string
 ): Promise<{ data: CommunicationAudienceData | null; error: string | null }> {
   try {
-    const orgId = await resolveOrganizationId(targetOrgId);
+    const orgId = await resolveOrgId(targetOrgId);
+    if (!orgId) return { data: null, error: NO_SCHOOL_ERROR };
 
-    let classesQuery = supabase.from('classes').select('id, name, grade, shift').order('name');
-    let studentsQuery = supabase.from('students').select('id, name, registration_code, class_id').order('name');
-    let guardiansQuery = supabase.from('guardians').select('id, name, email, phone').order('name');
-    let sgQuery = supabase.from('student_guardians').select('student_id, guardian_id, guardian_full_name, relationship');
-
-    if (orgId && orgId !== 'default') {
-      classesQuery = classesQuery.eq('school_id', orgId);
-      studentsQuery = studentsQuery.eq('school_id', orgId);
-      guardiansQuery = guardiansQuery.eq('school_id', orgId);
-      sgQuery = sgQuery.eq('school_id', orgId);
-    }
-
-    const [cRes, sRes, gRes, sgRes] = await Promise.all([
-      classesQuery,
-      studentsQuery,
-      guardiansQuery,
-      Promise.resolve(sgQuery).catch(() => ({ data: [] }))
+    const [cRes, sRes, gRes, lRes] = await Promise.all([
+      supabase.from('classes').select('id, name, grade, shift').eq('organization_id', orgId).order('name'),
+      supabase.from('students').select('id, full_name, name, registration_code, class_id, status').eq('organization_id', orgId).order('full_name'),
+      supabase.from('guardians').select('id, full_name, name, email, phone, user_id, profile_id').eq('organization_id', orgId).order('full_name'),
+      supabase.from('student_responsible_links').select('student_id, guardian_id, relationship, is_primary_contact').eq('organization_id', orgId),
     ]);
 
-    const classes: AudienceClass[] = (cRes.data || []).map((c: any) => ({
-      id: c.id,
-      name: c.name,
-      grade: c.grade,
-      shift: c.shift
-    }));
+    const firstError = cRes.error || sRes.error || gRes.error;
+    if (firstError) return { data: null, error: friendlyDbError(firstError.message, 'Não foi possível carregar turmas e famílias.') };
 
-    const guardians: AudienceGuardian[] = (gRes.data || []).map((g: any) => ({
+    const classes: AudienceClass[] = (cRes.data || []).map((c: any) => ({ id: c.id, name: c.name, grade: c.grade || undefined, shift: c.shift || undefined }));
+    const classById = new Map(classes.map(c => [c.id, c]));
+
+    const guardianById = new Map<string, GuardianRow>();
+    (gRes.data || []).forEach((g: any) => {
+      guardianById.set(g.id, {
+        id: g.id,
+        name: g.full_name || g.name || '',
+        email: g.email || undefined,
+        phone: g.phone || undefined,
+        user_id: g.user_id,
+        profile_id: g.profile_id,
+      });
+    });
+
+    const linksByStudent = new Map<string, any[]>();
+    const childrenByGuardian = new Map<string, string[]>();
+    (lRes.data || []).forEach((l: any) => {
+      if (!l.student_id || !l.guardian_id) return;
+      linksByStudent.set(l.student_id, [...(linksByStudent.get(l.student_id) || []), l]);
+      childrenByGuardian.set(l.guardian_id, [...(childrenByGuardian.get(l.guardian_id) || []), l.student_id]);
+    });
+
+    const studentRows = (sRes.data || []).filter((s: any) => !s.status || !['inativo', 'transferido', 'inactive'].includes(String(s.status).toLowerCase()));
+    const studentById = new Map<string, any>(studentRows.map((s: any) => [s.id, s]));
+
+    const students: AudienceStudent[] = studentRows.map((s: any) => {
+      const links = (linksByStudent.get(s.id) || []).sort((a, b) => Number(b.is_primary_contact) - Number(a.is_primary_contact));
+      const guardians: AudienceStudentGuardian[] = links
+        .map(l => guardianById.get(l.guardian_id))
+        .filter((g): g is GuardianRow => !!g)
+        .map(g => ({ id: g.id, name: g.name, email: g.email, phone: g.phone, profile_id: g.profile_id || g.user_id || undefined, can_receive_app: !!(g.profile_id || g.user_id) }));
+      const primary = guardians[0];
+
+      return {
+        id: s.id,
+        name: s.full_name || s.name || '',
+        registration_code: s.registration_code || undefined,
+        class_id: s.class_id || undefined,
+        class_name: s.class_id ? classById.get(s.class_id)?.name : undefined,
+        guardian_id: primary?.id,
+        guardian_name: primary?.name,
+        guardian_phone: primary?.phone,
+        guardian_email: primary?.email,
+        guardian_relationship: links[0]?.relationship || undefined,
+        guardians,
+      };
+    });
+
+    classes.forEach(c => { c.students_count = students.filter(s => s.class_id === c.id).length; });
+
+    const guardians: AudienceGuardian[] = Array.from(guardianById.values()).map(g => ({
       id: g.id,
       name: g.name,
       email: g.email,
       phone: g.phone,
-      can_receive_app: !!(g.email || g.phone)
+      profile_id: g.profile_id || g.user_id || undefined,
+      can_receive_app: !!(g.profile_id || g.user_id),
+      children: (childrenByGuardian.get(g.id) || [])
+        .map(id => studentById.get(id))
+        .filter(Boolean)
+        .map((s: any) => ({ id: s.id, name: s.full_name || s.name || '', class_id: s.class_id || undefined, class_name: s.class_id ? classById.get(s.class_id)?.name : undefined })),
     }));
-
-    const sgLinks = (sgRes && (sgRes as any).data) || [];
-
-    const students: AudienceStudent[] = (sRes.data || []).map((s: any) => {
-      const link = sgLinks.find((l: any) => l.student_id === s.id);
-      const linkedGuardian = link ? guardians.find(g => g.id === link.guardian_id) : null;
-      // Fallback to first guardian or default name if none linked
-      const guardianName = link?.guardian_full_name || linkedGuardian?.name || (guardians.length > 0 ? guardians[0].name : 'Responsável Cadastrado');
-      const guardianPhone = linkedGuardian?.phone || (guardians.length > 0 ? guardians[0].phone : '(11) 98765-4321');
-      const guardianEmail = linkedGuardian?.email || (guardians.length > 0 ? guardians[0].email : 'responsavel@escola.com');
-
-      return {
-        id: s.id,
-        name: s.name,
-        registration_code: s.registration_code,
-        class_id: s.class_id,
-        class_name: classes.find(cl => cl.id === s.class_id)?.name,
-        guardian_id: link?.guardian_id || linkedGuardian?.id,
-        guardian_name: guardianName,
-        guardian_phone: guardianPhone,
-        guardian_email: guardianEmail,
-        guardian_relationship: link?.relationship || 'Responsável Legal'
-      };
-    });
 
     return {
       data: {
         ok: true,
-        org_id: orgId || undefined,
-        organization_id: orgId || undefined,
+        org_id: orgId,
+        organization_id: orgId,
         classes,
         students,
         guardians,
@@ -308,299 +300,359 @@ export async function fetchCommunicationAudience(
           total_students: students.length,
           total_guardians: guardians.length,
           app_enabled_guardians: guardians.filter(g => g.can_receive_app).length,
-          skipped_no_profile_guardians: guardians.filter(g => !g.can_receive_app).length
-        }
+          skipped_no_profile_guardians: guardians.filter(g => !g.can_receive_app).length,
+          students_without_guardian: students.filter(s => !s.guardians || s.guardians.length === 0).length,
+        },
       },
-      error: null
+      error: null,
     };
   } catch (err: any) {
-    console.error('[CommunicationRpcService] fetchAudience error:', err);
-    return { data: null, error: err.message || 'Erro ao carregar público de destinatários.' };
+    console.error('[CommunicationRpcService] fetchCommunicationAudience:', err);
+    return { data: null, error: friendlyDbError(err?.message, 'Não foi possível carregar turmas e famílias.') };
   }
 }
 
-/**
- * Fetches communications for the active organization in real-time
- */
+function parseMeta(c: any): Record<string, any> {
+  if (c.metadata && typeof c.metadata === 'object' && Object.keys(c.metadata).length > 0) return c.metadata;
+  if (typeof c.attachment_url === 'string' && c.attachment_url.startsWith('{')) {
+    try { return JSON.parse(c.attachment_url); } catch { return {}; }
+  }
+  return {};
+}
+
+function mapCommunication(c: any): AnnouncementItem {
+  const meta = parseMeta(c);
+  const statusStr = String(c.status || 'published').toLowerCase();
+  let status: AnnouncementItem['status'] = 'published';
+  if (statusStr === 'draft' || statusStr === 'rascunho') status = 'draft';
+  else if (statusStr === 'scheduled' || statusStr === 'agendado') status = 'scheduled';
+  else if (statusStr === 'expired' || statusStr === 'expirado') status = 'expired';
+  if (status === 'published' && c.expires_at && new Date(c.expires_at).getTime() < Date.now()) status = 'expired';
+
+  const category = String(c.category || '').toLowerCase();
+  const priority = String(c.priority || '').toUpperCase();
+  const typeCode = meta.type_code || c.type_code || (
+    c.requires_signature ? 'signature'
+      : category.includes('urg') || priority.includes('EMERG') || priority.includes('URG') ? 'urgent'
+      : category.includes('convoc') || category.includes('reuni') ? 'convocation'
+      : 'info'
+  );
+
+  const severity = meta.severity || c.severity || (
+    priority.includes('EMERG') ? 'EMERGÊNCIA' : priority.includes('ATEN') ? 'ATENÇÃO' : typeCode === 'urgent' ? 'EMERGÊNCIA' : 'INFORMATIVO'
+  );
+
+  return {
+    id: c.id,
+    organization_id: c.organization_id,
+    school_id: c.organization_id,
+    title: c.title || 'Comunicado sem título',
+    body: c.content || c.body || '',
+    content: c.content || c.body || '',
+    category: c.category || undefined,
+    type_code: typeCode,
+    severity,
+    target: c.target_type || c.target_mode || 'all',
+    target_type: c.target_type || c.target_mode || 'all',
+    target_ids: c.target_ids || [],
+    target_student_id: meta.target_student_id || undefined,
+    target_student_name: meta.target_student_name || undefined,
+    target_student_label: meta.target_student_label || undefined,
+    location: meta.event_location || meta.location || undefined,
+    scheduled_date: meta.event_date || meta.scheduled_date || undefined,
+    scheduled_time: meta.event_time || meta.scheduled_time || undefined,
+    due_date: meta.due_date || undefined,
+    cost: meta.cost || undefined,
+    sender_name: c.sender_name || undefined,
+    sender_role: c.sender_role || undefined,
+    author_name: c.sender_name || undefined,
+    priority: c.priority || 'normal',
+    status,
+    requires_signature: Boolean(c.requires_signature || meta.requires_signature),
+    requires_acknowledgment: Boolean(c.requires_acknowledgment ?? meta.requires_acknowledgment),
+    published_at: c.published_at || c.sent_at || c.scheduled_at || c.created_at,
+    expires_at: c.expires_at || null,
+    created_at: c.created_at,
+    updated_at: c.updated_at,
+    reads_count: 0,
+    confirmations_count: 0,
+    total_recipients: Number(c.recipients_count) || 0,
+    attachments: Array.isArray(meta.attachments) ? meta.attachments : [],
+  };
+}
+
+/** Lista os comunicados da escola com leituras e assinaturas reais */
 export async function fetchOrganizationAnnouncements(
   targetOrgId?: string
 ): Promise<{ data: FetchAnnouncementsResult | null; error: string | null }> {
   try {
-    const orgId = await resolveOrganizationId(targetOrgId);
-    
-    // 1. Auto-purge older than 30 days in background
-    purgeExpiredCommunications(orgId || undefined).catch(() => {});
+    const orgId = await resolveOrgId(targetOrgId);
+    if (!orgId) return { data: null, error: NO_SCHOOL_ERROR };
 
-    // 2. Fetch communications
-    let commsQuery = supabase
+    const { data: rows, error } = await supabase
       .from('communications')
       .select('*')
+      .eq('organization_id', orgId)
       .order('created_at', { ascending: false });
 
-    if (orgId && orgId !== 'default') {
-      commsQuery = commsQuery.eq('organization_id', orgId);
-    }
+    if (error) return { data: null, error: friendlyDbError(error.message, 'Não foi possível carregar os comunicados.') };
 
-    const { data: commsData, error: commsError } = await commsQuery;
+    const items: AnnouncementItem[] = ((rows || []) as any[]).map(mapCommunication);
 
-    if (commsError) {
-      console.warn('[CommunicationRpcService] Comms query error:', commsError);
-      return { data: null, error: commsError.message };
-    }
-
-    const items: AnnouncementItem[] = (commsData || []).map((c: any) => {
-      const statusStr = (c.status || 'published').toLowerCase();
-      let normalizedStatus: 'published' | 'scheduled' | 'draft' | 'expired' = 'published';
-      if (statusStr === 'draft' || statusStr === 'rascunho') normalizedStatus = 'draft';
-      else if (statusStr === 'scheduled' || statusStr === 'agendado') normalizedStatus = 'scheduled';
-      else if (statusStr === 'expired' || statusStr === 'expirado') normalizedStatus = 'expired';
-
-      // Parse metadata from attachment_url if present
-      let parsedMeta: any = {};
-      if (c.attachment_url && typeof c.attachment_url === 'string' && c.attachment_url.startsWith('{')) {
-        try {
-          parsedMeta = JSON.parse(c.attachment_url);
-        } catch {
-          parsedMeta = {};
-        }
-      }
-
-      const inferredTypeCode = parsedMeta.type_code || c.type_code || (
-        c.requires_signature ? 'signature' :
-        ((c.category || '').toLowerCase().includes('urg') || (c.priority || '').toLowerCase().includes('urg') || (c.priority || '').includes('EMERG') || (c.priority || '').includes('ATEN')) ? 'urgent' :
-        ((c.category || '').toLowerCase().includes('convoc') || (c.category || '').toLowerCase().includes('reuni')) ? 'convocation' :
-        'info'
-      );
-
-      const inferredSeverity = parsedMeta.severity || c.severity || (
-        (c.priority || '').toUpperCase().includes('EMERG') ? 'EMERGÊNCIA' :
-        (c.priority || '').toUpperCase().includes('ATEN') ? 'ATENÇÃO' :
-        inferredTypeCode === 'urgent' ? 'EMERGÊNCIA' : 'INFORMATIVO'
-      );
-
-      return {
-        id: c.id,
-        organization_id: c.organization_id,
-        school_id: c.organization_id,
-        title: c.title || 'Comunicado Sem Título',
-        body: c.content || c.body || '',
-        content: c.content || c.body || '',
-        category: c.category || 'Geral',
-        type_code: inferredTypeCode,
-        severity: inferredSeverity,
-        target: c.target_type || 'all',
-        target_type: c.target_type || 'all',
-        target_ids: c.target_ids || [],
-        target_student_id: parsedMeta.target_student_id || c.target_student_id || null,
-        target_student_name: parsedMeta.target_student_name || c.target_student_name || null,
-        target_student_label: parsedMeta.target_student_label || c.target_student_label || null,
-        location: parsedMeta.event_location || parsedMeta.location || c.event_location || c.location || null,
-        scheduled_date: parsedMeta.event_date || parsedMeta.scheduled_date || c.event_date || c.scheduled_date || null,
-        scheduled_time: parsedMeta.event_time || parsedMeta.scheduled_time || c.event_time || c.scheduled_time || null,
-        due_date: parsedMeta.due_date || c.due_date || null,
-        cost: parsedMeta.cost || c.cost || null,
-        sender_name: c.sender_name || 'Gestão Escolar',
-        sender_role: c.sender_role || 'Direção',
-        author_name: c.sender_name || 'Gestão Escolar',
-        author_email: 'gestao@classium.app',
-        priority: c.priority || 'normal',
-        status: normalizedStatus,
-        requires_signature: Boolean(c.requires_signature || parsedMeta.requires_signature || inferredTypeCode === 'signature'),
-        requires_acknowledgment: Boolean(parsedMeta.requires_acknowledgment ?? (inferredTypeCode === 'urgent' || inferredTypeCode === 'info')),
-        published_at: c.scheduled_at || c.sent_at || c.created_at,
-        expires_at: c.expires_at || null,
-        created_at: c.created_at,
-        updated_at: c.updated_at,
-        reads_count: 0,
-        confirmations_count: 0,
-        total_recipients: 0,
-        attachments: parsedMeta.attachments || []
-      };
-    });
-
-    // 3. Fetch read counts from communication_recipients
     if (items.length > 0) {
-      const commIds = items.map(i => i.id);
-      const { data: recData } = await supabase
+      const { data: recData, error: recErr } = await supabase
         .from('communication_recipients')
-        .select('communication_id, is_read, is_signed, signature_data')
-        .in('communication_id', commIds);
+        .select('communication_id, is_read, is_signed, acknowledged_at')
+        .in('communication_id', items.map(i => i.id));
 
-      if (recData && recData.length > 0) {
-        const readStats: Record<string, { total: number; reads: number; signed: number }> = {};
-        recData.forEach(r => {
-          if (!readStats[r.communication_id]) {
-            readStats[r.communication_id] = { total: 0, reads: 0, signed: 0 };
-          }
-          readStats[r.communication_id].total++;
-          if (r.is_read) readStats[r.communication_id].reads++;
-          if (r.is_signed) readStats[r.communication_id].signed++;
+      if (recErr) {
+        console.warn('[CommunicationRpcService] Leituras não carregadas:', recErr.message);
+      } else {
+        const stats = new Map<string, { total: number; reads: number; confirmed: number }>();
+        (recData || []).forEach((r: any) => {
+          const s = stats.get(r.communication_id) || { total: 0, reads: 0, confirmed: 0 };
+          s.total++;
+          if (r.is_read) s.reads++;
+          if (r.is_signed || r.acknowledged_at) s.confirmed++;
+          stats.set(r.communication_id, s);
         });
-
         items.forEach(i => {
-          if (readStats[i.id]) {
-            i.reads_count = readStats[i.id].reads;
-            i.total_recipients = readStats[i.id].total;
-            i.confirmations_count = readStats[i.id].signed;
+          const s = stats.get(i.id);
+          if (s) {
+            i.total_recipients = s.total;
+            i.reads_count = s.reads;
+            i.confirmations_count = s.confirmed;
           }
         });
       }
     }
+
+    const { data: canManage } = await supabase.rpc('is_org_staff', { p_org_id: orgId });
 
     return {
-      data: {
-        ok: true,
-        items,
-        total: items.length,
-        can_manage: true,
-        organization_id: orgId || undefined
-      },
-      error: null
+      data: { ok: true, items, total: items.length, can_manage: canManage === true, organization_id: orgId },
+      error: null,
     };
   } catch (err: any) {
-    console.error('[CommunicationRpcService] fetchOrganizationAnnouncements exception:', err);
-    return { data: null, error: err.message || 'Exceção ao carregar comunicados.' };
+    console.error('[CommunicationRpcService] fetchOrganizationAnnouncements:', err);
+    return { data: null, error: friendlyDbError(err?.message, 'Não foi possível carregar os comunicados.') };
   }
 }
 
-/**
- * Publishes or creates a new communication in Supabase
- */
+/** Monta a lista de quem recebe: um registro por responsável e estudante */
+async function buildRecipients(orgId: string, communicationId: string, params: PublishAnnouncementParams): Promise<RecipientRow[]> {
+  const mode = params.p_mode || 'all';
+  const rows: RecipientRow[] = [];
+  const seen = new Set<string>();
+
+  const push = (type: string, recipientId: string, opts: { studentId?: string | null; guardianId?: string | null; profileId?: string | null }) => {
+    const key = `${type}:${recipientId}:${opts.studentId || ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({
+      organization_id: orgId,
+      communication_id: communicationId,
+      recipient_id: recipientId,
+      recipient_type: type,
+      student_id: opts.studentId || null,
+      guardian_id: opts.guardianId || null,
+      profile_id: opts.profileId || null,
+      is_read: false,
+      is_signed: false,
+    });
+  };
+
+  const wantsFamilies = !['staff', 'all_professionals'].includes(mode);
+  const wantsStaff = ['all', 'staff', 'all_professionals'].includes(mode);
+
+  if (wantsFamilies) {
+    if (mode === 'guardians' && params.p_guardian_ids?.length) {
+      const { data, error } = await supabase
+        .from('guardians')
+        .select('id, full_name, name, user_id, profile_id')
+        .in('id', params.p_guardian_ids.filter(isUuid));
+      if (error) throw new Error(friendlyDbError(error.message));
+      const studentId = isUuid(params.p_target_student_id) ? params.p_target_student_id : null;
+      (data || []).forEach((g: any) => push('guardian', g.id, { guardianId: g.id, profileId: g.profile_id || g.user_id, studentId }));
+    } else {
+      let studentIds: string[] | null = null;
+
+      if (mode === 'classes' && params.p_class_ids?.length) {
+        const { data, error } = await supabase
+          .from('students')
+          .select('id')
+          .eq('organization_id', orgId)
+          .in('class_id', params.p_class_ids.filter(isUuid));
+        if (error) throw new Error(friendlyDbError(error.message));
+        studentIds = (data || []).map((s: any) => s.id);
+      } else if (mode === 'students' && params.p_student_ids?.length) {
+        studentIds = params.p_student_ids.filter(isUuid);
+      }
+
+      let linkQuery = supabase
+        .from('student_responsible_links')
+        .select('student_id, guardian_id, guardians ( id, full_name, name, user_id, profile_id )')
+        .eq('organization_id', orgId);
+      if (studentIds) {
+        if (studentIds.length === 0) return rows;
+        linkQuery = linkQuery.in('student_id', studentIds);
+      }
+
+      const { data: links, error } = await linkQuery;
+      if (error) throw new Error(friendlyDbError(error.message));
+
+      (links || []).forEach((l: any) => {
+        const g = guardianFromJoin(l.guardians);
+        if (g) push('guardian', g.id, { guardianId: g.id, profileId: g.profile_id || g.user_id, studentId: l.student_id });
+      });
+    }
+  }
+
+  if (wantsStaff) {
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select('user_id, role')
+      .eq('organization_id', orgId)
+      .eq('is_active', true);
+    if (error) throw new Error(friendlyDbError(error.message));
+    (data || [])
+      .filter((m: any) => m.user_id && !['familia', 'família', 'responsavel', 'responsável', 'guardian', 'family', 'aluno', 'student'].includes(String(m.role || '').toLowerCase()))
+      .forEach((m: any) => push('staff', m.user_id, { profileId: m.user_id }));
+  }
+
+  return rows;
+}
+
+/** Grava o comunicado e a lista de destinatários. Se a lista falhar, o comunicado é desfeito. */
 export async function publishOrganizationAnnouncement(
   params: PublishAnnouncementParams
-): Promise<{
-  data: PublishAnnouncementResult | null;
-  error: string | null;
-}> {
+): Promise<{ data: PublishAnnouncementResult | null; error: string | null }> {
   try {
-    const orgId = await resolveOrganizationId(params.organization_id);
+    const orgId = await resolveOrgId(params.organization_id);
+    if (!orgId) return { data: null, error: NO_SCHOOL_ERROR };
+    if (!params.p_title?.trim()) return { data: null, error: 'Informe o título do comunicado.' };
+    if (!params.p_body?.trim()) return { data: null, error: 'Escreva a mensagem do comunicado.' };
+
     const { data: { user } } = await supabase.auth.getUser();
-    
-    const status = params.p_status || (params.p_publish_now === false ? 'scheduled' : 'published');
-    const nowIso = new Date().toISOString();
 
-    const targetMode = params.p_mode || 'all';
-    const targetIds = [
-      ...(params.p_class_ids || []),
-      ...(params.p_student_ids || []),
-      ...(params.p_guardian_ids || [])
-    ];
+    const mode = params.p_mode || 'all';
+    if (mode === 'classes' && !params.p_class_ids?.length) return { data: null, error: 'Escolha pelo menos uma turma.' };
+    if (mode === 'students' && !params.p_student_ids?.length) return { data: null, error: 'Escolha pelo menos um estudante.' };
+    if (mode === 'guardians' && !params.p_guardian_ids?.length) return { data: null, error: 'Escolha pelo menos um responsável.' };
 
+    const scheduled = params.p_publish_now === false;
+    const scheduledAt = scheduled ? (params.p_scheduled_at || null) : null;
+    if (scheduled && !scheduledAt) return { data: null, error: 'Informe a data e a hora do envio agendado.' };
+
+    const status = params.p_status || (scheduled ? 'scheduled' : 'published');
+    const now = new Date().toISOString();
     const typeCode = params.p_type_code || (params.p_requires_signature ? 'signature' : 'info');
     const severity = params.p_severity || (typeCode === 'urgent' ? 'EMERGÊNCIA' : 'INFORMATIVO');
+    const requiresSignature = Boolean(params.p_requires_signature || typeCode === 'signature');
+    const requiresAck = Boolean(params.p_requires_acknowledgment ?? params.p_requires_confirmation ?? typeCode === 'urgent');
 
-    // Pack extended attributes safely into metadata JSON inside attachment_url
     const metadata = {
       type_code: typeCode,
-      severity: severity,
-      target_audience: targetMode === 'students' ? 'specific_student' : (targetMode === 'classes' ? 'class' : 'all'),
-      target_student_id: params.p_target_student_id || (params.p_student_ids && params.p_student_ids[0]) || null,
+      severity,
+      target_student_id: params.p_target_student_id || null,
       target_student_name: params.p_target_student_name || null,
       target_student_label: params.p_target_student_label || null,
       event_date: params.p_scheduled_date || null,
       event_time: params.p_scheduled_time || null,
       event_location: params.p_location || null,
       due_date: params.p_due_date || null,
-      cost: params.p_cost || 'Gratuito',
-      requires_signature: Boolean(params.p_requires_signature || typeCode === 'signature'),
-      requires_acknowledgment: Boolean(params.p_requires_acknowledgment ?? (typeCode === 'urgent' || typeCode === 'info')),
-      attachments: params.p_attachments || []
+      cost: params.p_cost || null,
+      requires_signature: requiresSignature,
+      requires_acknowledgment: requiresAck,
+      attachments: params.p_attachments || [],
     };
 
-    // Only include columns that are guaranteed to exist in the database table
-    const newRecord: any = {
-      organization_id: orgId || '11111111-1111-1111-1111-111111111111',
-      title: params.p_title.trim(),
-      content: params.p_body.trim(),
-      category: typeCode === 'urgent' ? 'urgent' : (typeCode === 'signature' ? 'signature' : (typeCode === 'convocation' ? 'convocation' : (params.p_category || 'info'))),
-      priority: severity || params.p_priority || (typeCode === 'urgent' ? 'urgent' : 'normal'),
-      target_type: targetMode,
-      target_ids: targetIds,
-      requires_signature: Boolean(params.p_requires_signature || typeCode === 'signature'),
-      attachment_url: JSON.stringify(metadata),
-      sender_name: params.p_sender_name || user?.user_metadata?.full_name || 'Gestão Escolar',
-      sender_role: params.p_sender_role || 'Direção',
-      status: status,
-      scheduled_at: params.p_publish_now === false ? params.p_expires_at : nowIso,
-      expires_at: params.p_expires_at || null,
-      created_at: nowIso,
-      updated_at: nowIso
-    };
+    const classIds = (params.p_class_ids || []).filter(isUuid);
+    const studentIds = (params.p_student_ids || []).filter(isUuid);
+    const guardianIds = (params.p_guardian_ids || []).filter(isUuid);
 
     const { data: inserted, error: insertErr } = await supabase
       .from('communications')
-      .insert([newRecord])
+      .insert([{
+        organization_id: orgId,
+        title: params.p_title.trim(),
+        content: params.p_body.trim(),
+        category: typeCode === 'info' ? (params.p_category || 'info') : typeCode,
+        priority: params.p_priority || severity,
+        type_code: typeCode,
+        severity,
+        target_type: mode,
+        target_mode: mode,
+        target_ids: [...classIds, ...studentIds, ...guardianIds],
+        class_ids: classIds,
+        student_ids: studentIds,
+        guardian_ids: guardianIds,
+        requires_signature: requiresSignature,
+        requires_acknowledgment: requiresAck,
+        attachment_url: JSON.stringify(metadata),
+        metadata,
+        sender_name: params.p_sender_name || user?.user_metadata?.full_name || null,
+        sender_role: params.p_sender_role || null,
+        status,
+        scheduled_at: scheduledAt,
+        published_at: status === 'published' ? now : null,
+        sent_at: status === 'published' ? now : null,
+        expires_at: params.p_expires_at || null,
+      }])
       .select('id')
       .single();
 
     if (insertErr || !inserted) {
-      console.error('[CommunicationRpcService] insert error:', insertErr);
-      return { data: null, error: insertErr?.message || 'Erro ao gravar comunicado no banco de dados.' };
+      return { data: null, error: friendlyDbError(insertErr?.message, 'Não foi possível gravar o comunicado.') };
     }
 
     const communicationId = inserted.id;
+    const rollback = async () => { await supabase.from('communications').delete().eq('id', communicationId); };
 
-    // Optional attachments persistence in communication_attachments table
-    if (params.p_attachments && params.p_attachments.length > 0) {
-      try {
-        const attachmentRows = params.p_attachments.map(att => ({
-          organization_id: orgId || '11111111-1111-1111-1111-111111111111',
+    let recipients: RecipientRow[];
+    try {
+      recipients = await buildRecipients(orgId, communicationId, params);
+    } catch (err: any) {
+      await rollback();
+      return { data: null, error: err?.message || 'Não foi possível montar a lista de destinatários.' };
+    }
+
+    for (let i = 0; i < recipients.length; i += 500) {
+      const { error: recErr } = await supabase.from('communication_recipients').insert(recipients.slice(i, i + 500));
+      if (recErr) {
+        await rollback();
+        return { data: null, error: friendlyDbError(recErr.message, 'Não foi possível registrar os destinatários. O comunicado não foi enviado.') };
+      }
+    }
+
+    if (params.p_attachments?.length) {
+      const { error: attErr } = await supabase.from('communication_attachments').insert(
+        params.p_attachments.map(att => ({
+          organization_id: orgId,
           communication_id: communicationId,
           file_name: att.file_name,
           file_url: att.file_url,
-          file_type: att.file_type || 'application/pdf',
-          file_size: att.file_size || '1.0 MB',
-          created_at: nowIso
-        }));
-        await supabase.from('communication_attachments').insert(attachmentRows);
-      } catch (attErr) {
-        console.warn('[CommunicationRpcService] Error inserting attachments:', attErr);
-      }
+          file_type: att.file_type || att.mime_type || null,
+          file_size: att.file_size || null,
+        }))
+      );
+      if (attErr) console.warn('[CommunicationRpcService] Anexos não registrados à parte:', attErr.message);
     }
 
-    // Create records in communication_recipients with strict deduplication
-    const recipientRows: any[] = [];
-    const seenRecipients = new Set<string>();
+    await supabase.from('communications').update({ recipients_count: recipients.length }).eq('id', communicationId);
 
-    const addRecipient = (type: string, id: string, studentId?: string) => {
-      const key = `${type}:${id}:${studentId || ''}`;
-      if (!seenRecipients.has(key)) {
-        seenRecipients.add(key);
-        recipientRows.push({
-          organization_id: orgId,
-          communication_id: communicationId,
-          recipient_id: id,
-          recipient_type: type,
-          student_id: studentId || null,
-          is_read: false,
-          is_signed: false,
-          created_at: nowIso
-        });
-      }
-    };
+    const withApp = recipients.filter(r => r.profile_id).length;
+    const withoutApp = recipients.length - withApp;
 
-    if (params.p_class_ids && params.p_class_ids.length > 0) {
-      params.p_class_ids.forEach(cid => {
-        if (cid) addRecipient('class', cid);
-      });
-    } else if (params.p_student_ids && params.p_student_ids.length > 0) {
-      params.p_student_ids.forEach(sid => {
-        if (sid) addRecipient('student', sid, sid);
-      });
-    } else if (params.p_guardian_ids && params.p_guardian_ids.length > 0) {
-      params.p_guardian_ids.forEach(gid => {
-        if (gid) addRecipient('guardian', gid, params.p_target_student_id);
-      });
+    let message: string;
+    if (recipients.length === 0) {
+      message = 'Comunicado salvo, mas ninguém foi encontrado para receber. Confira se os estudantes têm responsáveis vinculados.';
+    } else if (status === 'scheduled') {
+      message = `Comunicado agendado para ${recipients.length} destinatário(s).`;
+    } else if (withoutApp > 0) {
+      message = `Comunicado enviado para ${recipients.length} destinatário(s). ${withoutApp} ainda não têm acesso ao aplicativo.`;
     } else {
-      addRecipient(targetMode === 'all' ? 'all_families' : targetMode, orgId || 'all');
-    }
-
-    if (recipientRows.length > 0) {
-      try {
-        await supabase.from('communication_recipients').insert(recipientRows);
-      } catch (e) {
-        console.warn('[CommunicationRpcService] Recipient insert warning:', e);
-      }
+      message = `Comunicado enviado para ${recipients.length} destinatário(s).`;
     }
 
     if (typeof window !== 'undefined') {
@@ -611,335 +663,227 @@ export async function publishOrganizationAnnouncement(
       data: {
         ok: true,
         announcement_id: communicationId,
-        recipients_count: recipientRows.length,
-        notified_count: recipientRows.length,
-        message: 'Comunicado gravado e disparado com sucesso!'
+        recipients_count: recipients.length,
+        notified_count: withApp,
+        skipped_no_profile_count: withoutApp,
+        message,
       },
-      error: null
+      error: null,
     };
   } catch (err: any) {
-    console.error('[CommunicationRpcService] Publish exception:', err);
-    return { data: null, error: err.message || 'Exceção ao publicar comunicado.' };
+    console.error('[CommunicationRpcService] publishOrganizationAnnouncement:', err);
+    return { data: null, error: friendlyDbError(err?.message, 'Não foi possível publicar o comunicado.') };
   }
 }
 
-/**
- * Updates an existing communication
- */
+/** Atualiza só os campos que existem na tabela */
 export async function updateOrganizationAnnouncement(
   announcementId: string,
   updates: Partial<AnnouncementItem>,
   targetOrgId?: string
-): Promise<{ success: boolean; error: string | null }> {
+): Promise<OpResult> {
   try {
-    const orgId = await resolveOrganizationId(targetOrgId);
-    const updatePayload: any = {
-      ...updates,
-      updated_at: new Date().toISOString()
-    };
-    if (updates.body && !updates.content) {
-      updatePayload.content = updates.body;
-    }
-    if (updates.content) {
-      updatePayload.content = updates.content;
-    }
+    const orgId = await resolveOrgId(targetOrgId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
 
-    let query = supabase
+    const payload: Record<string, any> = {};
+    if (updates.title !== undefined) payload.title = updates.title.trim();
+    if (updates.content !== undefined || updates.body !== undefined) payload.content = (updates.content ?? updates.body ?? '').trim();
+    if (updates.category !== undefined) payload.category = updates.category;
+    if (updates.priority !== undefined) payload.priority = updates.priority;
+    if (updates.severity !== undefined) payload.severity = updates.severity;
+    if (updates.type_code !== undefined) payload.type_code = updates.type_code;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.expires_at !== undefined) payload.expires_at = updates.expires_at;
+    if (updates.requires_signature !== undefined) payload.requires_signature = updates.requires_signature;
+    if (updates.requires_acknowledgment !== undefined) payload.requires_acknowledgment = updates.requires_acknowledgment;
+    if (updates.sender_name !== undefined) payload.sender_name = updates.sender_name;
+    if (updates.sender_role !== undefined) payload.sender_role = updates.sender_role;
+
+    if (Object.keys(payload).length === 0) return { success: true, error: null };
+
+    const { data, error } = await supabase
       .from('communications')
-      .update(updatePayload)
-      .eq('id', announcementId);
+      .update(payload)
+      .eq('id', announcementId)
+      .eq('organization_id', orgId)
+      .select('id');
 
-    if (orgId && orgId !== 'default') {
-      query = query.eq('organization_id', orgId);
-    }
-
-    const { error } = await query;
-    if (error) {
-      return { success: false, error: error.message };
-    }
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível salvar o comunicado.') };
+    if (!data || data.length === 0) return { success: false, error: 'Comunicado não encontrado ou sem permissão.' };
     return { success: true, error: null };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Erro ao atualizar comunicado.' };
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível salvar o comunicado.') };
+  }
+}
+
+export async function deleteOrganizationAnnouncement(announcementId: string, targetOrgId?: string): Promise<OpResult> {
+  try {
+    const orgId = await resolveOrgId(targetOrgId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
+
+    await supabase.from('communication_recipients').delete().eq('communication_id', announcementId);
+
+    const { data, error } = await supabase
+      .from('communications')
+      .delete()
+      .eq('id', announcementId)
+      .eq('organization_id', orgId)
+      .select('id');
+
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível excluir o comunicado.') };
+    if (!data || data.length === 0) return { success: false, error: 'Comunicado não encontrado ou sem permissão.' };
+    return { success: true, error: null };
+  } catch (err: any) {
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível excluir o comunicado.') };
   }
 }
 
 /**
- * Deletes a communication permanently and its recipients
+ * Apaga comunicados com mais de 30 dias. Só roda quando a gestão pede
+ * (antes rodava sozinho toda vez que a lista abria).
  */
-export async function deleteOrganizationAnnouncement(
-  announcementId: string,
+export async function purgeExpiredCommunications(
   targetOrgId?: string
-): Promise<{ success: boolean; error: string | null }> {
+): Promise<{ success: boolean; purged_count: number; error: string | null }> {
   try {
-    const orgId = await resolveOrganizationId(targetOrgId);
-    
-    // 1. Delete associated recipients
-    await supabase
-      .from('communication_recipients')
-      .delete()
-      .eq('communication_id', announcementId);
+    const orgId = await resolveOrgId(targetOrgId);
+    if (!orgId) return { success: false, purged_count: 0, error: NO_SCHOOL_ERROR };
 
-    // 2. Delete communication
-    let query = supabase
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: old, error: qErr } = await supabase
+      .from('communications')
+      .select('id')
+      .eq('organization_id', orgId)
+      .lt('created_at', cutoff);
+
+    if (qErr) return { success: false, purged_count: 0, error: friendlyDbError(qErr.message) };
+    const ids = (old || []).map((r: any) => r.id);
+    if (ids.length === 0) return { success: true, purged_count: 0, error: null };
+
+    await supabase.from('communication_recipients').delete().in('communication_id', ids);
+    const { data: deleted, error: delErr } = await supabase
       .from('communications')
       .delete()
-      .eq('id', announcementId);
+      .in('id', ids)
+      .select('id');
 
-    if (orgId && orgId !== 'default') {
-      query = query.eq('organization_id', orgId);
-    }
-
-    const { error: delErr } = await query;
-    if (delErr) {
-      return { success: false, error: delErr.message };
-    }
-    return { success: true, error: null };
+    if (delErr) return { success: false, purged_count: 0, error: friendlyDbError(delErr.message, 'Não foi possível apagar os comunicados antigos.') };
+    return { success: true, purged_count: deleted?.length || 0, error: null };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Erro ao excluir comunicado.' };
+    return { success: false, purged_count: 0, error: friendlyDbError(err?.message) };
   }
 }
 
-/**
- * Marks a communication as read
- */
-export async function markAnnouncementAsRead(
-  announcementId: string,
-  deviceInfo: string = 'Web Browser'
-): Promise<{ success: boolean; error: string | null }> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Update or insert in communication_recipients
-    if (user?.id) {
-      const { data: existing } = await supabase
-        .from('communication_recipients')
-        .select('id')
-        .eq('communication_id', announcementId)
-        .eq('recipient_id', user.id)
-        .maybeSingle();
+/* ------------------------------------------------------------------ */
+/* Lado da família: leitura, ciência, assinatura e resposta            */
+/* ------------------------------------------------------------------ */
 
-      if (existing) {
-        await supabase
-          .from('communication_recipients')
-          .update({ is_read: true, read_at: new Date().toISOString() })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('communication_recipients')
-          .insert({
-            communication_id: announcementId,
-            organization_id: '11111111-1111-1111-1111-111111111111',
-            recipient_id: user.id,
-            recipient_type: 'user',
-            is_read: true,
-            read_at: new Date().toISOString(),
-            created_at: new Date().toISOString()
-          });
-      }
-    }
-    return { success: true, error: null };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Erro ao registrar leitura.' };
-  }
+/**
+ * Atualiza só os registros do próprio usuário para este comunicado.
+ * Se ele não estava na lista (comunicado geral), cria o registro dele.
+ */
+async function updateMyReceipt(communicationId: string, changes: Record<string, any>, studentId?: string): Promise<OpResult> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) return { success: false, error: 'Sua sessão expirou. Entre de novo.' };
+
+  const { data: myGuardians } = await supabase
+    .from('guardians')
+    .select('id')
+    .or(`user_id.eq.${user.id},profile_id.eq.${user.id}`);
+  const guardianIds = (myGuardians || []).map((g: any) => g.id);
+
+  const ors = [`recipient_id.eq.${user.id}`, `profile_id.eq.${user.id}`];
+  if (guardianIds.length > 0) ors.push(`guardian_id.in.(${guardianIds.join(',')})`);
+
+  let query = supabase
+    .from('communication_recipients')
+    .update(changes)
+    .eq('communication_id', communicationId)
+    .or(ors.join(','));
+  if (isUuid(studentId)) query = query.eq('student_id', studentId);
+
+  const { data: updated, error } = await query.select('id');
+  if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível registrar sua resposta.') };
+  if (updated && updated.length > 0) return { success: true, error: null };
+
+  const { data: comm, error: commErr } = await supabase
+    .from('communications')
+    .select('organization_id')
+    .eq('id', communicationId)
+    .maybeSingle();
+  if (commErr || !comm) return { success: false, error: 'Comunicado não encontrado.' };
+
+  const { error: insErr } = await supabase.from('communication_recipients').insert({
+    organization_id: comm.organization_id,
+    communication_id: communicationId,
+    recipient_id: user.id,
+    recipient_type: 'guardian',
+    profile_id: user.id,
+    guardian_id: guardianIds[0] || null,
+    student_id: isUuid(studentId) ? studentId : null,
+    ...changes,
+  });
+  if (insErr) return { success: false, error: friendlyDbError(insErr.message, 'Não foi possível registrar sua resposta.') };
+  return { success: true, error: null };
 }
 
-/**
- * Acknowledges receipt/reading of an urgent or informative notice
- */
-export async function acknowledgeCommunication(
-  communicationId: string,
-  guardianName?: string,
-  studentId?: string
-): Promise<{ success: boolean; error: string | null }> {
-  try {
-    const nowIso = new Date().toISOString();
-    const ackData = JSON.stringify({
-      acknowledged: true,
-      acknowledged_by_name: guardianName || 'Responsável',
-      acknowledged_at: nowIso
-    });
-
-    // 1. Try to update existing recipients for this communication
-    const { data: existingRecs } = await supabase
-      .from('communication_recipients')
-      .select('id')
-      .eq('communication_id', communicationId);
-
-    if (existingRecs && existingRecs.length > 0) {
-      await supabase
-        .from('communication_recipients')
-        .update({
-          is_read: true,
-          read_at: nowIso,
-          signature_data: ackData
-        })
-        .eq('communication_id', communicationId);
-    } else {
-      // Insert recipient record if none exists
-      await supabase
-        .from('communication_recipients')
-        .insert({
-          organization_id: '11111111-1111-1111-1111-111111111111',
-          communication_id: communicationId,
-          recipient_id: studentId || '3514e46b-077c-4ead-9183-63f12ef2a50a',
-          recipient_type: 'guardian',
-          is_read: true,
-          read_at: nowIso,
-          signature_data: ackData,
-          created_at: nowIso
-        });
-    }
-
-    // Dual-sync with backend REST API
-    fetch(`/api/family/communications/${communicationId}/acknowledge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ guardian_name: guardianName || 'Responsável' })
-    }).catch(() => {});
-
-    return { success: true, error: null };
-  } catch (err: any) {
-    console.warn('[acknowledgeCommunication] error:', err);
-    return { success: false, error: err.message || 'Erro ao confirmar ciência.' };
-  }
+export async function markAnnouncementAsRead(announcementId: string, _deviceInfo = 'Navegador'): Promise<OpResult> {
+  return updateMyReceipt(announcementId, { is_read: true, read_at: new Date().toISOString() });
 }
 
-/**
- * Signs a legal document / authorization communication
- */
+export async function acknowledgeCommunication(communicationId: string, guardianName?: string, studentId?: string): Promise<OpResult> {
+  const now = new Date().toISOString();
+  return updateMyReceipt(communicationId, {
+    is_read: true,
+    read_at: now,
+    acknowledged_at: now,
+    signature_data: JSON.stringify({ acknowledged: true, acknowledged_by_name: guardianName || null, acknowledged_at: now }),
+  }, studentId);
+}
+
 export async function signCommunicationDocument(
   communicationId: string,
   signerName: string,
   signatureData: string,
   studentId?: string
-): Promise<{ success: boolean; error: string | null }> {
-  try {
-    const nowIso = new Date().toISOString();
-    const sigPayload = JSON.stringify({
-      signed: true,
-      signer_name: signerName,
-      signature_data: signatureData,
-      signed_at: nowIso
-    });
+): Promise<OpResult> {
+  if (!signerName?.trim()) return { success: false, error: 'Informe o nome de quem está assinando.' };
+  if (!signatureData) return { success: false, error: 'Faça a assinatura antes de enviar.' };
 
-    const { data: existingRecs } = await supabase
-      .from('communication_recipients')
-      .select('id')
-      .eq('communication_id', communicationId);
-
-    if (existingRecs && existingRecs.length > 0) {
-      await supabase
-        .from('communication_recipients')
-        .update({
-          is_read: true,
-          read_at: nowIso,
-          is_signed: true,
-          signed_at: nowIso,
-          signature_data: sigPayload
-        })
-        .eq('communication_id', communicationId);
-    } else {
-      await supabase
-        .from('communication_recipients')
-        .insert({
-          organization_id: '11111111-1111-1111-1111-111111111111',
-          communication_id: communicationId,
-          recipient_id: studentId || '3514e46b-077c-4ead-9183-63f12ef2a50a',
-          recipient_type: 'guardian',
-          is_read: true,
-          read_at: nowIso,
-          is_signed: true,
-          signed_at: nowIso,
-          signature_data: sigPayload,
-          created_at: nowIso
-        });
-    }
-
-    // Dual-sync with backend REST API
-    fetch(`/api/family/communications/${communicationId}/sign`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        signed_by_name: signerName,
-        signature_data: signatureData
-      })
-    }).catch(() => {});
-
-    return { success: true, error: null };
-  } catch (err: any) {
-    console.warn('[signCommunicationDocument] error:', err);
-    return { success: false, error: err.message || 'Erro ao registrar assinatura digital.' };
-  }
+  const now = new Date().toISOString();
+  return updateMyReceipt(communicationId, {
+    is_read: true,
+    read_at: now,
+    is_signed: true,
+    signed_at: now,
+    signature_data: JSON.stringify({ signed: true, signer_name: signerName.trim(), signature_data: signatureData, signed_at: now }),
+  }, studentId);
 }
 
-/**
- * Responds to a convocation (confirm, justify absence, or request reschedule)
- */
 export async function respondConvocation(
   communicationId: string,
   status: 'confirmed' | 'justified' | 'rescheduled',
-  options: {
-    justification?: string;
-    rescheduleSuggestion?: string;
-    guardianName?: string;
-    studentId?: string;
-  } = {}
-): Promise<{ success: boolean; error: string | null }> {
-  try {
-    const nowIso = new Date().toISOString();
-    const responsePayload = JSON.stringify({
-      convocation_status: status,
-      justification: options.justification || null,
-      reschedule_suggestion: options.rescheduleSuggestion || null,
-      guardian_name: options.guardianName || 'Responsável',
-      responded_at: nowIso
-    });
-
-    const { data: existingRecs } = await supabase
-      .from('communication_recipients')
-      .select('id')
-      .eq('communication_id', communicationId);
-
-    if (existingRecs && existingRecs.length > 0) {
-      await supabase
-        .from('communication_recipients')
-        .update({
-          is_read: true,
-          read_at: nowIso,
-          signature_data: responsePayload
-        })
-        .eq('communication_id', communicationId);
-    } else {
-      await supabase
-        .from('communication_recipients')
-        .insert({
-          organization_id: '11111111-1111-1111-1111-111111111111',
-          communication_id: communicationId,
-          recipient_id: options.studentId || '3514e46b-077c-4ead-9183-63f12ef2a50a',
-          recipient_type: 'guardian',
-          is_read: true,
-          read_at: nowIso,
-          signature_data: responsePayload,
-          created_at: nowIso
-        });
-    }
-
-    // Dual-sync with backend REST API
-    fetch(`/api/family/communications/${communicationId}/respond-convocation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status,
-        justification: options.justification || null,
-        reschedule_suggestion: options.rescheduleSuggestion || null,
-        guardian_name: options.guardianName || 'Responsável'
-      })
-    }).catch(() => {});
-
-    return { success: true, error: null };
-  } catch (err: any) {
-    console.warn('[respondConvocation] error:', err);
-    return { success: false, error: err.message || 'Erro ao registrar resposta da convocação.' };
+  options: { justification?: string; rescheduleSuggestion?: string; guardianName?: string; studentId?: string } = {}
+): Promise<OpResult> {
+  if (status === 'justified' && !options.justification?.trim()) {
+    return { success: false, error: 'Escreva o motivo da ausência.' };
   }
-}
+  if (status === 'rescheduled' && !options.rescheduleSuggestion?.trim()) {
+    return { success: false, error: 'Sugira uma nova data ou horário.' };
+  }
 
+  const now = new Date().toISOString();
+  return updateMyReceipt(communicationId, {
+    is_read: true,
+    read_at: now,
+    acknowledged_at: status === 'confirmed' ? now : null,
+    signature_data: JSON.stringify({
+      convocation_status: status,
+      justification: options.justification?.trim() || null,
+      reschedule_suggestion: options.rescheduleSuggestion?.trim() || null,
+      guardian_name: options.guardianName || null,
+      responded_at: now,
+    }),
+  }, options.studentId);
+}

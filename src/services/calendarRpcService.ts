@@ -1,5 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { RealtimeService } from './RealtimeService';
+import { resolveOrgId, NO_SCHOOL_ERROR, friendlyDbError } from './tenant';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 export interface CalendarEventFromDb {
   id: string;
@@ -138,8 +141,8 @@ export function isUuid(id: string): boolean {
  * Fetch calendar events for the active organization with filters
  */
 export async function fetchOrganizationCalendarEvents(
-  startDate: string = '2026-01-01',
-  endDate: string = '2026-12-31',
+  startDate: string = `${CURRENT_YEAR}-01-01`,
+  endDate: string = `${CURRENT_YEAR}-12-31`,
   filters?: {
     eventType?: string;
     classId?: string;
@@ -203,9 +206,9 @@ export async function fetchOrganizationCalendarEvents(
           event_type: cat,
           category: cat,
           color: ev.color || cfg.colorClass,
-          color_hex: ev.color_hex || cfg.hexColor,
-          is_letivo: ev.is_letivo !== undefined ? ev.is_letivo : cfg.isLetivo,
-          academic_year: ev.academic_year || (ev.start_date ? new Date(ev.start_date).getFullYear() : 2026),
+          color_hex: ev.color_hex || ev.metadata?.color_hex || cfg.hexColor,
+          is_letivo: typeof ev.is_letivo === 'boolean' ? ev.is_letivo : (typeof ev.metadata?.is_letivo === 'boolean' ? ev.metadata.is_letivo : cfg.isLetivo),
+          academic_year: ev.academic_year || (ev.start_date ? Number(String(ev.start_date).slice(0, 4)) : CURRENT_YEAR),
           start_time: ev.start_time,
           end_time: ev.end_time,
           location: ev.location,
@@ -223,10 +226,10 @@ export async function fetchOrganizationCalendarEvents(
       return { data: mappedData, error: null };
     }
 
-    return { data: [], error: tableErr?.message || null };
+    return { data: [], error: tableErr ? friendlyDbError(tableErr.message, 'Não foi possível carregar o calendário.') : null };
   } catch (err: any) {
     console.error('[CalendarRpcService] fetchOrganizationCalendarEvents exception:', err);
-    return { data: [], error: err.message || 'Erro ao carregar eventos.' };
+    return { data: [], error: friendlyDbError(err?.message, 'Não foi possível carregar o calendário.') };
   }
 }
 
@@ -288,7 +291,7 @@ export async function fetchCalendarMetadata(
     console.error('[CalendarRpcService] fetchCalendarMetadata exception:', err);
     return {
       data: { classes: [], teachers: [], rooms: [] },
-      error: err.message || 'Erro ao carregar metadados.',
+      error: friendlyDbError(err?.message, 'Não foi possível carregar turmas e professores.'),
     };
   }
 }
@@ -383,33 +386,8 @@ export async function getAuthenticatedUserSchoolAndOrgId(
   providedOrgId?: string,
   providedSchoolId?: string
 ): Promise<{ organizationId: string; schoolId: string }> {
-  let orgId = providedOrgId && isUuid(providedOrgId) ? providedOrgId : '';
-  let schoolId = providedSchoolId && isUuid(providedSchoolId) ? providedSchoolId : (orgId || '');
-
-  if (!orgId) {
-    try {
-      const { data: session } = await supabase.auth.getSession();
-      const userId = session?.session?.user?.id;
-      if (userId) {
-        const { data: mem } = await supabase
-          .from('organization_members')
-          .select('organization_id')
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .limit(1)
-          .maybeSingle();
-
-        if (mem?.organization_id && isUuid(mem.organization_id)) {
-          orgId = mem.organization_id;
-        }
-      }
-    } catch (e) {
-      console.warn('[getAuthenticatedUserSchoolAndOrgId] session error:', e);
-    }
-  }
-
-  if (!schoolId && orgId) schoolId = orgId;
-
+  const orgId = (await resolveOrgId(providedOrgId || providedSchoolId)) || '';
+  const schoolId = providedSchoolId && isUuid(providedSchoolId) ? providedSchoolId : orgId;
   return { organizationId: orgId, schoolId };
 }
 
@@ -453,6 +431,7 @@ export async function createOrUpdateCalendarEvent(
       input.organizationId || undefined,
       input.schoolId || undefined
     );
+    if (!orgId) return { data: null, error: NO_SCHOOL_ERROR };
 
     const parsedStart = parseCivilDate(startDate);
     const academicYear = input.academicYear || parsedStart.getFullYear();
@@ -474,6 +453,9 @@ export async function createOrUpdateCalendarEvent(
       event_type: eventType,
       category: eventType,
       color: colorClass,
+      color_hex: colorHex,
+      is_letivo: isLetivo,
+      academic_year: academicYear,
       location: input.location || null,
       target_audience: input.targetAudience || 'all',
       is_all_day: input.isAllDay !== undefined ? input.isAllDay : true,
@@ -515,7 +497,7 @@ export async function createOrUpdateCalendarEvent(
           error: null
         };
       }
-      return { data: null, error: updateErr?.message || 'Erro ao atualizar evento.' };
+      return { data: null, error: updateErr ? friendlyDbError(updateErr.message, 'Não foi possível salvar o evento.') : 'Evento não encontrado ou sem permissão.' };
     } else {
       const { data: inserted, error: insertErr } = await supabase
         .from('calendar_events')
@@ -538,11 +520,11 @@ export async function createOrUpdateCalendarEvent(
           error: null
         };
       }
-      return { data: null, error: insertErr?.message || 'Erro ao criar evento no Supabase.' };
+      return { data: null, error: friendlyDbError(insertErr?.message, 'Não foi possível criar o evento.') };
     }
   } catch (err: any) {
     console.error('[CalendarRpcService] createOrUpdateCalendarEvent exception:', err);
-    return { data: null, error: err.message || 'Erro ao salvar evento.' };
+    return { data: null, error: friendlyDbError(err?.message, 'Não foi possível salvar o evento.') };
   }
 }
 
@@ -551,7 +533,7 @@ export async function createOrUpdateCalendarEvent(
  */
 export function calculateOfficialSchoolDays(
   events: CalendarEventFromDb[],
-  year: number = 2026
+  year: number = CURRENT_YEAR
 ): { totalSchoolDays: number; schoolDaysPerMonth: Record<number, number> } {
   const schoolDaysPerMonth: Record<number, number> = {};
   let totalSchoolDays = 0;
@@ -563,7 +545,7 @@ export function calculateOfficialSchoolDays(
     if (!ev.start_date) return;
     const cat = ev.category || ev.event_type || 'evento_escolar';
     const cfg = getCategoryConfig(cat);
-    const isLetivo = ev.is_letivo !== undefined ? ev.is_letivo : cfg.isLetivo;
+    const isLetivo = typeof ev.is_letivo === 'boolean' ? ev.is_letivo : cfg.isLetivo;
     const priority = cat === 'feriado_nacional' || cat === 'periodo_nacional' ? 100
       : cat === 'recesso_escolar' || cat === 'recesso_nacional' ? 90
       : cat === 'recesso_fim_semana' ? 80
@@ -634,16 +616,20 @@ export async function deleteCalendarEvent(
     if (!eventId) return { success: false, error: 'ID do evento inválido.' };
 
     if (!isUuid(eventId)) {
-      return { success: true, error: null };
+      return { success: false, error: 'Evento inválido. Atualize a tela.' };
     }
 
-    const { error: deleteErr } = await supabase
+    const { data: deleted, error: deleteErr } = await supabase
       .from('calendar_events')
       .delete()
-      .eq('id', eventId);
+      .eq('id', eventId)
+      .select('id');
 
     if (deleteErr) {
-      return { success: false, error: deleteErr.message };
+      return { success: false, error: friendlyDbError(deleteErr.message, 'Não foi possível excluir o evento.') };
+    }
+    if (!deleted || deleted.length === 0) {
+      return { success: false, error: 'Evento não encontrado ou sem permissão.' };
     }
 
     if (typeof window !== 'undefined') {
@@ -661,31 +647,28 @@ export async function deleteCalendarEvent(
  * Check if the user is staff for the organization
  */
 export async function checkIsOrgStaff(orgId?: string): Promise<boolean> {
-  try {
-    const { data: session } = await supabase.auth.getSession();
-    if (session?.session?.user) {
-      return true;
-    }
-    const { data } = await supabase.rpc('is_org_staff', {
-      p_org_id: orgId || null,
-    });
-    return data !== undefined ? !!data : true;
-  } catch {
-    return true;
+  const { data, error } = await supabase.rpc('is_org_staff', {
+    p_org_id: orgId && isUuid(orgId) ? orgId : null,
+  });
+  if (error) {
+    console.warn('[CalendarRpcService] is_org_staff:', error.message);
+    return false;
   }
+  return data === true;
 }
 
 /**
  * Sync Brazilian National Holidays into calendar_events table in Supabase
  */
 export async function syncNationalHolidaysToDb(
-  year: number = 2026,
+  year: number = CURRENT_YEAR,
   organizationId?: string
 ): Promise<{ syncedCount: number; error: string | null }> {
   try {
     const { HolidayService } = await import('./holidays.service');
     const holidays = await HolidayService.getHolidays(year);
-    const orgId = getResolvedOrganizationId(organizationId);
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { syncedCount: 0, error: NO_SCHOOL_ERROR };
 
     const startDateStr = `${year}-01-01`;
     const endDateStr = `${year}-12-31`;
@@ -706,8 +689,11 @@ export async function syncNationalHolidaysToDb(
           {
             organization_id: orgId,
             title: h.name,
-            description: `Feriado Nacional Oficial do Brasil: ${h.name}`,
+            description: `Feriado nacional: ${h.name}`,
             event_type: 'feriado_nacional',
+            category: 'feriado_nacional',
+            is_letivo: false,
+            color_hex: '#DC2626',
             start_date: h.date,
             end_date: h.date,
             location: 'Nacional',
@@ -723,7 +709,7 @@ export async function syncNationalHolidaysToDb(
     return { syncedCount, error: null };
   } catch (err: any) {
     console.error('[CalendarRpcService] syncNationalHolidaysToDb error:', err);
-    return { syncedCount: 0, error: err.message || 'Erro ao sincronizar feriados.' };
+    return { syncedCount: 0, error: friendlyDbError(err?.message, 'Não foi possível incluir os feriados.') };
   }
 }
 
@@ -731,7 +717,7 @@ export async function syncNationalHolidaysToDb(
  * Auto-generate weekend recesses and official holidays for a specific academic year in Supabase
  */
 export async function autoGenerateWeekendRecessEventsInDb(
-  year: number = 2026,
+  year: number = CURRENT_YEAR,
   organizationId?: string
 ): Promise<{ createdCount: number; skippedCount: number; error: string | null }> {
   try {
@@ -772,7 +758,7 @@ export async function autoGenerateWeekendRecessEventsInDb(
         } else {
           newWeekendEvents.push({
             title: 'Recesso de Fim de Semana',
-            description: 'Recesso de Fim de Semana (Sábado/Domingo).',
+            description: 'Sábado e domingo.',
             startDate: dateStr,
             endDate: dateStr,
             eventType: 'recesso_fim_semana',
@@ -799,7 +785,7 @@ export async function autoGenerateWeekendRecessEventsInDb(
     return { createdCount, skippedCount, error: null };
   } catch (err: any) {
     console.error('[CalendarRpcService] autoGenerateWeekendRecessEventsInDb error:', err);
-    return { createdCount: 0, skippedCount: 0, error: err.message || 'Erro na automação de calendário.' };
+    return { createdCount: 0, skippedCount: 0, error: friendlyDbError(err?.message, 'Não foi possível gerar os fins de semana.') };
   }
 }
 
@@ -821,13 +807,6 @@ export function subscribeToCalendarEvents(
     }
   );
 
-  const unsubEvents = realtimeService.subscribe(
-    `events_${organizationId || 'global'}`,
-    { table: 'events', filter },
-    (payload) => {
-      onEventChanged(payload);
-    }
-  );
 
   const handleLocalSync = (e: any) => {
     onEventChanged(e?.detail || { eventType: 'LOCAL_SYNC' });
@@ -839,7 +818,6 @@ export function subscribeToCalendarEvents(
 
   return () => {
     unsubCalendarEvents();
-    unsubEvents();
     if (typeof window !== 'undefined') {
       window.removeEventListener('classium_calendar_updated', handleLocalSync);
     }

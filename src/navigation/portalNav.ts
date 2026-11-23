@@ -90,6 +90,8 @@ export const ADMIN_NAV: NavSection<string>[] = [
     title: 'Secretaria',
     items: [
       { id: 'pessoas', slug: 'estudantes', label: 'Estudantes', icon: Users, description: 'Cadastro, documentos, matrículas e responsáveis.' },
+      { id: 'turmas', slug: 'turmas', label: 'Turmas', icon: GraduationCap, description: 'Turmas do ano, vagas e entregas de numeração, kit e uniforme.' },
+      { id: 'funcionarios', slug: 'funcionarios', label: 'Funcionários', icon: UserCheck, description: 'Equipe da escola, cargos e acesso ao sistema.' },
       { id: 'secretaria-tab', slug: 'secretaria', label: 'Secretaria', icon: ClipboardList, description: 'Requerimentos, transferências e processos.', inSidebar: false },
       { id: 'documentos', slug: 'documentos', label: 'Documentos', icon: FileText, description: 'Históricos, declarações e certidões.', inSidebar: false },
     ],
@@ -131,7 +133,7 @@ export const ADMIN_NAV: NavSection<string>[] = [
       { id: 'comercial', slug: 'comercial', label: 'Comercial', icon: TrendingUp, description: 'Captação de alunos e campanhas de matrícula.', inSidebar: false },
       { id: 'super_ia_center', slug: 'assistente', label: 'Assistente IA', icon: Sparkles, description: 'Materiais e apoio pedagógico com IA.', inSidebar: false },
       { id: 'integration_hub', slug: 'integracoes', label: 'Integrações', icon: Plug, description: 'Catracas e sistemas externos.', inSidebar: false },
-      { id: 'configuracoes', slug: 'configuracoes', label: 'Configurações', icon: Settings2, description: 'Privacidade (LGPD), termos e parâmetros da escola.', inSidebar: false },
+      { id: 'configuracoes', slug: 'configuracoes', label: 'Configurações', icon: Settings2, description: 'Privacidade (LGPD), termos e parâmetros da escola.' },
     ],
   },
 ];
@@ -271,6 +273,8 @@ const MATRIX_ALIASES: Record<string, string[]> = {
   'ee-diario': ['agenda diária', 'agenda diaria'],
   'ee-participa': ['particip'],
   configuracoes: ['config', 'configur'],
+  turmas: ['turma'],
+  funcionarios: ['funcion', 'equipe'],
 };
 
 export function makeVisibilityCheck(roleMatrix: unknown, isSuperAdmin = false) {
@@ -318,6 +322,13 @@ export const navIntent = {
   },
 };
 
+/** Gestão vê todos os módulos, sem depender da matriz de perfis */
+const FULL_ACCESS_ROLES = new Set(['admin', 'super_admin', 'platform_admin', 'gestor', 'diretor', 'diretora', 'direcao', 'direção']);
+/** Módulos exclusivos do administrador da plataforma */
+const PLATFORM_ONLY = new Set(['gestao-parceiros', 'comercial']);
+
+export const hasFullAdminAccess = (role?: string | null) => FULL_ACCESS_ROLES.has(String(role || '').toLowerCase());
+
 /* ------------------------------------------------------------------ */
 /* Hook: menu do portal atual, já filtrado por permissão               */
 /* ------------------------------------------------------------------ */
@@ -344,7 +355,9 @@ export function usePortalNav() {
   const isAllowed = useMemo(() => {
     if (portal === 'admin') {
       const roleMatrix = permissionMatrix && role ? permissionMatrix[role] : null;
-      return makeVisibilityCheck(roleMatrix, role === 'admin');
+      const check = makeVisibilityCheck(roleMatrix, hasFullAdminAccess(role));
+      // Parceiros é o painel do administrador da plataforma: gestor da escola não vê
+      return (id: TabId) => (PLATFORM_ONLY.has(String(id)) ? String(role || '').toLowerCase() === 'admin' : check(String(id)));
     }
     if (portal === 'family') {
       return (id: TabId) => isFamily || hasPermission(`menu.family.${id}`) || hasPermission('family_access');

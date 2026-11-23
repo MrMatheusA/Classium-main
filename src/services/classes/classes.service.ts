@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { BaseService } from '../shared/base.service';
 import { ClassModel, ClassEnrolledStudent } from '../../types/class.types';
+import { resolveOrgId, NO_SCHOOL_ERROR, friendlyDbError, isUuid } from '../tenant';
 
 export type ClassEntity = ClassModel;
 export type ClassStudent = ClassEnrolledStudent;
@@ -26,6 +27,9 @@ export interface DisciplineEntity {
   name: string;
   code?: string;
   workload_hours?: number;
+  weekly_classes?: number;
+  area?: string;
+  color?: string;
   created_at?: string;
 }
 
@@ -41,681 +45,409 @@ export interface AvailableStudentItem {
   class_id?: string;
 }
 
+type Op = { success: boolean; error?: string };
+
+function notifyClasses() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('classium_classes_updated'));
+    window.dispatchEvent(new CustomEvent('classium_students_updated'));
+  }
+}
+
+const INACTIVE_STUDENT = ['inativo', 'transferido', 'cancelado', 'inactive', 'evadido'];
+
+function mapClass(c: any, studentsCount: number, teachersCount: number): ClassModel {
+  const capacity = c.capacity ?? c.max_students ?? c.max_capacity ?? null;
+  const year = c.academic_year ? String(c.academic_year) : '';
+  return {
+    ...c,
+    id: c.id,
+    organization_id: c.organization_id,
+    code: c.code || '',
+    name: c.name || '',
+    grade: c.grade || '',
+    shift: c.shift || '',
+    room: c.room || '',
+    max_capacity: capacity,
+    max_students: capacity,
+    academic_year: year,
+    academic_year_name: year,
+    status: c.status || (c.is_active === false ? 'inactive' : 'active'),
+    is_active: c.is_active !== false,
+    students_count: studentsCount,
+    teachers_count: teachersCount,
+    numeration_status: !!c.numeration_status,
+    kit_escolar_status: !!c.kit_escolar_status,
+    uniform_status: !!c.uniform_status,
+    school_days: c.school_days ?? null,
+    students: [],
+    created_at: c.created_at,
+  } as ClassModel;
+}
+
+/** Campos da tela → colunas da tabela classes */
+function toClassRecord(payload: Partial<ClassModel> & Record<string, any>): Record<string, any> {
+  const rec: Record<string, any> = {};
+  if (payload.name !== undefined) rec.name = String(payload.name).trim();
+  if (payload.code !== undefined) rec.code = String(payload.code).trim() || null;
+  if (payload.grade !== undefined) rec.grade = String(payload.grade).trim() || null;
+  if (payload.shift !== undefined) rec.shift = payload.shift || null;
+  if (payload.room !== undefined) rec.room = String(payload.room).trim() || null;
+  if (payload.max_capacity !== undefined || payload.max_students !== undefined) {
+    const cap = Number(payload.max_capacity ?? payload.max_students);
+    rec.capacity = Number.isFinite(cap) && cap > 0 ? cap : null;
+  }
+  if (payload.academic_year !== undefined) {
+    const y = Number(payload.academic_year);
+    rec.academic_year = Number.isFinite(y) && y > 2000 ? y : null;
+  }
+  if (payload.is_active !== undefined) rec.is_active = !!payload.is_active;
+  else if (payload.status !== undefined) rec.is_active = payload.status !== 'inactive';
+  if (rec.is_active !== undefined) rec.status = rec.is_active ? 'active' : 'inactive';
+  if (payload.numeration_status !== undefined) rec.numeration_status = !!payload.numeration_status;
+  if (payload.kit_escolar_status !== undefined) rec.kit_escolar_status = !!payload.kit_escolar_status;
+  if (payload.uniform_status !== undefined) rec.uniform_status = !!payload.uniform_status;
+  if (payload.school_days !== undefined) {
+    const d = Number(payload.school_days);
+    rec.school_days = Number.isFinite(d) && d > 0 ? d : null;
+  }
+  return rec;
+}
+
 class ClassesService extends BaseService<ClassModel> {
   constructor() {
     super('classes');
   }
 
   /**
-   * List classes for an organization with student counts & Supabase sync
+   * Turmas da escola com o número real de estudantes e professores.
+   * Em caso de erro devolve lista vazia e registra no console (mesmo comportamento de antes).
    */
   async getClassesByOrganization(organizationId: string): Promise<ClassModel[]> {
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
-    let dbClasses: any[] = [];
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) {
+      console.error('[ClassesService]', NO_SCHOOL_ERROR);
+      return [];
+    }
 
-    // 1. Direct Supabase Query (Primary source of truth)
-    try {
-      const { data: directData, error: directError } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('organization_id', orgId)
-        .order('name', { ascending: true });
+    const { data: classes, error } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('organization_id', orgId)
+      .is('deleted_at', null)
+      .order('name', { ascending: true });
 
-      if (!directError && directData && directData.length > 0) {
-        dbClasses = directData;
-      } else if (!directData || directData.length === 0) {
-        // Fallback check: all classes without filter
-        const { data: allData } = await supabase
-          .from('classes')
-          .select('*')
-          .order('name', { ascending: true });
+    if (error) {
+      console.error('[ClassesService.getClassesByOrganization]', error.message);
+      return [];
+    }
+    const list = (classes || []) as any[];
+    if (list.length === 0) return [];
 
-        if (allData && allData.length > 0) {
-          dbClasses = allData;
-        }
+    const ids = list.map(c => c.id);
+    const [studRes, teachRes] = await Promise.all([
+      supabase.from('students').select('class_id, status').in('class_id', ids),
+      supabase.from('class_teachers').select('class_id, teacher_id').in('class_id', ids),
+    ]);
+
+    const studentCount: Record<string, number> = {};
+    ((studRes.data || []) as any[]).forEach(s => {
+      if (s.class_id && !INACTIVE_STUDENT.includes(String(s.status || '').toLowerCase())) {
+        studentCount[s.class_id] = (studentCount[s.class_id] || 0) + 1;
       }
-    } catch (sbErr) {
-      console.warn('[ClassesService] Direct Supabase query exception:', sbErr);
-    }
-
-    // 2. Try fetching from Backend API if Supabase query returned no classes
-    if (dbClasses.length === 0) {
-      try {
-        const res = await fetch(`/api/classes?organization_id=${encodeURIComponent(orgId)}`, {
-          headers: { 'x-organization-id': orgId }
-        });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-            dbClasses = json.data;
-          }
-        }
-      } catch (err) {
-        console.warn('[ClassesService] /api/classes fetch warning:', err);
-      }
-    }
-
-    // 3. Load actual student counts per class from canonical junction table public.class_students
-    const studentCountMap: Record<string, number> = {};
-    if (dbClasses.length > 0) {
-      const classIds = dbClasses.map(c => c.id).filter(Boolean);
-      try {
-        const { data: classStudentsLinks, error: csErr } = await supabase
-          .from('class_students')
-          .select('class_id, student_id')
-          .in('class_id', classIds);
-
-        if (!csErr && classStudentsLinks && classStudentsLinks.length > 0) {
-          classStudentsLinks.forEach((cs: any) => {
-            if (cs.class_id) {
-              studentCountMap[cs.class_id] = (studentCountMap[cs.class_id] || 0) + 1;
-            }
-          });
-        }
-      } catch (e) {
-        console.warn('[ClassesService] Count class_students warning:', e);
-      }
-    }
-
-    // 4. Map records cleanly to ClassModel
-    if (dbClasses.length > 0) {
-      return dbClasses.map((c: any, index: number) => {
-        const computedCount = studentCountMap[c.id] !== undefined
-          ? studentCountMap[c.id]
-          : (c.students_count || (c.students ? c.students.length : 0));
-
-        return {
-          id: c.id,
-          organization_id: c.organization_id || orgId,
-          code: c.code || `TURMA-${String(index + 1).padStart(3, '0')}`,
-          name: c.name || `Turma ${index + 1}`,
-          grade: c.grade || c.name || `${(index % 9) + 1}º Ano`,
-          shift: c.shift || 'Matutino',
-          room: c.room || String((index % 20) + 1).padStart(2, '0'),
-          max_capacity: c.max_capacity || c.max_students || 35,
-          max_students: c.max_capacity || c.max_students || 35,
-          academic_year: String(c.academic_year || '2026'),
-          academic_year_name: String(c.academic_year || '2026'),
-          status: c.status || 'active',
-          is_active: c.is_active !== undefined ? c.is_active : c.status !== 'inactive',
-          students_count: computedCount,
-          teachers_count: c.teachers_count || (Array.isArray(c.teachers) ? c.teachers.length : 0),
-          numeration_status: c.numeration_status !== undefined ? c.numeration_status : true,
-          kit_escolar_status: c.kit_escolar_status !== undefined ? c.kit_escolar_status : true,
-          uniform_status: c.uniform_status !== undefined ? c.uniform_status : true,
-          school_days: c.school_days || 200,
-          students: c.students || [],
-          created_at: c.created_at || new Date().toISOString()
-        };
-      });
-    }
-
-    return [];
-  }
-
-  /**
-   * Create a new class with immediate persistence to public.classes and API sync
-   */
-  async createClass(payload: Partial<ClassModel>, organizationId: string): Promise<{ success: boolean; data?: ClassModel; error?: string }> {
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
-
-    if (!payload.name || !payload.name.trim()) {
-      return { success: false, error: 'O nome da turma é obrigatório.' };
-    }
-
-    const capacity = Number(payload.max_capacity) || Number(payload.max_students) || 35;
-    const shift = payload.shift || 'Matutino';
-    const room = (payload.room || 'Sala 01').trim();
-    const isActive = payload.is_active !== undefined ? payload.is_active : payload.status !== 'inactive';
-
-    // 1. Try querying valid academic_year_id for this organization
-    let academicYearId: string | null = null;
-    try {
-      const { data: yearRow } = await supabase
-        .from('academic_years')
-        .select('id')
-        .eq('organization_id', orgId)
-        .order('is_current', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (yearRow?.id) {
-        academicYearId = yearRow.id;
-      }
-    } catch (e) {}
-
-    const directInsert: any = {
-      organization_id: orgId,
-      name: payload.name.trim(),
-      shift,
-      room,
-      max_students: capacity,
-      is_active: isActive
-    };
-
-    if (academicYearId) {
-      directInsert.academic_year_id = academicYearId;
-    }
-
-    // 1. Direct Supabase Insert
-    try {
-      const { data, error } = await supabase
-        .from('classes')
-        .insert(directInsert)
-        .select()
-        .single();
-
-      if (!error && data) {
-        return {
-          success: true,
-          data: {
-            ...data,
-            grade: payload.grade || data.name,
-            academic_year: payload.academic_year || '2026',
-            max_capacity: capacity,
-            students_count: 0,
-            teachers_count: 0,
-            students: []
-          } as ClassModel
-        };
-      }
-    } catch (sbErr: any) {
-      console.warn('[ClassesService] Direct Supabase insert notice:', sbErr?.message || sbErr);
-    }
-
-    // 2. Try fallback backend API
-    try {
-      const res = await fetch('/api/classes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-organization-id': orgId
-        },
-        body: JSON.stringify({
-          ...directInsert,
-          grade: payload.grade || payload.name,
-          academic_year: payload.academic_year || '2026',
-          status: isActive ? 'active' : 'inactive'
-        })
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('classium_classes_updated'));
-          }
-          return { success: true, data: json.data };
-        }
-      }
-    } catch (e: any) {
-      console.warn('[ClassesService] Backend /api/classes fallback error:', e);
-    }
-
-    return {
-      success: false,
-      error: 'Não foi possível cadastrar a turma.'
-    };
-  }
-
-  /**
-   * Update an existing class
-   */
-  async updateClass(id: string, payload: Partial<ClassModel>, organizationId: string): Promise<{ success: boolean; data?: ClassModel; error?: string }> {
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
-
-    const updateRecord: any = {};
-    if (payload.name !== undefined) updateRecord.name = payload.name.trim();
-    if (payload.shift !== undefined) updateRecord.shift = payload.shift;
-    if (payload.room !== undefined) updateRecord.room = payload.room.trim();
-    if (payload.max_capacity !== undefined || payload.max_students !== undefined) {
-      updateRecord.max_students = Number(payload.max_capacity || payload.max_students);
-    }
-    if (payload.is_active !== undefined) {
-      updateRecord.is_active = payload.is_active;
-    } else if (payload.status !== undefined) {
-      updateRecord.is_active = payload.status !== 'inactive';
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('classes')
-        .update(updateRecord)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (!error && data) {
-        return { success: true, data: data as ClassModel };
-      }
-    } catch (sbErr: any) {
-      console.warn('[ClassesService] Supabase update warning:', sbErr);
-    }
-
-    try {
-      const res = await fetch(`/api/classes/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-organization-id': orgId
-        },
-        body: JSON.stringify(updateRecord)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) return { success: true, data: json.data };
-      }
-    } catch (e) {
-      console.warn('[ClassesService] /api/classes update error:', e);
-    }
-
-    return { success: true, data: { id, ...payload } as ClassModel };
-  }
-
-  /**
-   * Delete a class safely (validating that no students remain enrolled)
-   */
-  async deleteClass(id: string, organizationId: string): Promise<{ success: boolean; error?: string }> {
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
-
-    // 1. Check if students are enrolled
-    try {
-      const { count: studentsCount } = await supabase
-        .from('class_students')
-        .select('*', { count: 'exact', head: true })
-        .eq('class_id', id);
-
-      if (studentsCount && studentsCount > 0) {
-        return {
-          success: false,
-          error: `Esta turma possui ${studentsCount} estudante(s) matriculado(s). Desvincule os alunos antes de excluí-la.`
-        };
-      }
-    } catch (e) {}
-
-    // 2. Try deletion via server endpoint
-    try {
-      const res = await fetch(`/api/classes/${id}?organization_id=${encodeURIComponent(orgId)}`, {
-        method: 'DELETE',
-        headers: { 'x-organization-id': orgId }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) {
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('classium_classes_updated'));
-          }
-          return { success: true };
-        }
-        return { success: false, error: json.error || 'Não foi possível excluir a turma.' };
-      }
-    } catch (e) {}
-
-    // 3. Fallback direct Supabase delete
-    try {
-      await supabase.from('class_teachers').delete().eq('class_id', id);
-      const { error } = await supabase.from('classes').delete().eq('id', id);
-      if (error) throw error;
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('classium_classes_updated'));
-      }
-      return { success: true };
-    } catch (sbErr: any) {
-      return { success: false, error: sbErr.message || 'Erro ao excluir turma do banco de dados.' };
-    }
-  }
-
-  /**
-   * Get students enrolled in a specific class via canonical class_students junction table
-   */
-  async getClassStudents(classId: string, organizationId: string): Promise<ClassEnrolledStudent[]> {
-    if (!classId) return [];
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
-
-    // 1. Direct Supabase Query via canonical class_students junction table
-    try {
-      const { data: linkRows, error: linkErr } = await supabase
-        .from('class_students')
-        .select('id, student_id, enrolled_at, status')
-        .eq('class_id', classId);
-
-      if (!linkErr && linkRows && linkRows.length > 0) {
-        const studentIds = linkRows.map((r: any) => r.student_id).filter(Boolean);
-        if (studentIds.length > 0) {
-          const { data: students, error: stErr } = await supabase
-            .from('students')
-            .select('id, full_name, registration_code, birth_date, gender, status, created_at')
-            .eq('organization_id', orgId)
-            .in('id', studentIds);
-
-          if (!stErr && students && students.length > 0) {
-            const studentMap = new Map<string, any>(students.map((s: any) => [s.id, s]));
-            return linkRows
-              .map((link: any, idx: number) => {
-                const st: any = studentMap.get(link.student_id);
-                if (!st) return null;
-                return {
-                  id: st.id,
-                  student_id: st.id,
-                  name: st.full_name,
-                  full_name: st.full_name,
-                  registration_code: st.registration_code || `RA-${st.id.substring(0, 6)}`,
-                  birth_date: st.birth_date,
-                  sex: st.gender || 'M',
-                  gender: st.gender || 'M',
-                  status: link.status || st.status || 'Matriculado',
-                  class_id: classId,
-                  number_in_class: idx + 1,
-                  created_at: link.enrolled_at || st.created_at
-                } as ClassEnrolledStudent;
-              })
-              .filter(Boolean) as ClassEnrolledStudent[];
-          }
-        }
-      }
-    } catch (sbErr) {
-      console.warn('[ClassesService.getClassStudents] Direct Supabase error:', sbErr);
-    }
-
-    // 2. Server API fallback
-    try {
-      const res = await fetch(`/api/classes/${encodeURIComponent(classId)}/students`, {
-        headers: { 'x-organization-id': orgId }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          return json.data;
-        }
-      }
-    } catch (apiErr) {
-      console.warn('[ClassesService.getClassStudents] API fetch fallback warning:', apiErr);
-    }
-
-    return [];
-  }
-
-  /**
-   * Get all students in the organization with an indicator of whether they are already enrolled
-   */
-  async getAvailableStudents(organizationId: string): Promise<AvailableStudentItem[]> {
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
-
-    let orgStudents: any[] = [];
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, full_name, registration_code, status, gender, birth_date')
-        .eq('organization_id', orgId)
-        .order('full_name');
-
-      if (!error && data && data.length > 0) {
-        orgStudents = data;
-      }
-    } catch (err) {
-      console.warn('[ClassesService.getAvailableStudents] Direct Supabase error:', err);
-    }
-
-    if (orgStudents.length === 0) {
-      try {
-        const res = await fetch(`/api/students?organization_id=${encodeURIComponent(orgId)}`, {
-          headers: { 'x-organization-id': orgId }
-        });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.items && Array.isArray(json.items)) {
-            orgStudents = json.items;
-          }
-        }
-      } catch (e) {}
-    }
-
-    // Check who is already in class_students
-    const enrolledMap = new Map<string, string>();
-    try {
-      const { data: enrolledData } = await supabase
-        .from('class_students')
-        .select('student_id, class_id');
-      if (enrolledData) {
-        enrolledData.forEach((e: any) => {
-          if (e.student_id && e.class_id) {
-            enrolledMap.set(e.student_id, e.class_id);
-          }
-        });
-      }
-    } catch (e) {}
-
-    return orgStudents.map((s: any) => {
-      const sid = s.id || s.student_id;
-      const enrolledClassId = enrolledMap.get(sid);
-      return {
-        id: sid,
-        name: s.full_name || s.name || 'Estudante',
-        full_name: s.full_name || s.name || 'Estudante',
-        registration_code: s.registration_code || `RA-${(sid || '').substring(0, 6)}`,
-        status: s.status || 'Matriculado',
-        gender: s.gender || s.sex || 'M',
-        birth_date: s.birth_date,
-        is_enrolled: Boolean(enrolledClassId),
-        class_id: enrolledClassId
-      };
     });
+
+    const teacherSets: Record<string, Set<string>> = {};
+    ((teachRes.data || []) as any[]).forEach(t => {
+      if (!t.class_id || !t.teacher_id) return;
+      (teacherSets[t.class_id] ||= new Set()).add(t.teacher_id);
+    });
+
+    return list.map(c => mapClass(c, studentCount[c.id] || 0, teacherSets[c.id]?.size || 0));
   }
 
-  /**
-   * Link student to class via canonical junction table class_students
-   */
-  async linkStudent(classId: string, studentId: string, organizationId: string): Promise<{ success: boolean; error?: string }> {
-    if (!classId || !studentId) {
-      return { success: false, error: 'Identificador de turma e estudante são obrigatórios.' };
-    }
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
+  async createClass(payload: Partial<ClassModel>, organizationId: string): Promise<{ success: boolean; data?: ClassModel; error?: string }> {
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
+    if (!payload.name?.trim()) return { success: false, error: 'Informe o nome da turma.' };
 
-    let success = false;
-    let lastError: string | undefined;
-
-    // 1. Direct Supabase junction table mutation (schema: id, class_id, student_id, enrolled_at, status)
-    try {
-      const { error } = await supabase
-        .from('class_students')
-        .upsert({
-          class_id: classId,
-          student_id: studentId,
-          enrolled_at: new Date().toISOString(),
-          status: 'active'
-        }, { onConflict: 'class_id,student_id' });
-
-      if (!error) {
-        success = true;
-      } else {
-        lastError = error.message;
-        console.warn('[ClassesService.linkStudent] Supabase upsert notice:', error.message);
-      }
-    } catch (e: any) {
-      lastError = e?.message;
-      console.warn('[ClassesService.linkStudent] Supabase exception:', e);
+    const record: Record<string, any> = { ...toClassRecord(payload as any), organization_id: orgId, school_id: orgId };
+    if (record.is_active === undefined) {
+      record.is_active = true;
+      record.status = 'active';
     }
 
-    // 2. Server API sync
-    try {
-      const res = await fetch('/api/classes/link-student', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-organization-id': orgId
-        },
-        body: JSON.stringify({ class_id: classId, student_id: studentId })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) {
-          success = true;
-        }
-      }
-    } catch (apiErr: any) {
-      console.warn('[ClassesService.linkStudent] API sync warning:', apiErr);
+    const { data, error } = await supabase.from('classes').insert(record).select().single();
+    if (error || !data) {
+      const msg = error?.message?.includes('classes_org_code_uq')
+        ? 'Já existe uma turma com este código.'
+        : friendlyDbError(error?.message, 'Não foi possível cadastrar a turma.');
+      return { success: false, error: msg };
     }
 
-    if (success) {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('classium_students_updated'));
-        window.dispatchEvent(new CustomEvent('classium_classes_updated'));
-      }
-      return { success: true };
-    }
-
-    return {
-      success: false,
-      error: lastError || 'Não foi possível vincular o estudante à turma.'
-    };
+    notifyClasses();
+    return { success: true, data: mapClass(data, 0, 0) };
   }
 
-  /**
-   * Unlink student from class via canonical junction table class_students
-   */
-  async unlinkStudent(classId: string, studentId: string, organizationId: string): Promise<{ success: boolean; error?: string }> {
-    if (!classId || !studentId) {
-      return { success: false, error: 'Identificador de turma e estudante são obrigatórios.' };
-    }
-    const orgId = organizationId || '11111111-1111-1111-1111-111111111111';
+  async updateClass(id: string, payload: Partial<ClassModel>, _organizationId: string): Promise<{ success: boolean; data?: ClassModel; error?: string }> {
+    if (!isUuid(id)) return { success: false, error: 'Turma inválida. Atualize a tela.' };
+    const record = toClassRecord(payload as any);
+    if (record.name === '') return { success: false, error: 'Informe o nome da turma.' };
+    if (Object.keys(record).length === 0) return { success: true };
 
-    let success = false;
-    let lastError: string | undefined;
-
-    // 1. Direct Supabase deletion
-    try {
-      const { error } = await supabase
-        .from('class_students')
-        .delete()
-        .eq('class_id', classId)
-        .eq('student_id', studentId);
-
-      if (!error) {
-        success = true;
-      } else {
-        lastError = error.message;
-        console.warn('[ClassesService.unlinkStudent] Supabase delete notice:', error.message);
+    if (record.capacity) {
+      const { count } = await supabase.from('students').select('id', { count: 'exact', head: true }).eq('class_id', id);
+      if ((count || 0) > record.capacity) {
+        return { success: false, error: `A turma já tem ${count} estudantes. A capacidade não pode ser menor que isso.` };
       }
-    } catch (e: any) {
-      lastError = e?.message;
-      console.warn('[ClassesService.unlinkStudent] Supabase exception:', e);
     }
 
-    // 2. Server API sync
-    try {
-      const res = await fetch('/api/classes/link-student', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-organization-id': orgId
-        },
-        body: JSON.stringify({ class_id: classId, student_id: studentId })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) success = true;
-      }
-    } catch (apiErr) {
-      console.warn('[ClassesService.unlinkStudent] API sync warning:', apiErr);
+    const { data, error } = await supabase.from('classes').update(record).eq('id', id).select().maybeSingle();
+    if (error) {
+      const msg = error.message?.includes('classes_org_code_uq')
+        ? 'Já existe uma turma com este código.'
+        : friendlyDbError(error.message, 'Não foi possível salvar a turma.');
+      return { success: false, error: msg };
     }
+    if (!data) return { success: false, error: 'Turma não encontrada ou sem permissão.' };
 
-    if (success) {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('classium_students_updated'));
-        window.dispatchEvent(new CustomEvent('classium_classes_updated'));
-      }
-      return { success: true };
-    }
-
-    return {
-      success: false,
-      error: lastError || 'Não foi possível desvincular o estudante da turma.'
-    };
+    notifyClasses();
+    return { success: true, data: mapClass(data, 0, 0) };
   }
 
-  /**
-   * Disciplines methods for Pedagogical module
-   */
+  /** Só exclui turma vazia */
+  async deleteClass(id: string, _organizationId: string): Promise<Op> {
+    if (!isUuid(id)) return { success: false, error: 'Turma inválida. Atualize a tela.' };
+
+    const { count, error: countErr } = await supabase
+      .from('students')
+      .select('id', { count: 'exact', head: true })
+      .eq('class_id', id);
+    if (countErr) return { success: false, error: friendlyDbError(countErr.message) };
+    if ((count || 0) > 0) {
+      return { success: false, error: `Esta turma tem ${count} estudante(s). Mude os estudantes de turma antes de excluir.` };
+    }
+
+    const { data, error } = await supabase.from('classes').delete().eq('id', id).select('id');
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível excluir a turma.') };
+    if (!data || data.length === 0) return { success: false, error: 'Turma não encontrada ou sem permissão.' };
+
+    notifyClasses();
+    return { success: true };
+  }
+
+  /** Estudantes da turma, em ordem alfabética, com o número de chamada */
+  async getClassStudents(classId: string, organizationId: string): Promise<ClassEnrolledStudent[]> {
+    if (!isUuid(classId)) return [];
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return [];
+
+    const { data, error } = await supabase
+      .from('students')
+      .select('id, full_name, name, registration_code, birth_date, gender, sex, status, created_at')
+      .eq('organization_id', orgId)
+      .eq('class_id', classId)
+      .order('full_name', { ascending: true });
+
+    if (error) {
+      console.error('[ClassesService] Não foi possível carregar os estudantes da turma.', error.message);
+      return [];
+    }
+
+    return ((data || []) as any[]).map((st, idx) => ({
+      id: st.id,
+      student_id: st.id,
+      name: st.full_name || st.name || '',
+      full_name: st.full_name || st.name || '',
+      registration_code: st.registration_code || '',
+      birth_date: st.birth_date,
+      sex: st.gender || st.sex || '',
+      gender: st.gender || st.sex || '',
+      status: st.status || 'Matriculado',
+      class_id: classId,
+      number_in_class: idx + 1,
+      created_at: st.created_at,
+    } as ClassEnrolledStudent));
+  }
+
+  /** Todos os estudantes da escola, dizendo se já estão em alguma turma */
+  async getAvailableStudents(organizationId: string): Promise<AvailableStudentItem[]> {
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return [];
+
+    const { data, error } = await supabase
+      .from('students')
+      .select('id, full_name, name, registration_code, status, gender, sex, birth_date, class_id')
+      .eq('organization_id', orgId)
+      .order('full_name');
+
+    if (error) {
+      console.error('[ClassesService] Não foi possível carregar os estudantes.', error.message);
+      return [];
+    }
+
+    return ((data || []) as any[]).map(s => ({
+      id: s.id,
+      name: s.full_name || s.name || '',
+      full_name: s.full_name || s.name || '',
+      registration_code: s.registration_code || '',
+      status: s.status || 'Matriculado',
+      gender: s.gender || s.sex || undefined,
+      birth_date: s.birth_date || undefined,
+      is_enrolled: !!s.class_id,
+      class_id: s.class_id || undefined,
+    }));
+  }
+
+  /** Enturma o estudante (o banco confere a escola e as vagas) */
+  async linkStudent(classId: string, studentId: string, _organizationId: string): Promise<Op> {
+    if (!isUuid(classId) || !isUuid(studentId)) return { success: false, error: 'Turma ou estudante inválido. Atualize a tela.' };
+    const { data, error } = await supabase.rpc('classium_set_student_class', { p_student_id: studentId, p_class_id: classId });
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível enturmar o estudante.') };
+    if (!data?.success) return { success: false, error: data?.error || 'Não foi possível enturmar o estudante.' };
+    notifyClasses();
+    return { success: true };
+  }
+
+  async unlinkStudent(classId: string, studentId: string, _organizationId: string): Promise<Op> {
+    if (!isUuid(studentId)) return { success: false, error: 'Estudante inválido. Atualize a tela.' };
+
+    const { data: current } = await supabase.from('students').select('class_id').eq('id', studentId).maybeSingle();
+    if (current && current.class_id && current.class_id !== classId) {
+      return { success: false, error: 'Este estudante já está em outra turma.' };
+    }
+
+    const { data, error } = await supabase.rpc('classium_set_student_class', { p_student_id: studentId, p_class_id: null });
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível tirar o estudante da turma.') };
+    if (!data?.success) return { success: false, error: data?.error || 'Não foi possível tirar o estudante da turma.' };
+    notifyClasses();
+    return { success: true };
+  }
+
+  /* -------------------------- Disciplinas -------------------------- */
+
   async getDisciplines(organizationId: string): Promise<DisciplineEntity[]> {
-    try {
-      const res = await fetch(`/api/disciplines?organization_id=${encodeURIComponent(organizationId)}`, {
-        headers: { 'x-organization-id': organizationId }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) return json.data;
-      }
-    } catch (e) {}
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return [];
 
-    try {
-      const { data } = await supabase
-        .from('subjects')
-        .select('*')
-        .eq('organization_id', organizationId);
-      if (data && data.length > 0) {
-        return data.map((d: any) => ({
-          id: d.id,
-          name: d.name,
-          code: d.code,
-          organization_id: d.organization_id
-        }));
-      }
-    } catch (e) {}
+    const { data, error } = await supabase
+      .from('disciplines')
+      .select('id, organization_id, name, code, workload_hours, weekly_classes, area, color, created_at')
+      .eq('organization_id', orgId)
+      .eq('is_active', true)
+      .order('name');
 
-    return [];
+    if (error) {
+      console.error('[ClassesService] Não foi possível carregar as disciplinas.', error.message);
+      return [];
+    }
+    return (data || []) as DisciplineEntity[];
   }
 
   async createDiscipline(name: string, code: string, workload: number, organizationId: string): Promise<{ success: boolean; data?: DisciplineEntity; error?: string }> {
-    try {
-      const res = await fetch('/api/disciplines', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-organization-id': organizationId
-        },
-        body: JSON.stringify({ name, code, workload_hours: workload })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) return { success: true, data: json.data };
-      }
-      return { success: false, error: 'Erro ao criar disciplina.' };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
+    if (!name?.trim()) return { success: false, error: 'Informe o nome da disciplina.' };
+
+    const { data: existing } = await supabase
+      .from('disciplines')
+      .select('id')
+      .eq('organization_id', orgId)
+      .ilike('name', name.trim())
+      .eq('is_active', true)
+      .maybeSingle();
+    if (existing) return { success: false, error: 'Já existe uma disciplina com este nome.' };
+
+    const hours = Number(workload);
+    const { data, error } = await supabase
+      .from('disciplines')
+      .insert({
+        organization_id: orgId,
+        name: name.trim(),
+        code: code?.trim() || null,
+        workload_hours: Number.isFinite(hours) && hours > 0 ? hours : null,
+      })
+      .select()
+      .single();
+
+    if (error || !data) return { success: false, error: friendlyDbError(error?.message, 'Não foi possível cadastrar a disciplina.') };
+    return { success: true, data: data as DisciplineEntity };
   }
 
-  async deleteDiscipline(id: string, organizationId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      await fetch(`/api/disciplines/${id}`, {
-        method: 'DELETE',
-        headers: { 'x-organization-id': organizationId }
-      });
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
+  /** Desativa a disciplina (os horários antigos continuam com o nome dela) */
+  async deleteDiscipline(id: string, _organizationId: string): Promise<Op> {
+    if (!isUuid(id)) return { success: false, error: 'Disciplina inválida. Atualize a tela.' };
+    const { data, error } = await supabase.from('disciplines').update({ is_active: false }).eq('id', id).select('id');
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível excluir a disciplina.') };
+    if (!data || data.length === 0) return { success: false, error: 'Disciplina não encontrada ou sem permissão.' };
+    return { success: true };
   }
 
-  async linkTeacher(classId: string, teacherId: string, subject: string, grade: string, shift: string, organizationId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      await supabase.from('class_teachers').upsert({
-        class_id: classId,
-        teacher_id: teacherId
-      }, { onConflict: 'class_id,teacher_id' });
-      return { success: true };
-    } catch (e: any) {
-      return { success: true };
+  /* --------------------- Professores da turma ---------------------- */
+
+  async getClassTeachers(classId: string): Promise<ClassTeacherLink[]> {
+    if (!isUuid(classId)) return [];
+    const { data, error } = await supabase
+      .from('class_teachers')
+      .select('id, class_id, teacher_id, teacher_name, subject, weekly_classes, academic_year')
+      .eq('class_id', classId)
+      .order('subject');
+    if (error) {
+      console.error('[ClassesService] Não foi possível carregar os professores da turma.', error.message);
+      return [];
     }
+    return ((data || []) as any[]).map(t => ({ ...t, name: t.teacher_name, full_name: t.teacher_name }));
   }
 
-  async unlinkTeacher(linkIdOrClassId: string, teacherId?: string, organizationId?: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      await supabase.from('class_teachers').delete().eq('class_id', linkIdOrClassId);
-      return { success: true };
-    } catch (e: any) {
-      return { success: true };
+  async linkTeacher(
+    classId: string,
+    teacherId: string,
+    subject: string,
+    _grade: string,
+    _shift: string,
+    organizationId: string,
+    teacherName?: string
+  ): Promise<Op> {
+    if (!isUuid(classId) || !isUuid(teacherId)) return { success: false, error: 'Turma ou professor inválido. Atualize a tela.' };
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
+
+    const { error } = await supabase.from('class_teachers').insert({
+      organization_id: orgId,
+      class_id: classId,
+      teacher_id: teacherId,
+      teacher_name: teacherName?.trim() || null,
+      subject: subject?.trim() || null,
+    });
+
+    if (error) {
+      const msg = error.message?.includes('duplicate')
+        ? 'Este professor já está nesta turma com esta disciplina.'
+        : friendlyDbError(error.message, 'Não foi possível vincular o professor.');
+      return { success: false, error: msg };
     }
+    notifyClasses();
+    return { success: true };
+  }
+
+  /**
+   * Remove o professor da turma.
+   * Com teacherId: remove esse professor da turma linkIdOrClassId.
+   * Sem teacherId: linkIdOrClassId é o id do vínculo.
+   */
+  async unlinkTeacher(linkIdOrClassId: string, teacherId?: string, _organizationId?: string): Promise<Op> {
+    if (!isUuid(linkIdOrClassId)) return { success: false, error: 'Vínculo inválido. Atualize a tela.' };
+
+    let query = supabase.from('class_teachers').delete();
+    query = isUuid(teacherId)
+      ? query.eq('class_id', linkIdOrClassId).eq('teacher_id', teacherId)
+      : query.eq('id', linkIdOrClassId);
+
+    const { data, error } = await query.select('id');
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível remover o professor.') };
+    if (!data || data.length === 0) return { success: false, error: 'Vínculo não encontrado ou sem permissão.' };
+    notifyClasses();
+    return { success: true };
   }
 }
 

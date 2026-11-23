@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { RealtimeService } from './RealtimeService';
+import { resolveOrgId, NO_SCHOOL_ERROR, friendlyDbError, isUuid as isUuidBase, todayLocalISO } from './tenant';
 
 export interface TransportVehicleData {
   id: string;
@@ -77,780 +78,425 @@ export interface SaveTransportVehicleInput {
   year?: number;
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type OpResult = { success: boolean; error: string | null };
+
 export function isUuid(id: string | null | undefined): boolean {
-  if (!id) return false;
-  return UUID_REGEX.test(id);
+  return isUuidBase(id);
 }
 
-export const DEFAULT_TRANSPORT_ORG_ID = '11111111-1111-1111-1111-111111111111';
-
+/** Devolve o id só se for válido. Nunca devolve uma escola padrão inventada. */
 export function getResolvedOrganizationId(providedOrgId?: string): string {
-  if (providedOrgId && isUuid(providedOrgId)) {
-    return providedOrgId;
-  }
-  return DEFAULT_TRANSPORT_ORG_ID;
+  return isUuidBase(providedOrgId) ? providedOrgId : '';
 }
 
-/**
- * Helper to decompose model column (e.g. "Ônibus 01" -> tipo: "Ônibus", numero: "01")
- */
+const EMPTY_STATS: TransportStatsData = {
+  totalVehicles: 0,
+  totalCapacity: 0,
+  totalLinked: 0,
+  totalUnlinked: 0,
+  globalOccupancy: 0,
+};
+
+/** "Ônibus 01" → { tipo: 'Ônibus', numero: '01' } */
 function parseVehicleModel(modelStr?: string | null): { tipo: string; numero: string } {
-  if (!modelStr) return { tipo: 'Ônibus', numero: '01' };
-  const trimmed = modelStr.trim();
-  if (trimmed.toLowerCase().startsWith('van')) {
-    const num = trimmed.replace(/van/i, '').replace(/escolar/i, '').trim();
-    return { tipo: 'Van', numero: num || '01' };
-  }
-  if (trimmed.toLowerCase().startsWith('micro')) {
-    const num = trimmed.replace(/micro-ônibus/i, '').replace(/micro/i, '').trim();
-    return { tipo: 'Micro-ônibus', numero: num || '01' };
-  }
-  if (trimmed.toLowerCase().startsWith('ônibus') || trimmed.toLowerCase().startsWith('onibus')) {
-    const num = trimmed.replace(/ônibus/i, '').replace(/onibus/i, '').trim();
-    return { tipo: 'Ônibus', numero: num || '01' };
-  }
+  const trimmed = (modelStr || '').trim();
+  if (!trimmed) return { tipo: 'Ônibus', numero: '' };
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('van')) return { tipo: 'Van', numero: trimmed.replace(/van/i, '').replace(/escolar/i, '').trim() };
+  if (lower.startsWith('micro')) return { tipo: 'Micro-ônibus', numero: trimmed.replace(/micro-ônibus|micro-onibus|micro/i, '').trim() };
+  if (lower.startsWith('ônibus') || lower.startsWith('onibus')) return { tipo: 'Ônibus', numero: trimmed.replace(/ônibus|onibus/i, '').trim() };
   return { tipo: 'Ônibus', numero: trimmed };
 }
 
-/**
- * Fallback seed vehicles if table is empty in new environments
- */
-const DEFAULT_FALLBACK_VEHICLES: TransportVehicleData[] = [
-  {
-    id: 'veh-001',
-    numero: '01',
-    tipo: 'Ônibus',
-    placa: 'KJB-1892',
-    capacidade: 48,
-    rota: 'Rota Norte 1 (Centro / Bessa)',
-    neighborhoodsServed: ['Centro', 'Bessa', 'Manaira', 'Aeroclube'],
-    turno: '1º Turno',
-    driverName: 'Seu Jorge da Silva',
-    driverPhone: '(83) 98844-3322',
-    driverCnh: '88492019382',
-    monitorName: 'Tia Júlia Santos',
-    monitorPhone: '(83) 99911-2233',
-    observacoes: 'Ar-condicionado e rampa de acessibilidade.',
-    status: 'Ativo',
-    studentsIds: [],
-    occupiedCount: 0,
-    freeSpots: 48,
-    year: 2026
-  },
-  {
-    id: 'veh-002',
-    numero: '01A',
-    tipo: 'Ônibus',
-    placa: 'ABC-5810',
-    capacidade: 43,
-    rota: 'Rota Conjunto Habitacional',
-    neighborhoodsServed: ['Conjunto Habitacional', 'Mangabeira', 'Valentina'],
-    turno: '1º Turno',
-    driverName: 'Antônio Carlos',
-    driverPhone: '(31) 9111-2345',
-    driverCnh: '12345678902',
-    monitorName: 'Liliane Santos',
-    monitorPhone: '(31) 98765-4321',
-    observacoes: '',
-    status: 'Ativo',
-    studentsIds: [],
-    occupiedCount: 0,
-    freeSpots: 43,
-    year: 2026
-  },
-  {
-    id: 'veh-003',
-    numero: '01',
-    tipo: 'Ônibus',
-    placa: 'QFX-8911',
-    capacidade: 48,
-    rota: 'Rota Norte 1 (Centro / Bessa)',
-    neighborhoodsServed: ['Centro', 'Bessa', 'Intermares'],
-    turno: '1º Turno',
-    driverName: 'Enoque Jorge da Silva',
-    driverPhone: '(83) 98844-1122',
-    driverCnh: '12345678901',
-    monitorName: 'Tia Júlia Santos',
-    monitorPhone: '(83) 99922-2211',
-    observacoes: '',
-    status: 'Ativo',
-    studentsIds: [],
-    occupiedCount: 0,
-    freeSpots: 48,
-    year: 2026
-  },
-  {
-    id: 'veh-004',
-    numero: '02',
-    tipo: 'Ônibus',
-    placa: 'ELI-2022',
-    capacidade: 43,
-    rota: 'Rota Conjunto Residencial',
-    neighborhoodsServed: ['Conjunto Residencial', 'Bancários', 'Castelo Branco'],
-    turno: '1º Turno',
-    driverName: 'Antônio Carlos Santos',
-    driverPhone: '(83) 98811-2505',
-    driverCnh: '98765432102',
-    monitorName: 'Liliane Bastos',
-    monitorPhone: '(83) 98745-4321',
-    observacoes: '',
-    status: 'Ativo',
-    studentsIds: [],
-    occupiedCount: 0,
-    freeSpots: 43,
-    year: 2026
+function notify(detail: Record<string, any>) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('classium_transport_updated', { detail }));
   }
-];
+}
+
+async function countLinked(vehicleId: string, exceptStudentId?: string): Promise<number> {
+  let q = supabase
+    .from('transport_agreements')
+    .select('id', { count: 'exact', head: true })
+    .eq('vehicle_id', vehicleId)
+    .eq('status', 'vinculado');
+  if (exceptStudentId) q = q.neq('student_id', exceptStudentId);
+  const { count, error } = await q;
+  if (error) throw new Error(friendlyDbError(error.message, 'Não foi possível conferir as vagas do veículo.'));
+  return count || 0;
+}
 
 /**
- * Fetch all transport vehicles, agreements, routes and students from Supabase
+ * Veículos, estudantes que usam transporte e números gerais da escola.
+ * Sem veículos cadastrados, a lista vem vazia (não há mais veículos de exemplo).
  */
 export async function fetchOrganizationTransportData(
   organizationId?: string,
   shift?: string,
   _search?: string
-): Promise<{
-  vehicles: TransportVehicleData[];
-  students: TransportStudentData[];
-  stats: TransportStatsData;
-  error: string | null;
-}> {
+): Promise<{ vehicles: TransportVehicleData[]; students: TransportStudentData[]; stats: TransportStatsData; error: string | null }> {
   try {
-    const resolvedOrgId = getResolvedOrganizationId(organizationId);
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { vehicles: [], students: [], stats: EMPTY_STATS, error: NO_SCHOOL_ERROR };
 
-    // 1. Query transport_vehicles
     let vehQuery = supabase
       .from('transport_vehicles')
       .select('*')
+      .eq('organization_id', orgId)
       .order('created_at', { ascending: true });
+    if (shift && shift !== 'Todos') vehQuery = vehQuery.eq('shift', shift);
 
-    if (resolvedOrgId) {
-      vehQuery = vehQuery.or(`organization_id.eq.${resolvedOrgId},school_id.eq.${resolvedOrgId}`);
-    }
-    if (shift && shift !== 'Todos') {
-      vehQuery = vehQuery.eq('shift', shift);
-    }
+    const [vehRes, agrRes, linkRes, studRes, classRes, guardRes] = await Promise.all([
+      vehQuery,
+      supabase.from('transport_agreements').select('*').eq('organization_id', orgId),
+      supabase.from('transport_students').select('*').eq('organization_id', orgId),
+      supabase.from('students').select('*').eq('organization_id', orgId).order('full_name', { ascending: true }),
+      supabase.from('classes').select('id, name, grade, shift').eq('organization_id', orgId),
+      supabase
+        .from('student_responsible_links')
+        .select('student_id, is_primary_contact, guardians ( full_name, name, phone )')
+        .eq('organization_id', orgId),
+    ]);
 
-    const { data: rawVehicles, error: vehErr } = await vehQuery;
-    if (vehErr) {
-      console.warn('[TransportRpcService] Warning querying transport_vehicles:', vehErr.message);
-    }
-
-    // 2. Query transport_agreements (primary table)
-    let agreementsMap = new Map<string, any>();
-    try {
-      let agrQuery = supabase.from('transport_agreements').select('*');
-      if (resolvedOrgId) {
-        agrQuery = agrQuery.eq('school_id', resolvedOrgId);
-      }
-      const { data: rawAgreements, error: agrErr } = await agrQuery;
-      if (!agrErr && rawAgreements) {
-        rawAgreements.forEach((agr: any) => {
-          if (agr.student_id) {
-            agreementsMap.set(agr.student_id, agr);
-          }
-        });
-      }
-    } catch (e) {
-      console.warn('[TransportRpcService] transport_agreements table not available yet:', e);
-    }
-
-    // 3. Query transport_students (fallback/mirror link table)
-    let linksMap = new Map<string, any>();
-    try {
-      let linkQuery = supabase.from('transport_students').select('*');
-      if (resolvedOrgId) {
-        linkQuery = linkQuery.or(`organization_id.eq.${resolvedOrgId},school_id.eq.${resolvedOrgId}`);
-      }
-      const { data: rawLinks, error: linkErr } = await linkQuery;
-      if (!linkErr && rawLinks) {
-        rawLinks.forEach((link: any) => {
-          if (link.student_id) {
-            linksMap.set(link.student_id, link);
-          }
-        });
-      }
-    } catch (e) {
-      console.warn('[TransportRpcService] transport_students query notice:', e);
-    }
-
-    // 4. Query transport_routes
-    let routesMap = new Map<string, any>();
-    try {
-      const { data: rawRoutes } = await supabase.from('transport_routes').select('*');
-      (rawRoutes || []).forEach((r: any) => {
-        if (r.id) routesMap.set(r.id, r);
-        if (r.name) routesMap.set(r.name.toLowerCase().trim(), r);
-      });
-    } catch (e) {
-      console.warn('[TransportRpcService] transport_routes notice:', e);
-    }
-
-    // 5. Query students with transport demand
-    let studQuery = supabase
-      .from('students')
-      .select('*')
-      .order('name', { ascending: true });
-
-    if (resolvedOrgId) {
-      studQuery = studQuery.or(`organization_id.eq.${resolvedOrgId},school_id.eq.${resolvedOrgId}`);
-    }
-
-    const { data: rawStudents, error: studErr } = await studQuery;
-    if (studErr) {
-      console.warn('[TransportRpcService] Error querying students table:', studErr.message);
-    }
-
-    // 6. Query classes for readable grade/turma labels
-    const { data: rawClasses } = await supabase.from('classes').select('id, name, grade, shift');
-    const classMap = new Map<string, { id: string; name: string; grade: string; shift?: string }>();
-    (rawClasses || []).forEach((c: any) => {
-      classMap.set(c.id, c);
-    });
-
-    // Map eligible students (uses_transport, uses_school_transport, transport_required, or has active agreement/link)
-    const eligibleStudents = (rawStudents || []).filter((s: any) => {
-      const agr = agreementsMap.get(s.id);
-      const link = linksMap.get(s.id);
-      const hasAgreement = agr && agr.status !== 'cancelado';
-      const hasLink = link && link.is_active !== false;
-      const flagsActive = Boolean(s.uses_transport || s.uses_school_transport || s.transport_required);
-      return flagsActive || hasAgreement || hasLink;
-    });
-
-    const vehicleOccupantsMap = new Map<string, string[]>();
-
-    const transportStudentsList: TransportStudentData[] = eligibleStudents.map((s: any) => {
-      const agr = agreementsMap.get(s.id);
-      const link = linksMap.get(s.id);
-      const cls = s.class_id ? classMap.get(s.class_id) : null;
-
-      // Status determination:
-      // Status is 'Vinculado' if agreement.status === 'vinculado' OR if there is an active vehicle_id
-      const linkedVehicleId = agr?.vehicle_id || (agr?.status === 'vinculado' ? agr?.vehicle_id : null) || (link?.vehicle_id && link?.is_active !== false ? link.vehicle_id : null);
-      const isLinked = Boolean(linkedVehicleId && (agr?.status === 'vinculado' || !agr));
-
-      const status: 'Vinculado' | 'Aguardando Vinculação' = isLinked ? 'Vinculado' : 'Aguardando Vinculação';
-
-      if (isLinked && linkedVehicleId) {
-        const list = vehicleOccupantsMap.get(linkedVehicleId) || [];
-        list.push(s.id);
-        vehicleOccupantsMap.set(linkedVehicleId, list);
-      }
-
-      const neighborhood = s.neighborhood || s.address_neighborhood || '';
-      const street = s.address_street || s.address || s.street || '';
-      const city = s.address_city || s.city || '';
-      const addressParts = [street, neighborhood, city].filter(Boolean);
-      const addressFormatted = addressParts.length > 0 ? addressParts.join(', ') : 'Endereço não informado';
-
+    const firstError = vehRes.error || agrRes.error || studRes.error;
+    if (firstError) {
       return {
-        id: s.id,
-        name: s.full_name || s.name || 'Estudante',
-        grade: cls?.grade || s.grade || 'Ensino Fundamental',
-        classId: s.class_id || '',
-        className: cls?.name || s.class_name || 'Sem Turma',
-        shift: cls?.shift || s.shift || '1º Turno',
-        schoolUnit: 'Unidade Sede',
-        matricula: s.registration_code || s.matricula || s.code || s.id.substring(0, 8),
-        parentName: s.guardian_name || 'Responsável Legal',
-        parentPhone: s.guardian_phone || '(83) 98888-0000',
-        address: addressFormatted,
-        neighborhood: neighborhood,
-        status: status,
-        vehicleId: isLinked ? linkedVehicleId : null,
-        routeId: agr?.route_id || link?.route_id || null,
-        matchType: agr?.match_type || 'manual',
-        boardingStatus: link?.boarding_status || 'Aguardando',
-        pickupPoint: link?.pickup_point || agr?.pickup_point || s.transport_route || 'Portaria Principal',
-        linkedAt: agr?.linked_at || link?.created_at
+        vehicles: [],
+        students: [],
+        stats: EMPTY_STATS,
+        error: friendlyDbError(firstError.message, 'Não foi possível carregar o transporte.'),
+      };
+    }
+
+    const agreements = new Map<string, any>();
+    (agrRes.data || []).forEach((a: any) => a.student_id && agreements.set(a.student_id, a));
+
+    const links = new Map<string, any>();
+    (linkRes.data || []).forEach((l: any) => l.student_id && links.set(l.student_id, l));
+
+    const classMap = new Map<string, any>();
+    (classRes.data || []).forEach((c: any) => classMap.set(c.id, c));
+
+    const guardianMap = new Map<string, { name: string; phone: string }>();
+    (guardRes.data || [])
+      .sort((a: any, b: any) => Number(b.is_primary_contact) - Number(a.is_primary_contact))
+      .forEach((l: any) => {
+        if (!l.student_id || guardianMap.has(l.student_id)) return;
+        const g = Array.isArray(l.guardians) ? l.guardians[0] : l.guardians;
+        if (g) guardianMap.set(l.student_id, { name: g.full_name || g.name || '', phone: g.phone || '' });
+      });
+
+    const occupants = new Map<string, string[]>();
+
+    const students: TransportStudentData[] = (studRes.data || [])
+      .filter((s: any) => {
+        const agr = agreements.get(s.id);
+        const hasAgreement = agr && agr.status !== 'cancelado';
+        return Boolean(s.uses_transport || s.uses_school_transport || s.transport_required || hasAgreement);
+      })
+      .map((s: any) => {
+        const agr = agreements.get(s.id);
+        const link = links.get(s.id);
+        const cls = s.class_id ? classMap.get(s.class_id) : null;
+        const guardian = guardianMap.get(s.id);
+
+        const linkedVehicleId: string | null = agr?.status === 'vinculado' && agr.vehicle_id ? agr.vehicle_id : null;
+        if (linkedVehicleId) {
+          const list = occupants.get(linkedVehicleId) || [];
+          list.push(s.id);
+          occupants.set(linkedVehicleId, list);
+        }
+
+        const neighborhood = s.address_neighborhood || s.neighborhood || '';
+        const street = [s.address_street, s.address_number].filter(Boolean).join(', ');
+        const address = [street, neighborhood, s.address_city].filter(Boolean).join(' · ');
+
+        return {
+          id: s.id,
+          name: s.full_name || s.name || 'Estudante sem nome',
+          grade: cls?.grade || s.grade || '',
+          classId: s.class_id || '',
+          className: cls?.name || s.class_name || '',
+          shift: cls?.shift || s.shift || '',
+          schoolUnit: '',
+          matricula: s.registration_code || '',
+          parentName: guardian?.name || s.guardian_name || '',
+          parentPhone: guardian?.phone || s.guardian_phone || '',
+          address,
+          neighborhood,
+          status: linkedVehicleId ? 'Vinculado' : 'Aguardando Vinculação',
+          vehicleId: linkedVehicleId,
+          routeId: agr?.route_id || null,
+          matchType: agr?.match_type || undefined,
+          boardingStatus: link?.boarding_status || 'Aguardando',
+          pickupPoint: agr?.pickup_point || link?.pickup_point || '',
+          notes: link?.notes || undefined,
+          linkedAt: agr?.linked_at || undefined,
+        };
+      });
+
+    const vehicles: TransportVehicleData[] = (vehRes.data || []).map((v: any) => {
+      const parsed = parseVehicleModel(v.model);
+      const ids = occupants.get(v.id) || [];
+      const cap = Number(v.capacity) || 0;
+      return {
+        id: v.id,
+        numero: parsed.numero || v.route_code || '',
+        tipo: parsed.tipo,
+        placa: v.plate || '',
+        capacidade: cap,
+        rota: v.route_name || '',
+        routeId: v.route_id || undefined,
+        neighborhoodsServed: Array.isArray(v.neighborhoods_served) ? v.neighborhoods_served : [],
+        turno: v.shift || '',
+        driverName: v.driver_name || '',
+        driverPhone: v.driver_phone || '',
+        driverCnh: v.driver_cnh || '',
+        monitorName: v.monitor_name || '',
+        monitorPhone: v.monitor_phone || '',
+        observacoes: v.metadata?.observacoes || '',
+        status: v.status || 'Ativo',
+        year: v.year || undefined,
+        studentsIds: ids,
+        occupiedCount: ids.length,
+        freeSpots: Math.max(0, cap - ids.length),
       };
     });
 
-    // Map vehicles
-    let vehicles: TransportVehicleData[] = [];
-    if (rawVehicles && rawVehicles.length > 0) {
-      vehicles = rawVehicles.map((v: any) => {
-        const parsed = parseVehicleModel(v.model);
-        const occupants = vehicleOccupantsMap.get(v.id) || [];
-        const cap = Number(v.capacity) || 40;
-        const occupied = occupants.length;
-
-        return {
-          id: v.id,
-          numero: parsed.numero || v.route_code || '01',
-          tipo: parsed.tipo || 'Ônibus',
-          placa: v.plate || 'N/A',
-          capacidade: cap,
-          rota: v.route_name || 'Rota Principal',
-          routeId: v.route_id || undefined,
-          neighborhoodsServed: v.neighborhoods_served || ['Centro', 'Bessa'],
-          turno: v.shift || '1º Turno',
-          driverName: v.driver_name || 'Motorista Não Atribuído',
-          driverPhone: v.driver_phone || '',
-          driverCnh: v.driver_cnh || '',
-          monitorName: v.monitor_name || '',
-          monitorPhone: v.monitor_phone || '',
-          observacoes: v.metadata?.observacoes || '',
-          status: v.status || 'Ativo',
-          year: v.year || new Date().getFullYear(),
-          studentsIds: occupants,
-          occupiedCount: occupied,
-          freeSpots: Math.max(0, cap - occupied)
-        };
-      });
-    } else {
-      // Use standard default vehicles with populated occupants if any
-      vehicles = DEFAULT_FALLBACK_VEHICLES.map(v => {
-        const occupants = vehicleOccupantsMap.get(v.id) || [];
-        const cap = v.capacidade;
-        const occupied = occupants.length;
-        return {
-          ...v,
-          studentsIds: occupants,
-          occupiedCount: occupied,
-          freeSpots: Math.max(0, cap - occupied)
-        };
-      });
-    }
-
-    // Calculate aggregated metrics
-    const totalVehicles = vehicles.length;
     const totalCapacity = vehicles.reduce((acc, v) => acc + (v.capacidade || 0), 0);
-    const totalLinked = transportStudentsList.filter(s => s.status === 'Vinculado').length;
-    const totalUnlinked = transportStudentsList.filter(s => s.status === 'Aguardando Vinculação').length;
-    const globalOccupancy = totalCapacity > 0 ? Math.round((totalLinked / totalCapacity) * 100) : 0;
-
-    const stats: TransportStatsData = {
-      totalVehicles,
-      totalCapacity,
-      totalLinked,
-      totalUnlinked,
-      globalOccupancy
-    };
+    const totalLinked = students.filter(s => s.status === 'Vinculado').length;
 
     return {
       vehicles,
-      students: transportStudentsList,
-      stats,
-      error: null
+      students,
+      stats: {
+        totalVehicles: vehicles.length,
+        totalCapacity,
+        totalLinked,
+        totalUnlinked: students.length - totalLinked,
+        globalOccupancy: totalCapacity > 0 ? Math.round((totalLinked / totalCapacity) * 100) : 0,
+      },
+      error: null,
     };
   } catch (err: any) {
-    console.error('[TransportRpcService] fetchOrganizationTransportData error:', err);
-    return {
-      vehicles: DEFAULT_FALLBACK_VEHICLES,
-      students: [],
-      stats: { totalVehicles: 4, totalCapacity: 182, totalLinked: 0, totalUnlinked: 0, globalOccupancy: 0 },
-      error: err.message || 'Erro ao carregar dados de transporte.'
-    };
+    console.error('[TransportRpcService] fetchOrganizationTransportData:', err);
+    return { vehicles: [], students: [], stats: EMPTY_STATS, error: friendlyDbError(err?.message, 'Não foi possível carregar o transporte.') };
   }
 }
 
-/**
- * Save or update a transport vehicle in Supabase public.transport_vehicles
- */
 export async function saveTransportVehicle(
   input: SaveTransportVehicleInput
 ): Promise<{ success: boolean; vehicleId?: string; error: string | null }> {
   try {
-    const orgId = getResolvedOrganizationId(input.organizationId || input.schoolId);
-    const validVehId = input.id && isUuid(input.id) ? input.id : null;
+    const orgId = await resolveOrgId(input.organizationId || input.schoolId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
 
-    const modelFormatted = input.numero 
-      ? (input.tipo ? `${input.tipo} ${input.numero.replace(input.tipo, '').trim()}` : input.numero)
-      : (input.tipo || 'Ônibus 01');
+    const capacity = Number(input.capacidade);
+    if (!Number.isFinite(capacity) || capacity <= 0) {
+      return { success: false, error: 'Informe a capacidade do veículo.' };
+    }
+    if (!input.placa?.trim()) return { success: false, error: 'Informe a placa do veículo.' };
+    if (!input.driverName?.trim()) return { success: false, error: 'Informe o nome do motorista.' };
 
-    const payload: any = {
-      school_id: orgId,
+    const numero = (input.numero || '').replace(input.tipo || '', '').trim();
+    const model = [input.tipo || 'Ônibus', numero].filter(Boolean).join(' ');
+
+    const payload: Record<string, any> = {
       organization_id: orgId,
-      route_name: (input.rota || 'Rota Principal').trim(),
-      plate: (input.placa || '').trim().toUpperCase(),
-      model: modelFormatted,
-      year: input.year || new Date().getFullYear(),
-      driver_name: (input.driverName || 'Motorista').trim(),
-      driver_phone: input.driverPhone ? input.driverPhone.trim() : null,
-      driver_cnh: input.driverCnh ? input.driverCnh.trim() : null,
-      monitor_name: input.monitorName ? input.monitorName.trim() : null,
-      monitor_phone: input.monitorPhone ? input.monitorPhone.trim() : null,
-      capacity: Number(input.capacidade) || 40,
+      school_id: isUuidBase(input.schoolId) ? input.schoolId : orgId,
+      route_name: input.rota?.trim() || null,
+      route_code: numero || null,
+      route_id: isUuidBase(input.routeId) ? input.routeId : null,
+      plate: input.placa.trim().toUpperCase(),
+      model,
+      year: input.year || null,
+      driver_name: input.driverName.trim(),
+      driver_phone: input.driverPhone?.trim() || null,
+      driver_cnh: input.driverCnh?.trim() || null,
+      monitor_name: input.monitorName?.trim() || null,
+      monitor_phone: input.monitorPhone?.trim() || null,
+      capacity,
       status: input.status || 'Ativo',
-      shift: input.turno || '1º Turno',
-      updated_at: new Date().toISOString()
+      shift: input.turno || null,
+      neighborhoods_served: (input.neighborhoodsServed || []).map(n => n.trim()).filter(Boolean),
+      metadata: { observacoes: input.observacoes?.trim() || '' },
     };
 
-    if (validVehId) {
-      const { error: updErr } = await supabase
-        .from('transport_vehicles')
-        .update(payload)
-        .eq('id', validVehId);
-
-      if (updErr) {
-        console.error('[TransportRpcService] Error updating transport_vehicle:', updErr);
-        return { success: false, error: updErr.message };
+    if (isUuidBase(input.id)) {
+      const occupied = await countLinked(input.id);
+      if (capacity < occupied) {
+        return { success: false, error: `Este veículo já tem ${occupied} estudante(s). A capacidade não pode ser menor que isso.` };
       }
-      return { success: true, vehicleId: validVehId, error: null };
-    } else {
-      const { data: insData, error: insErr } = await supabase
-        .from('transport_vehicles')
-        .insert([payload])
-        .select('id')
-        .single();
-
-      if (insErr) {
-        console.error('[TransportRpcService] Error inserting transport_vehicle:', insErr);
-        return { success: false, error: insErr.message };
-      }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('classium_transport_updated', { detail: { action: 'insert', vehicleId: insData?.id } }));
-      }
-      return { success: true, vehicleId: insData?.id, error: null };
+      const { data, error } = await supabase.from('transport_vehicles').update(payload).eq('id', input.id).select('id');
+      if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível salvar o veículo.') };
+      if (!data || data.length === 0) return { success: false, error: 'Veículo não encontrado ou sem permissão.' };
+      notify({ action: 'update', vehicleId: input.id });
+      return { success: true, vehicleId: input.id, error: null };
     }
+
+    const { data, error } = await supabase.from('transport_vehicles').insert([payload]).select('id').single();
+    if (error || !data) return { success: false, error: friendlyDbError(error?.message, 'Não foi possível cadastrar o veículo.') };
+    notify({ action: 'insert', vehicleId: data.id });
+    return { success: true, vehicleId: data.id, error: null };
   } catch (err: any) {
-    console.error('[TransportRpcService] saveTransportVehicle error:', err);
-    return { success: false, error: err.message || 'Erro ao salvar veículo de transporte.' };
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível salvar o veículo.') };
   }
 }
 
-/**
- * Delete a transport vehicle with safety validation (cannot delete if it has active students)
- */
-export async function deleteTransportVehicle(
-  vehicleId: string,
-  _organizationId?: string
-): Promise<{ success: boolean; error: string | null }> {
+export async function deleteTransportVehicle(vehicleId: string, _organizationId?: string): Promise<OpResult> {
   try {
-    const validVehId = isUuid(vehicleId) ? vehicleId : null;
-    if (!validVehId) {
-      return { success: true, error: null };
-    }
+    if (!isUuidBase(vehicleId)) return { success: false, error: 'Veículo inválido. Atualize a tela.' };
 
-    // 1. Check if vehicle has active linked agreements or students
-    let countActive = 0;
-    try {
-      const { count: agrCount } = await supabase
-        .from('transport_agreements')
-        .select('*', { count: 'exact', head: true })
-        .eq('vehicle_id', validVehId)
-        .eq('status', 'vinculado');
-
-      if (agrCount && agrCount > 0) countActive += agrCount;
-    } catch (e) {
-      // ignore
-    }
-
-    try {
-      const { count: studCount } = await supabase
-        .from('transport_students')
-        .select('*', { count: 'exact', head: true })
-        .eq('vehicle_id', validVehId)
-        .eq('is_active', true);
-
-      if (studCount && studCount > 0) countActive = Math.max(countActive, studCount);
-    } catch (e) {
-      // ignore
-    }
-
-    if (countActive > 0) {
+    const occupied = await countLinked(vehicleId);
+    if (occupied > 0) {
       return {
         success: false,
-        error: `Não é possível excluir o veículo pois existem ${countActive} estudante(s) vinculado(s) a ele. Por favor, redistribua ou desvincule os passageiros antes de excluir.`
+        error: `Este veículo tem ${occupied} estudante(s) vinculado(s). Desvincule ou mude os estudantes de veículo antes de excluir.`,
       };
     }
 
-    // 2. Delete vehicle
-    const { error: delErr } = await supabase
-      .from('transport_vehicles')
-      .delete()
-      .eq('id', validVehId);
+    const { data, error } = await supabase.from('transport_vehicles').delete().eq('id', vehicleId).select('id');
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível excluir o veículo.') };
+    if (!data || data.length === 0) return { success: false, error: 'Veículo não encontrado ou sem permissão.' };
 
-    if (delErr) {
-      console.error('[TransportRpcService] Error deleting transport_vehicle:', delErr);
-      return { success: false, error: delErr.message };
-    }
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('classium_transport_updated', { detail: { action: 'delete', vehicleId: validVehId } }));
-    }
-
+    notify({ action: 'delete', vehicleId });
     return { success: true, error: null };
   } catch (err: any) {
-    console.error('[TransportRpcService] deleteTransportVehicle exception:', err);
-    return { success: false, error: err.message || 'Erro ao excluir veículo.' };
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível excluir o veículo.') };
   }
 }
 
-/**
- * Attempt automatic link of student by address/neighborhood to an available route/vehicle
- */
+/** Procura um veículo ativo, com vaga, que atenda o bairro do estudante */
 export async function tryAutoLinkStudentTransport(
   studentId: string,
   neighborhood?: string,
   organizationId?: string
 ): Promise<{ linked: boolean; vehicleId?: string; vehicleName?: string; error?: string | null }> {
   try {
-    const orgId = getResolvedOrganizationId(organizationId);
-    if (!isUuid(studentId)) return { linked: false };
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId || !isUuidBase(studentId)) return { linked: false };
 
-    // Try executing database RPC if exists
-    try {
-      const { error: rpcErr } = await supabase.rpc('try_auto_link_transport', {
-        p_student_id: studentId
-      });
-      if (!rpcErr) {
-        // Check if agreement was linked
-        const { data: agr } = await supabase
-          .from('transport_agreements')
-          .select('vehicle_id, status')
-          .eq('student_id', studentId)
-          .single();
+    const bairro = (neighborhood || '').toLowerCase().trim();
+    if (!bairro) return { linked: false };
 
-        if (agr && agr.status === 'vinculado' && agr.vehicle_id) {
-          return { linked: true, vehicleId: agr.vehicle_id };
-        }
-      }
-    } catch (e) {
-      console.warn('[TransportRpcService] RPC try_auto_link_transport failed, running client fallback:', e);
-    }
-
-    // Client-side fallback matching
-    const b = (neighborhood || '').toLowerCase().trim();
-    if (!b) return { linked: false };
-
-    // Fetch vehicles of organization
-    const { data: vehs } = await supabase
+    const { data: vehicles, error } = await supabase
       .from('transport_vehicles')
-      .select('*')
-      .or(`organization_id.eq.${orgId},school_id.eq.${orgId}`)
+      .select('id, model, route_name, capacity, neighborhoods_served')
+      .eq('organization_id', orgId)
       .eq('status', 'Ativo');
+    if (error || !vehicles) return { linked: false, error: error ? friendlyDbError(error.message) : null };
 
-    if (!vehs || vehs.length === 0) return { linked: false };
+    for (const v of vehicles as any[]) {
+      const served: string[] = Array.isArray(v.neighborhoods_served) ? v.neighborhoods_served : [];
+      const matches = served.some(n => n.toLowerCase().trim() === bairro) || (v.route_name || '').toLowerCase().includes(bairro);
+      if (!matches) continue;
 
-    // Find vehicle whose route matches or serves the neighborhood and has free capacity
-    for (const v of vehs) {
-      const routeLower = (v.route_name || '').toLowerCase();
-      const servesNeighborhood = routeLower.includes(b) || (v.neighborhoods_served && Array.isArray(v.neighborhoods_served) && v.neighborhoods_served.some((n: string) => n.toLowerCase().includes(b) || b.includes(n.toLowerCase())));
+      const occupied = await countLinked(v.id, studentId);
+      if (occupied >= (Number(v.capacity) || 0)) continue;
 
-      if (servesNeighborhood) {
-        // Check capacity
-        const { count } = await supabase
-          .from('transport_agreements')
-          .select('*', { count: 'exact', head: true })
-          .eq('vehicle_id', v.id)
-          .eq('status', 'vinculado');
-
-        const occupied = count || 0;
-        if (occupied < (v.capacity || 40)) {
-          // Link student to this vehicle
-          await linkStudentToTransport(studentId, v.id, orgId, undefined, 'Portaria Principal', 'automatico_endereco');
-          return { linked: true, vehicleId: v.id, vehicleName: v.model || v.route_name };
-        }
-      }
+      const res = await linkStudentToTransport(studentId, v.id, orgId, undefined, '', 'automatico_endereco');
+      if (res.success) return { linked: true, vehicleId: v.id, vehicleName: v.model || v.route_name };
     }
-
     return { linked: false };
   } catch (err: any) {
-    console.error('[TransportRpcService] tryAutoLinkStudentTransport error:', err);
-    return { linked: false, error: err.message };
+    return { linked: false, error: friendlyDbError(err?.message) };
   }
 }
 
-/**
- * Link student to a transport vehicle in Supabase (updates transport_agreements and transport_students)
- */
 export async function linkStudentToTransport(
   studentId: string,
   vehicleId: string,
   organizationId?: string,
   routeId?: string,
-  pickupPoint: string = 'Portaria Principal',
+  pickupPoint = '',
   matchType: 'automatico_endereco' | 'manual' = 'manual'
-): Promise<{ success: boolean; error: string | null }> {
+): Promise<OpResult> {
   try {
-    const orgId = getResolvedOrganizationId(organizationId);
-    const validStudId = isUuid(studentId) ? studentId : null;
-    const validVehId = isUuid(vehicleId) ? vehicleId : null;
-
-    if (!validStudId || !validVehId) {
-      return { success: true, error: null };
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
+    if (!isUuidBase(studentId) || !isUuidBase(vehicleId)) {
+      return { success: false, error: 'Estudante ou veículo inválido. Atualize a tela.' };
     }
 
-    // 1. Capacity check
-    const { data: veh } = await supabase
+    const { data: veh, error: vehErr } = await supabase
       .from('transport_vehicles')
-      .select('capacity')
-      .eq('id', validVehId)
-      .single();
+      .select('capacity, status')
+      .eq('id', vehicleId)
+      .maybeSingle();
+    if (vehErr) return { success: false, error: friendlyDbError(vehErr.message) };
+    if (!veh) return { success: false, error: 'Veículo não encontrado.' };
+    if (veh.status && veh.status !== 'Ativo') return { success: false, error: 'Este veículo não está ativo.' };
 
-    let currentOccupied = 0;
-    try {
-      const { count } = await supabase
-        .from('transport_agreements')
-        .select('*', { count: 'exact', head: true })
-        .eq('vehicle_id', validVehId)
-        .eq('status', 'vinculado')
-        .neq('student_id', validStudId);
-
-      currentOccupied = count || 0;
-    } catch (e) {
-      // fallback
+    const occupied = await countLinked(vehicleId, studentId);
+    if (occupied >= (Number(veh.capacity) || 0)) {
+      return { success: false, error: 'Veículo lotado. Todas as vagas já estão ocupadas.' };
     }
 
-    if (veh && veh.capacity && currentOccupied >= veh.capacity) {
-      return { success: false, error: 'Veículo Lotado! A capacidade máxima de vagas deste veículo já foi atingida.' };
-    }
+    const now = new Date().toISOString();
+    const { error: agrErr } = await supabase.from('transport_agreements').upsert({
+      organization_id: orgId,
+      school_id: orgId,
+      student_id: studentId,
+      vehicle_id: vehicleId,
+      route_id: isUuidBase(routeId) ? routeId : null,
+      status: 'vinculado',
+      match_type: matchType,
+      pickup_point: pickupPoint.trim() || null,
+      linked_at: now,
+    }, { onConflict: 'student_id,school_id' });
+    if (agrErr) return { success: false, error: friendlyDbError(agrErr.message, 'Não foi possível vincular o estudante.') };
 
-    const nowIso = new Date().toISOString();
+    const { error: tsErr } = await supabase.from('transport_students').upsert({
+      organization_id: orgId,
+      school_id: orgId,
+      student_id: studentId,
+      vehicle_id: vehicleId,
+      route_id: isUuidBase(routeId) ? routeId : null,
+      status: 'Vinculado',
+      pickup_point: pickupPoint.trim() || null,
+      is_active: true,
+    }, { onConflict: 'student_id' });
+    if (tsErr) console.warn('[TransportRpcService] transport_students não atualizado:', tsErr.message);
 
-    // 2. Upsert in transport_agreements
-    try {
-      const { error: agrErr } = await supabase
-        .from('transport_agreements')
-        .upsert({
-          school_id: orgId,
-          student_id: validStudId,
-          vehicle_id: validVehId,
-          route_id: routeId || null,
-          status: 'vinculado',
-          match_type: matchType,
-          linked_at: nowIso,
-          updated_at: nowIso
-        }, { onConflict: 'student_id, school_id' });
+    const { error: stErr } = await supabase
+      .from('students')
+      .update({ uses_transport: true, uses_school_transport: true })
+      .eq('id', studentId);
+    if (stErr) console.warn('[TransportRpcService] Marcação de transporte no estudante não salva:', stErr.message);
 
-      if (agrErr) {
-        console.warn('[TransportRpcService] Warning upserting transport_agreements:', agrErr.message);
-      }
-    } catch (e) {
-      console.warn('[TransportRpcService] Error with transport_agreements table:', e);
-    }
-
-    // 3. Upsert in transport_students (for schema backwards-compatibility)
-    try {
-      const { data: existingLink } = await supabase
-        .from('transport_students')
-        .select('id')
-        .eq('student_id', validStudId);
-
-      if (existingLink && existingLink.length > 0) {
-        await supabase
-          .from('transport_students')
-          .update({
-            vehicle_id: validVehId,
-            organization_id: orgId,
-            school_id: orgId,
-            route_id: routeId || null,
-            status: 'Vinculado',
-            pickup_point: pickupPoint,
-            is_active: true,
-            updated_at: nowIso
-          })
-          .eq('student_id', validStudId);
-      } else {
-        await supabase
-          .from('transport_students')
-          .insert([{
-            school_id: orgId,
-            organization_id: orgId,
-            student_id: validStudId,
-            vehicle_id: validVehId,
-            route_id: routeId || null,
-            status: 'Vinculado',
-            pickup_point: pickupPoint,
-            is_active: true,
-            created_at: nowIso,
-            updated_at: nowIso
-          }]);
-      }
-    } catch (e) {
-      console.warn('[TransportRpcService] Notice with transport_students table:', e);
-    }
-
-    // 4. Mark student as uses_transport and uses_school_transport
-    try {
-      await supabase
-        .from('students')
-        .update({
-          uses_transport: true,
-          uses_school_transport: true,
-          updated_at: nowIso
-        })
-        .eq('id', validStudId);
-    } catch (e) {
-      console.warn('[TransportRpcService] Error updating students flags:', e);
-    }
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('classium_transport_updated', { detail: { action: 'link', studentId: validStudId, vehicleId: validVehId } }));
-    }
-
+    notify({ action: 'link', studentId, vehicleId });
     return { success: true, error: null };
   } catch (err: any) {
-    console.error('[TransportRpcService] linkStudentToTransport exception:', err);
-    return { success: false, error: err.message || 'Erro ao vincular estudante ao transporte.' };
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível vincular o estudante.') };
   }
 }
 
-/**
- * Unlink student from transport vehicle (sets status to aguardando_vinculacao)
- */
-export async function unlinkStudentFromTransport(
-  studentId: string,
-  organizationId?: string
-): Promise<{ success: boolean; error: string | null }> {
+export async function unlinkStudentFromTransport(studentId: string, _organizationId?: string): Promise<OpResult> {
   try {
-    const orgId = getResolvedOrganizationId(organizationId);
-    const validStudId = isUuid(studentId) ? studentId : null;
-    if (!validStudId) {
-      return { success: true, error: null };
-    }
+    if (!isUuidBase(studentId)) return { success: false, error: 'Estudante inválido. Atualize a tela.' };
 
-    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('transport_agreements')
+      .update({ vehicle_id: null, route_id: null, status: 'aguardando_vinculacao', match_type: null, linked_at: null })
+      .eq('student_id', studentId)
+      .select('id');
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível desvincular.') };
+    if (!data || data.length === 0) return { success: false, error: 'Este estudante não estava vinculado.' };
 
-    // 1. Update transport_agreements to aguardando_vinculacao
-    try {
-      await supabase
-        .from('transport_agreements')
-        .update({
-          vehicle_id: null,
-          route_id: null,
-          status: 'aguardando_vinculacao',
-          match_type: null,
-          linked_at: null,
-          updated_at: nowIso
-        })
-        .eq('student_id', validStudId);
-    } catch (e) {
-      console.warn('[TransportRpcService] Error unlinking transport_agreements:', e);
-    }
+    const { error: tsErr } = await supabase
+      .from('transport_students')
+      .update({ vehicle_id: null, status: 'Aguardando Vinculação' })
+      .eq('student_id', studentId);
+    if (tsErr) console.warn('[TransportRpcService] transport_students não atualizado:', tsErr.message);
 
-    // 2. Update transport_students
-    try {
-      await supabase
-        .from('transport_students')
-        .update({
-          vehicle_id: null,
-          status: 'Aguardando Vinculação',
-          updated_at: nowIso
-        })
-        .eq('student_id', validStudId);
-    } catch (e) {
-      console.warn('[TransportRpcService] Error unlinking transport_students:', e);
-    }
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('classium_transport_updated', { detail: { action: 'unlink', studentId: validStudId } }));
-    }
-
+    notify({ action: 'unlink', studentId });
     return { success: true, error: null };
   } catch (err: any) {
-    console.error('[TransportRpcService] unlinkStudentFromTransport exception:', err);
-    return { success: false, error: err.message || 'Erro ao desvincular estudante.' };
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível desvincular.') };
   }
 }
 
-/**
- * Toggle student transport demand (activate or deactivate completely)
- */
+/** Liga ou desliga o uso de transporte do estudante */
 export async function toggleStudentTransportDemand(
   studentId: string,
   enable: boolean,
@@ -858,198 +504,106 @@ export async function toggleStudentTransportDemand(
   neighborhood?: string
 ): Promise<{ success: boolean; autoLinked?: boolean; vehicleName?: string; error: string | null }> {
   try {
-    const orgId = getResolvedOrganizationId(organizationId);
-    const validStudId = isUuid(studentId) ? studentId : null;
-    if (!validStudId) {
-      return { success: true, error: null };
-    }
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
+    if (!isUuidBase(studentId)) return { success: false, error: 'Estudante inválido. Atualize a tela.' };
 
-    const nowIso = new Date().toISOString();
+    const { error: stErr } = await supabase
+      .from('students')
+      .update({ uses_transport: enable, uses_school_transport: enable })
+      .eq('id', studentId);
+    if (stErr) return { success: false, error: friendlyDbError(stErr.message) };
 
     if (enable) {
-      // 1. Enable in students table
+      // Pedido cancelado antes volta para a fila
       await supabase
-        .from('students')
-        .update({
-          uses_transport: true,
-          uses_school_transport: true,
-          updated_at: nowIso
-        })
-        .eq('id', validStudId);
+        .from('transport_agreements')
+        .update({ status: 'aguardando_vinculacao', requested_at: new Date().toISOString() })
+        .eq('student_id', studentId)
+        .eq('status', 'cancelado');
 
-      // 2. Insert into transport_agreements
-      try {
-        await supabase
-          .from('transport_agreements')
-          .upsert({
-            school_id: orgId,
-            student_id: validStudId,
-            status: 'aguardando_vinculacao',
-            requested_at: nowIso,
-            updated_at: nowIso
-          }, { onConflict: 'student_id, school_id' });
-      } catch (e) {
-        console.warn('[TransportRpcService] transport_agreements upsert notice:', e);
-      }
+      const { error: agrErr } = await supabase.from('transport_agreements').upsert({
+        organization_id: orgId,
+        school_id: orgId,
+        student_id: studentId,
+        status: 'aguardando_vinculacao',
+        requested_at: new Date().toISOString(),
+      }, { onConflict: 'student_id,school_id', ignoreDuplicates: true });
+      if (agrErr) return { success: false, error: friendlyDbError(agrErr.message) };
 
-      // 3. Try automatic link by address
-      const autoRes = await tryAutoLinkStudentTransport(validStudId, neighborhood, orgId);
-      return {
-        success: true,
-        autoLinked: autoRes.linked,
-        vehicleName: autoRes.vehicleName,
-        error: null
-      };
-    } else {
-      // Disable transport
-      await supabase
-        .from('students')
-        .update({
-          uses_transport: false,
-          uses_school_transport: false,
-          updated_at: nowIso
-        })
-        .eq('id', validStudId);
-
-      try {
-        await supabase
-          .from('transport_agreements')
-          .update({
-            status: 'cancelado',
-            vehicle_id: null,
-            route_id: null,
-            updated_at: nowIso
-          })
-          .eq('student_id', validStudId);
-      } catch (e) {
-        console.warn('[TransportRpcService] cancel transport_agreements notice:', e);
-      }
-
-      try {
-        await supabase
-          .from('transport_students')
-          .delete()
-          .eq('student_id', validStudId);
-      } catch (e) {
-        console.warn('[TransportRpcService] delete transport_students notice:', e);
-      }
-
-      return { success: true, autoLinked: false, error: null };
+      const auto = await tryAutoLinkStudentTransport(studentId, neighborhood, orgId);
+      notify({ action: 'enable', studentId });
+      return { success: true, autoLinked: auto.linked, vehicleName: auto.vehicleName, error: null };
     }
+
+    const { error: cancelErr } = await supabase
+      .from('transport_agreements')
+      .update({ status: 'cancelado', vehicle_id: null, route_id: null, linked_at: null })
+      .eq('student_id', studentId);
+    if (cancelErr) return { success: false, error: friendlyDbError(cancelErr.message) };
+
+    await supabase.from('transport_students').delete().eq('student_id', studentId);
+    notify({ action: 'disable', studentId });
+    return { success: true, autoLinked: false, error: null };
   } catch (err: any) {
-    console.error('[TransportRpcService] toggleStudentTransportDemand error:', err);
-    return { success: false, error: err.message || 'Erro ao alterar transporte.' };
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível alterar o transporte.') };
   }
 }
 
-/**
- * Update student boarding status and record boarding log
- */
+/** Marca embarque, espera ou falta e grava no histórico do dia */
 export async function updateStudentBoardingStatus(
   studentId: string,
   status: 'Embarcado' | 'Aguardando' | 'Ausente',
   organizationId?: string
-): Promise<{ success: boolean; error: string | null }> {
+): Promise<OpResult> {
   try {
-    const orgId = getResolvedOrganizationId(organizationId);
-    const validStudId = isUuid(studentId) ? studentId : null;
-    if (!validStudId) {
-      return { success: true, error: null };
-    }
+    const orgId = await resolveOrgId(organizationId);
+    if (!orgId) return { success: false, error: NO_SCHOOL_ERROR };
+    if (!isUuidBase(studentId)) return { success: false, error: 'Estudante inválido. Atualize a tela.' };
 
-    const eventType = status === 'Embarcado' ? 'boarded' : status === 'Ausente' ? 'absent' : 'waiting';
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+    const { data: link, error: upErr } = await supabase
+      .from('transport_students')
+      .update({ boarding_status: status, last_boarding_at: now })
+      .eq('student_id', studentId)
+      .select('vehicle_id')
+      .maybeSingle();
+    if (upErr) return { success: false, error: friendlyDbError(upErr.message) };
 
-    try {
-      await supabase
-        .from('transport_students')
-        .update({
-          boarding_status: status,
-          last_boarding_at: new Date().toISOString()
-        })
-        .eq('student_id', validStudId);
-    } catch (e) {
-      // ignore
-    }
-
-    const { error: logErr } = await supabase
-      .from('transport_boarding_logs')
-      .insert([{
-        organization_id: orgId,
-        school_id: orgId,
-        student_id: validStudId,
-        date: todayStr,
-        event_type: eventType,
-        recorded_at: new Date().toISOString()
-      }]);
-
-    if (logErr) {
-      console.warn('[TransportRpcService] Error inserting boarding log:', logErr);
-    }
+    const { error: logErr } = await supabase.from('transport_boarding_logs').insert([{
+      organization_id: orgId,
+      school_id: orgId,
+      student_id: studentId,
+      vehicle_id: link?.vehicle_id || null,
+      date: todayLocalISO(),
+      event_type: status === 'Embarcado' ? 'boarded' : status === 'Ausente' ? 'absent' : 'waiting',
+      recorded_at: now,
+    }]);
+    if (logErr) return { success: false, error: friendlyDbError(logErr.message, 'O embarque não foi registrado.') };
 
     return { success: true, error: null };
   } catch (err: any) {
-    console.error('[TransportRpcService] updateStudentBoardingStatus exception:', err);
-    return { success: false, error: err.message || 'Erro ao atualizar status de embarque.' };
+    return { success: false, error: friendlyDbError(err?.message, 'Não foi possível registrar o embarque.') };
   }
 }
 
-/**
- * Realtime channel subscription for all transport changes with multi-tenant filtering
- */
-export function subscribeToTransportChanges(
-  onUpdate: () => void,
-  organizationId?: string
-): () => void {
-  const realtimeService = RealtimeService.getInstance();
-  const filter = organizationId && isUuid(organizationId) ? `organization_id=eq.${organizationId}` : undefined;
+export function subscribeToTransportChanges(onUpdate: () => void, organizationId?: string): () => void {
+  const realtime = RealtimeService.getInstance();
+  const filter = isUuidBase(organizationId) ? `organization_id=eq.${organizationId}` : undefined;
+  const key = organizationId || 'escola';
 
-  const unsubVehicles = realtimeService.subscribe(
-    `transport_vehicles_${organizationId || 'global'}`,
-    { table: 'transport_vehicles', filter },
-    () => onUpdate()
-  );
+  const unsubs = [
+    realtime.subscribe(`transport_vehicles_${key}`, { table: 'transport_vehicles', filter }, () => onUpdate()),
+    realtime.subscribe(`transport_agreements_${key}`, { table: 'transport_agreements', filter }, () => onUpdate()),
+    realtime.subscribe(`transport_students_${key}`, { table: 'transport_students', filter }, () => onUpdate()),
+    realtime.subscribe(`transport_logs_${key}`, { table: 'transport_boarding_logs', filter }, () => onUpdate()),
+  ];
 
-  const unsubAgreements = realtimeService.subscribe(
-    `transport_agreements_${organizationId || 'global'}`,
-    { table: 'transport_agreements' },
-    () => onUpdate()
-  );
-
-  const unsubStudentsTransport = realtimeService.subscribe(
-    `transport_students_${organizationId || 'global'}`,
-    { table: 'transport_students', filter },
-    () => onUpdate()
-  );
-
-  const unsubStudents = realtimeService.subscribe(
-    `students_transport_${organizationId || 'global'}`,
-    { table: 'students', filter },
-    () => onUpdate()
-  );
-
-  const unsubLogs = realtimeService.subscribe(
-    `transport_logs_${organizationId || 'global'}`,
-    { table: 'transport_boarding_logs', filter },
-    () => onUpdate()
-  );
-
-  const handleLocalSync = () => {
-    onUpdate();
-  };
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('classium_transport_updated', handleLocalSync);
-  }
+  const handleLocal = () => onUpdate();
+  if (typeof window !== 'undefined') window.addEventListener('classium_transport_updated', handleLocal);
 
   return () => {
-    unsubVehicles();
-    unsubAgreements();
-    unsubStudentsTransport();
-    unsubStudents();
-    unsubLogs();
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('classium_transport_updated', handleLocalSync);
-    }
+    unsubs.forEach(u => u());
+    if (typeof window !== 'undefined') window.removeEventListener('classium_transport_updated', handleLocal);
   };
 }

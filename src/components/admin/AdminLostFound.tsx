@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { usePlatform } from '../../context/PlatformContext';
 import { supabase } from '../../lib/supabase';
-import { LostAndFoundService, LostAndFoundDbItem, DEFAULT_PHOTOS } from '../../services/lostFoundService';
+import { LostAndFoundService, LostAndFoundDbItem } from '../../services/lostFoundService';
 import { Alert, Badge, Button, Card, EmptyState, Field, Modal, Skeleton, Toast, cx, inputCls } from '../ui/kit';
 import { ConfirmModal, InfoRow, MetricStrip, ModuleHeader, RoundIconButton, Segmented } from '../ui/ModuleParts';
 
@@ -173,8 +173,8 @@ export function AdminLostFound({ selectedUnit: propUnit }: AdminLostFoundProps =
       setIsUploadingPhoto(true);
       const uploadedUrl = await LostAndFoundService.uploadPhoto(file, activeSchoolId);
       setFormPhotoUrl(uploadedUrl);
-    } catch {
-      setFormError('Não foi possível enviar a foto. Tente outra imagem.');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Não foi possível enviar a foto. Tente outra imagem.');
     } finally {
       setIsUploadingPhoto(false);
       e.target.value = '';
@@ -212,7 +212,7 @@ export function AdminLostFound({ selectedUnit: propUnit }: AdminLostFoundProps =
     if (!formName.trim()) return setFormError('Informe o nome do objeto.');
     setFormError(null);
     setIsSubmittingForm(true);
-    const photoToSave = formPhotoUrl || DEFAULT_PHOTOS[formCategory] || DEFAULT_PHOTOS['Outros'];
+    const photoToSave = formPhotoUrl || '';
     const registeredBy = formRegisteredBy.trim() || 'Secretaria';
 
     try {
@@ -326,7 +326,7 @@ export function AdminLostFound({ selectedUnit: propUnit }: AdminLostFoundProps =
     }
   };
 
-  const photoOf = (item: LostAndFoundDbItem) => item.photo_url || item.image_url || DEFAULT_PHOTOS[item.category] || DEFAULT_PHOTOS['Outros'];
+  const photoOf = (item: LostAndFoundDbItem) => item.photo_url || item.image_url || '';
 
   const statusBadge = (item: LostAndFoundDbItem) =>
     isAvailableStatus(item.status) ? (
@@ -685,9 +685,15 @@ export function AdminLostFound({ selectedUnit: propUnit }: AdminLostFoundProps =
       >
         {selectedItemForDetails && (
           <div className="space-y-4">
-            <div className="h-52 overflow-hidden rounded-2xl bg-[var(--bg-card-alt)]">
-              <img src={photoOf(selectedItemForDetails)} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-            </div>
+            {photoOf(selectedItemForDetails) ? (
+              <div className="h-52 overflow-hidden rounded-2xl bg-[var(--bg-card-alt)]">
+                <img src={photoOf(selectedItemForDetails)} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+              </div>
+            ) : (
+              <div className="flex h-32 items-center justify-center rounded-2xl bg-[var(--bg-card-alt)] text-[13px] text-[var(--text-muted)]">
+                Objeto cadastrado sem foto
+              </div>
+            )}
             <div className="flex items-center gap-2">{statusBadge(selectedItemForDetails)}</div>
             <p className="text-[14px] leading-relaxed text-[var(--text-body)]">{selectedItemForDetails.description || 'Sem detalhes cadastrados.'}</p>
             <div className="divide-y divide-[var(--border)] rounded-2xl border border-[var(--border)] px-4 py-1">

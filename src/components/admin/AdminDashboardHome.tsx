@@ -23,8 +23,9 @@ import { realtimeService } from '../../services/RealtimeService';
 import { dashboardService } from '../../services/dashboardService';
 import { institutionService, InstitutionData, ManagementTeamMember } from '../../services/institutionService';
 import { DashboardHeaderUnificado } from './DashboardHeaderUnificado';
-import { Badge, Button, Card, CardHeader, EmptyState, Skeleton, cx, EASE } from '../ui/kit';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Skeleton, cx, EASE } from '../ui/kit';
 import { CountUp } from '../landing/effects';
+import { useActiveOrgId } from '../../hooks/useActiveOrgId';
 
 interface HomeProps {
   demoMode: boolean;
@@ -58,16 +59,22 @@ export function AdminDashboardHome({ demoMode, selectedUnit }: HomeProps) {
   const [teamMembers, setTeamMembers] = useState<ManagementTeamMember[]>([]);
   const [teamLoading, setTeamLoading] = useState<boolean>(true);
 
-  const activeOrgId =
-    profile?.organization_id ||
-    profile?.school_id ||
-    currentUser?.organization_id ||
-    currentUser?.school_id ||
-    currentUser?.organizationId ||
-    '11111111-1111-1111-1111-111111111111';
+  const { orgId: activeOrgId, resolving: resolvingOrg } = useActiveOrgId(
+    profile?.organization_id,
+    profile?.school_id,
+    currentUser?.organization_id,
+    currentUser?.school_id,
+    currentUser?.organizationId
+  );
 
   // 1. Indicadores
   const fetchMetrics = useCallback(async () => {
+    if (!activeOrgId) {
+      if (resolvingOrg) return;
+      const failed = { value: null, loading: false, error: 'Escola não identificada' };
+      setMetrics({ students: failed, guardians: failed, announcements: failed });
+      return;
+    }
     try {
       const data = await dashboardService.getMetrics(activeOrgId);
       setMetrics({
@@ -77,29 +84,37 @@ export function AdminDashboardHome({ demoMode, selectedUnit }: HomeProps) {
       });
     } catch (err: any) {
       console.warn('[AdminDashboardHome] Metrics error:', err);
-      const failed = { value: 0, loading: false, error: 'Não carregou' };
+      const failed = { value: null, loading: false, error: 'Não carregou' };
       setMetrics({ students: failed, guardians: failed, announcements: failed });
     }
-  }, [activeOrgId]);
+  }, [activeOrgId, resolvingOrg]);
 
   // 2. Escola e equipe
   const fetchSchoolAndTeam = useCallback(async () => {
+    if (!activeOrgId) {
+      if (resolvingOrg) return;
+      setSchoolLoading(false);
+      setTeamLoading(false);
+      return;
+    }
     try {
       setSchoolLoading(true);
       setTeamLoading(true);
-      const [org, team] = await Promise.all([
+      const [org, team] = await Promise.allSettled([
         institutionService.getOrganization(activeOrgId),
         institutionService.getManagementTeam(activeOrgId),
       ]);
-      setSchoolData(org);
-      setTeamMembers(team);
+      if (org.status === 'fulfilled') setSchoolData(org.value);
+      else console.warn('[AdminDashboardHome] Escola:', org.reason);
+      if (team.status === 'fulfilled') setTeamMembers(team.value);
+      else console.warn('[AdminDashboardHome] Equipe:', team.reason);
     } catch (err) {
       console.warn('[AdminDashboardHome] Error fetching school/team data:', err);
     } finally {
       setSchoolLoading(false);
       setTeamLoading(false);
     }
-  }, [activeOrgId]);
+  }, [activeOrgId, resolvingOrg]);
 
   const fetchAll = useCallback(async () => {
     setIsSyncing(true);
@@ -111,36 +126,26 @@ export function AdminDashboardHome({ demoMode, selectedUnit }: HomeProps) {
     fetchAll();
   }, [fetchAll, selectedUnit, demoMode]);
 
-  // Atualização em tempo real
+  // Atualização em tempo real (só da escola atual)
   useEffect(() => {
-    const unsubStudents = realtimeService.subscribe('dashboard_students_rt', { table: 'students' }, () => {
-      fetchMetrics();
-    });
-    const unsubGuardians = realtimeService.subscribe('dashboard_guardians_rt', { table: 'guardians' }, () => {
-      fetchMetrics();
-    });
-    const unsubAnnouncements = realtimeService.subscribe('dashboard_announcements_rt', { table: 'announcements' }, () => {
-      fetchMetrics();
-    });
-    const unsubCommunications = realtimeService.subscribe('dashboard_communications_rt', { table: 'communications' }, () => {
-      fetchMetrics();
-    });
-    const unsubOrganizations = realtimeService.subscribe('dashboard_organizations_rt', { table: 'organizations' }, () => {
-      institutionService.getOrganization(activeOrgId).then(setSchoolData);
-      fetchMetrics();
-    });
-    const unsubSchools = realtimeService.subscribe('dashboard_schools_rt', { table: 'schools' }, () => {
-      institutionService.getOrganization(activeOrgId).then(setSchoolData);
-      fetchMetrics();
-    });
-    const unsubTeam = realtimeService.subscribe('dashboard_management_team_rt', { table: 'school_management_team' }, () => {
-      institutionService.getManagementTeam(activeOrgId).then(setTeamMembers);
-      fetchMetrics();
-    });
-    const unsubStaff = realtimeService.subscribe('dashboard_school_staff_rt', { table: 'school_staff' }, () => {
-      institutionService.getManagementTeam(activeOrgId).then(setTeamMembers);
-      fetchMetrics();
-    });
+    if (!activeOrgId) return;
+    const byOrg = `organization_id=eq.${activeOrgId}`;
+    const refreshSchool = () => {
+      institutionService.getOrganization(activeOrgId).then(setSchoolData).catch(() => {});
+    };
+    const refreshTeam = () => {
+      institutionService.getManagementTeam(activeOrgId).then(setTeamMembers).catch(() => {});
+    };
+
+    const unsubs = [
+      realtimeService.subscribe(`dashboard_students_${activeOrgId}`, { table: 'students', filter: byOrg }, () => fetchMetrics()),
+      realtimeService.subscribe(`dashboard_guardians_${activeOrgId}`, { table: 'guardians', filter: byOrg }, () => fetchMetrics()),
+      realtimeService.subscribe(`dashboard_communications_${activeOrgId}`, { table: 'communications', filter: byOrg }, () => fetchMetrics()),
+      realtimeService.subscribe(`dashboard_organization_${activeOrgId}`, { table: 'organizations', filter: `id=eq.${activeOrgId}` }, refreshSchool),
+      realtimeService.subscribe(`dashboard_schools_${activeOrgId}`, { table: 'schools', filter: byOrg }, refreshSchool),
+      realtimeService.subscribe(`dashboard_team_${activeOrgId}`, { table: 'school_management_team', filter: byOrg }, refreshTeam),
+      realtimeService.subscribe(`dashboard_staff_${activeOrgId}`, { table: 'school_staff', filter: byOrg }, refreshTeam),
+    ];
 
     const handleLocalUpdate = () => {
       fetchSchoolAndTeam();
@@ -149,14 +154,7 @@ export function AdminDashboardHome({ demoMode, selectedUnit }: HomeProps) {
     window.addEventListener('classium_school_updated', handleLocalUpdate);
 
     return () => {
-      unsubStudents();
-      unsubGuardians();
-      unsubAnnouncements();
-      unsubCommunications();
-      unsubOrganizations();
-      unsubSchools();
-      unsubTeam();
-      unsubStaff();
+      unsubs.forEach(u => u());
       window.removeEventListener('classium_school_updated', handleLocalUpdate);
     };
   }, [fetchMetrics, fetchSchoolAndTeam, activeOrgId]);
@@ -202,6 +200,10 @@ export function AdminDashboardHome({ demoMode, selectedUnit }: HomeProps) {
       {/* Cabeçalho com os dados da escola (abre a janela de edição) */}
       <DashboardHeaderUnificado onDataUpdated={fetchSchoolAndTeam} />
 
+      {!activeOrgId && !resolvingOrg && (
+        <Alert tone="danger">Não foi possível identificar a escola deste usuário. Saia e entre de novo no sistema.</Alert>
+      )}
+
       {/* Indicadores */}
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -225,7 +227,7 @@ export function AdminDashboardHome({ demoMode, selectedUnit }: HomeProps) {
           <MetricCard
             index={1}
             title="Responsáveis"
-            subtitle="famílias no portal"
+            subtitle="cadastrados"
             icon={UserCheck}
             state={metrics.guardians}
             onRetry={fetchMetrics}

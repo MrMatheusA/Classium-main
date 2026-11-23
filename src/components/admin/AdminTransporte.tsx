@@ -179,7 +179,7 @@ export function AdminTransporte({ selectedUnit: propUnit }: AdminTransporteProps
     setEditingVehicleId(veh.id);
     setVehicleForm({
       numero: veh.numero,
-      tipo: veh.tipo,
+      tipo: (['Ônibus', 'Van', 'Micro-ônibus'].includes(veh.tipo) ? veh.tipo : 'Ônibus') as VehicleForm['tipo'],
       driverName: veh.driverName,
       driverPhone: veh.driverPhone,
       driverCnh: veh.driverCnh,

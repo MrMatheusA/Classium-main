@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { friendlyDbError, isUuid, safeFileName } from './tenant';
 
 export interface InstitutionData {
   id: string;
@@ -43,13 +44,22 @@ export interface SchoolShiftData {
   created_at?: string;
 }
 
-export type ManagementRole = 
+export type ManagementRole =
   | 'Diretor(a) Geral'
   | 'Vice-Diretor(a)'
   | 'Pedagogo(a)'
   | 'Supervisor(a)'
   | 'Coordenador(a) Pedagógico(a)'
   | 'Outro';
+
+export const MANAGEMENT_ROLES: ManagementRole[] = [
+  'Diretor(a) Geral',
+  'Vice-Diretor(a)',
+  'Pedagogo(a)',
+  'Supervisor(a)',
+  'Coordenador(a) Pedagógico(a)',
+  'Outro',
+];
 
 export interface ManagementTeamMember {
   id: string;
@@ -65,845 +75,250 @@ export interface ManagementTeamMember {
   updated_at?: string;
 }
 
-const isValidUUID = (id?: string | null): boolean => {
-  if (!id || typeof id !== 'string') return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
+const NO_SCHOOL = 'Não foi possível identificar a escola. Saia e entre de novo no sistema.';
 
-const resolveOrgId = (id?: string | null): string | null => {
-  if (id && isValidUUID(id)) return id;
-  return null;
-};
+function formatCnpj(raw?: string | null): string {
+  const d = (raw || '').replace(/\D/g, '');
+  if (d.length !== 14) return raw || '';
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
+/** Linha de organizations → formato usado pelas telas */
+function toInstitution(row: any): InstitutionData {
+  const settings = row?.settings || {};
+  const cnpj = formatCnpj(row?.document_number);
+  return {
+    ...row,
+    id: row.id,
+    name: row.name || '',
+    official_name: row.name || '',
+    legal_name: row.name || '',
+    fantasy_name: row.trade_name || '',
+    trade_name: row.trade_name || '',
+    document_number: cnpj,
+    cnpj,
+    state_registration: settings.state_registration || '',
+    inep_code: row.inep_code || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    phone_fixed: row.phone || '',
+    phone_mobile: settings.phone_mobile || '',
+    address: row.address || '',
+    city: row.city || '',
+    state: row.state || '',
+    postal_code: row.postal_code || '',
+    logo_url: row.logo_url || '',
+    platform_url: row.platform_url || settings.platform_url || '',
+    website: row.website || '',
+    status: row.status || 'active',
+    is_active: row.is_active !== false,
+    can_edit: row.can_edit === true,
+    settings,
+  };
+}
+
+function toMember(m: any): ManagementTeamMember {
+  return {
+    id: m.id,
+    organization_id: m.organization_id,
+    school_id: m.school_id,
+    name: m.full_name || m.name || '',
+    role: (MANAGEMENT_ROLES.includes(m.role) ? m.role : 'Outro') as ManagementRole,
+    custom_role_title: m.custom_role_title || (MANAGEMENT_ROLES.includes(m.role) ? undefined : m.role || undefined),
+    email: m.email || '',
+    phone: m.phone || '',
+    is_active: m.status !== 'inativo' && !m.deleted_at,
+    created_at: m.created_at,
+    updated_at: m.updated_at,
+  };
+}
 
 export const institutionService = {
-  /**
-   * Get organization cadastral data by ID or active tenant
-   */
+  /** Dados da escola. Lança erro se não conseguir ler (sem cópia antiga do navegador). */
   async getOrganization(organizationId?: string): Promise<InstitutionData> {
-    const orgId = resolveOrgId(organizationId);
+    if (!isUuid(organizationId)) throw new Error(NO_SCHOOL);
 
-    if (!orgId) {
-      return {
-        id: '',
-        name: '',
-        official_name: '',
-        legal_name: '',
-        fantasy_name: '',
-        trade_name: '',
-        document_number: '',
-        cnpj: '',
-        state_registration: '',
-        inep_code: '',
-        email: '',
-        phone: '',
-        phone_fixed: '',
-        phone_mobile: '',
-        address: '',
-        city: '',
-        state: '',
-        postal_code: '',
-        logo_url: '',
-        platform_url: 'https://classium.edu.br/portal',
-        website: '',
-        status: 'inactive',
-        plan_status: 'STANDARD',
-        is_active: false,
-        can_edit: false,
-        settings: {}
-      };
-    }
-
-    // 1. Try Backend API endpoint
-    try {
-      const headers: Record<string, string> = { 'x-organization-id': orgId };
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.access_token) {
-          headers['Authorization'] = `Bearer ${sessionData.session.access_token}`;
-        }
-      } catch (_) {}
-
-      const res = await fetch(`/api/organization/${orgId}`, {
-        headers
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          localStorage.setItem('classium_organization_data', JSON.stringify(json.data));
-          return json.data;
-        }
-      }
-    } catch (apiErr) {
-      console.warn('[institutionService] Backend API getOrganization warning:', apiErr);
-    }
-
-    // 2. Try Direct Supabase Query (organizations & schools tables)
-    try {
-      const [orgRes, schoolRes] = await Promise.all([
-        supabase
-          .from('organizations')
-          .select('*')
-          .eq('id', orgId)
-          .maybeSingle(),
-        supabase
-          .from('schools')
-          .select('*')
-          .eq('id', orgId)
-          .maybeSingle()
-      ]);
-
-      const orgData = orgRes.data;
-      const schoolData = schoolRes.data;
-
-      if (orgData || schoolData) {
-        const settings = orgData?.settings || {};
-        const formatted: InstitutionData = {
-          id: orgId,
-          name: schoolData?.name || orgData?.name || settings.official_name || '',
-          official_name: settings.official_name || schoolData?.name || orgData?.name || orgData?.trade_name || '',
-          legal_name: schoolData?.name || orgData?.name || settings.official_name || '',
-          fantasy_name: orgData?.trade_name || schoolData?.name || settings.fantasy_name || '',
-          trade_name: orgData?.trade_name || schoolData?.name || settings.fantasy_name || '',
-          document_number: orgData?.document_number || settings.cnpj || '',
-          cnpj: orgData?.document_number || settings.cnpj || '',
-          state_registration: settings.state_registration || '',
-          inep_code: schoolData?.inep_code || orgData?.inep_code || settings.inep_code || '',
-          email: schoolData?.email || orgData?.email || '',
-          phone: schoolData?.phone || orgData?.phone || settings.phone_fixed || '',
-          phone_fixed: settings.phone_fixed || schoolData?.phone || orgData?.phone || '',
-          phone_mobile: settings.phone_mobile || '',
-          address: schoolData?.address || orgData?.address || null,
-          city: schoolData?.city || orgData?.city || '',
-          state: schoolData?.state || orgData?.state || '',
-          postal_code: schoolData?.postal_code || orgData?.postal_code || null,
-          logo_url: orgData?.logo_url || null,
-          platform_url: settings.platform_url || 'https://classium.edu.br/portal',
-          website: settings.website || '',
-          status: schoolData?.status || orgData?.status || 'active',
-          plan_status: settings.plan_status || 'STANDARD',
-          is_active: (schoolData?.status || orgData?.status) !== 'inactive',
-          can_edit: true,
-          settings: settings,
-          created_at: orgData?.created_at || schoolData?.created_at,
-          updated_at: orgData?.updated_at || schoolData?.updated_at
-        };
-
-        localStorage.setItem('classium_organization_data', JSON.stringify(formatted));
-        return formatted;
-      }
-    } catch (sbErr) {
-      console.warn('[institutionService] Supabase direct query warning:', sbErr);
-    }
-
-    // 3. Fallback from LocalStorage cache
-    const stored = localStorage.getItem('classium_organization_data');
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {}
-    }
-
-    // 4. Default Clean State (no fake mock data)
-    return {
-      id: orgId,
-      name: '',
-      official_name: '',
-      legal_name: '',
-      fantasy_name: '',
-      trade_name: '',
-      document_number: '',
-      cnpj: '',
-      state_registration: '',
-      inep_code: '',
-      email: '',
-      phone: '',
-      phone_fixed: '',
-      phone_mobile: '',
-      address: '',
-      city: '',
-      state: '',
-      postal_code: '',
-      logo_url: '',
-      platform_url: 'https://classium.edu.br/portal',
-      website: '',
-      status: 'active',
-      plan_status: 'STANDARD',
-      is_active: true,
-      can_edit: true,
-      settings: {}
-    };
+    const { data, error } = await supabase.rpc('classium_get_organization', { p_org: organizationId });
+    if (error) throw new Error(friendlyDbError(error.message, 'Não foi possível carregar os dados da escola.'));
+    if (!data) throw new Error('Seu usuário não tem acesso aos dados desta escola.');
+    return toInstitution(data);
   },
 
-  /**
-   * Update organization cadastral data
-   */
+  /** Grava os dados da escola. Só diz que salvou se o banco confirmar. */
   async updateOrganization(organizationId: string, payload: Partial<InstitutionData>): Promise<{ success: boolean; data?: InstitutionData; error?: string }> {
-    const orgId = resolveOrgId(organizationId || payload.id);
+    const orgId = isUuid(organizationId) ? organizationId : isUuid(payload.id) ? payload.id : null;
+    if (!orgId) return { success: false, error: NO_SCHOOL };
 
-    // Build unified payload
-    const officialName = payload.official_name || payload.legal_name || payload.name || '';
-    const fantasyName = payload.fantasy_name || payload.trade_name || '';
-    const cnpj = payload.cnpj || payload.document_number || '';
-    const stateReg = payload.state_registration || '';
-    const phoneFixed = payload.phone_fixed || payload.phone || '';
-    const phoneMobile = payload.phone_mobile || '';
-    const email = payload.email || '';
-    const logoUrl = payload.logo_url || '';
-    const platformUrl = payload.platform_url || '';
-    const website = payload.website || '';
+    const name = (payload.official_name || payload.legal_name || payload.name || '').trim();
+    if (!name) return { success: false, error: 'Informe o nome oficial da escola.' };
 
-    const settings = {
-      ...(payload.settings || {}),
-      official_name: officialName,
-      fantasy_name: fantasyName,
-      cnpj: cnpj,
-      state_registration: stateReg,
-      phone_fixed: phoneFixed,
-      phone_mobile: phoneMobile,
-      platform_url: platformUrl,
-      website: website,
-      plan_status: payload.plan_status || 'STANDARD'
+    const cnpjDigits = (payload.cnpj || payload.document_number || '').replace(/\D/g, '');
+    if (cnpjDigits && cnpjDigits.length !== 14) return { success: false, error: 'CNPJ incompleto. Confira os 14 números.' };
+
+    const email = (payload.email || '').trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { success: false, error: 'E-mail inválido.' };
+
+    const body: Record<string, any> = {
+      name,
+      trade_name: (payload.fantasy_name || payload.trade_name || '').trim(),
+      document_number: cnpjDigits,
+      inep_code: (payload.inep_code || '').trim(),
+      email,
+      phone: (payload.phone_fixed || payload.phone || '').trim(),
+      address: (payload.address || '').trim(),
+      city: (payload.city || '').trim(),
+      state: (payload.state || '').trim(),
+      postal_code: (payload.postal_code || '').trim(),
+      website: (payload.website || '').trim(),
+      settings: {
+        state_registration: (payload.state_registration || '').trim(),
+        phone_mobile: (payload.phone_mobile || '').trim(),
+      },
     };
+    if (payload.logo_url !== undefined) body.logo_url = payload.logo_url || '';
 
-    const updateBody = {
-      id: orgId,
-      name: officialName,
-      trade_name: fantasyName,
-      document_number: cnpj,
-      email: email,
-      phone: phoneFixed || phoneMobile,
-      logo_url: logoUrl || null,
-      settings: settings,
-      updated_at: new Date().toISOString()
-    };
+    const { data, error } = await supabase.rpc('classium_update_organization', { p_org: orgId, p_payload: body });
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível salvar os dados da escola.') };
+    if (!data?.success) return { success: false, error: data?.error || 'Não foi possível salvar os dados da escola.' };
 
-    // Update LocalStorage immediately
-    localStorage.setItem('classium_organization_data', JSON.stringify({ ...payload, ...updateBody, settings }));
-
-    // 1. Try Backend API
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-organization-id': orgId
-      };
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.access_token) {
-          headers['Authorization'] = `Bearer ${sessionData.session.access_token}`;
-        }
-      } catch (_) {}
-
-      const res = await fetch(`/api/organization/${orgId}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({ ...payload, ...updateBody })
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          localStorage.setItem('classium_organization_data', JSON.stringify(json.data));
-          return { success: true, data: json.data };
-        }
-      }
-    } catch (apiErr) {
-      console.warn('[institutionService] Backend API PUT warning:', apiErr);
-    }
-
-    // 2. Direct Supabase Update
-    try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .update(updateBody)
-        .eq('id', orgId)
-        .select()
-        .maybeSingle();
-
-      // Sync schools table in Supabase
-      try {
-        await supabase
-          .from('schools')
-          .update({
-            name: officialName || fantasyName,
-            inep_code: payload.inep_code || undefined,
-            email: email || undefined,
-            phone: phoneFixed || phoneMobile || undefined,
-            address: payload.address || undefined,
-            city: payload.city || undefined,
-            state: payload.state || undefined,
-            postal_code: payload.postal_code || undefined,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', orgId);
-      } catch (schoolErr) {
-        console.warn('[institutionService] schools table sync warning:', schoolErr);
-      }
-
-      if (!error) {
-        const savedData = data || updateBody;
-        return { success: true, data: { ...payload, ...savedData } as InstitutionData };
-      } else {
-        console.warn('[institutionService] Supabase update returned error:', error);
-      }
-    } catch (sbErr: any) {
-      console.error('[institutionService] Supabase update catch error:', sbErr);
-    }
-
-    return {
-      success: true,
-      data: { ...payload, ...updateBody } as InstitutionData
-    };
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('classium_school_updated'));
+    return { success: true, data: toInstitution(data.data) };
   },
 
-  /**
-   * Get shifts list for the organization
-   */
+  /** Envia o logo para o espaço da escola e devolve o endereço da imagem */
+  async uploadLogo(organizationId: string, file: File): Promise<string> {
+    if (!isUuid(organizationId)) throw new Error(NO_SCHOOL);
+    if (!/^image\/(png|jpe?g|webp|svg\+xml)$/.test(file.type)) throw new Error('Envie o logo em PNG, JPG, WEBP ou SVG.');
+    if (file.size > 5 * 1024 * 1024) throw new Error('O logo passa de 5 MB. Use uma imagem menor.');
+
+    const path = `${organizationId}/${Date.now()}_${safeFileName(file.name)}`;
+    const { error } = await supabase.storage.from('school-logos').upload(path, file, { upsert: false, contentType: file.type });
+    if (error) throw new Error(friendlyDbError(error.message, 'Não foi possível enviar o logo.'));
+    return supabase.storage.from('school-logos').getPublicUrl(path).data.publicUrl;
+  },
+
+  /* ---------------------------- Turnos ---------------------------- */
+
   async getShifts(organizationId?: string): Promise<SchoolShiftData[]> {
-    const orgId = resolveOrgId(organizationId);
-
-    // 1. Try Backend API
-    try {
-      const res = await fetch(`/api/shifts?organization_id=${encodeURIComponent(orgId)}`, {
-        headers: { 'x-organization-id': orgId }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          return json.data;
-        }
-      }
-    } catch (e) {}
-
-    // 2. Try Supabase
-    try {
-      const { data, error } = await supabase
-        .from('school_shifts')
-        .select('*')
-        .or(`organization_id.eq.${orgId},organization_id.is.null`)
-        .order('created_at', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        return data;
-      }
-    } catch (e) {}
-
-    return [];
+    if (!isUuid(organizationId)) return [];
+    const { data, error } = await supabase
+      .from('school_shifts')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.warn('[institutionService] Turnos:', error.message);
+      return [];
+    }
+    return (data || []) as SchoolShiftData[];
   },
 
-  /**
-   * Create a new school shift
-   */
   async createShift(payload: Partial<SchoolShiftData>, organizationId?: string): Promise<{ success: boolean; data?: SchoolShiftData; error?: string }> {
-    const orgId = resolveOrgId(organizationId);
-    const body = {
-      organization_id: orgId,
-      name: payload.name,
-      start_time: payload.start_time || '07:00:00',
-      end_time: payload.end_time || '11:30:00'
-    };
-
-    // 1. Try Backend API
-    try {
-      const res = await fetch('/api/shifts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-organization-id': orgId },
-        body: JSON.stringify({ ...body, interval_start: payload.interval_start, interval_end: payload.interval_end })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          return { success: true, data: json.data };
-        }
-      }
-    } catch (e) {}
-
-    // 2. Try Supabase
-    try {
-      const { data, error } = await supabase
-        .from('school_shifts')
-        .insert([body])
-        .select()
-        .single();
-
-      if (!error && data) {
-        return { success: true, data };
-      }
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Erro ao criar turno' };
-    }
-
-    return { success: false, error: 'Não foi possível cadastrar o turno no banco de dados' };
+    if (!isUuid(organizationId)) return { success: false, error: NO_SCHOOL };
+    if (!payload.name?.trim() || !payload.start_time || !payload.end_time) return { success: false, error: 'Informe o nome, o início e o fim do turno.' };
+    const { data, error } = await supabase
+      .from('school_shifts')
+      .insert([{ organization_id: organizationId, name: payload.name.trim(), start_time: payload.start_time, end_time: payload.end_time }])
+      .select()
+      .single();
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível cadastrar o turno.') };
+    return { success: true, data };
   },
 
-  /**
-   * Update a school shift
-   */
   async updateShift(shiftId: string, payload: Partial<SchoolShiftData>): Promise<{ success: boolean; data?: SchoolShiftData; error?: string }> {
-    const body = {
-      name: payload.name,
-      start_time: payload.start_time,
-      end_time: payload.end_time
-    };
-
-    // 1. Try Backend API
-    try {
-      const res = await fetch(`/api/shifts/${shiftId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          return { success: true, data: json.data };
-        }
-      }
-    } catch (e) {}
-
-    // 2. Try Supabase
-    try {
-      const { data, error } = await supabase
-        .from('school_shifts')
-        .update(body)
-        .eq('id', shiftId)
-        .select()
-        .single();
-
-      if (!error && data) {
-        return { success: true, data };
-      }
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Erro ao atualizar turno' };
-    }
-
-    return { success: false, error: 'Não foi possível atualizar o turno no banco de dados' };
+    const { data, error } = await supabase
+      .from('school_shifts')
+      .update({ name: payload.name, start_time: payload.start_time, end_time: payload.end_time })
+      .eq('id', shiftId)
+      .select()
+      .maybeSingle();
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível salvar o turno.') };
+    if (!data) return { success: false, error: 'Turno não encontrado ou sem permissão.' };
+    return { success: true, data };
   },
 
-  /**
-   * Delete a school shift
-   */
   async deleteShift(shiftId: string): Promise<{ success: boolean; error?: string }> {
-    // 1. Try Backend API
-    try {
-      const res = await fetch(`/api/shifts/${shiftId}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) return { success: true };
-      }
-    } catch (e) {}
-
-    // 2. Try Supabase
-    try {
-      const { error } = await supabase
-        .from('school_shifts')
-        .delete()
-        .eq('id', shiftId);
-
-      if (!error) return { success: true };
-      return { success: false, error: error.message };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Erro ao excluir turno' };
-    }
-  },
-
-  /**
-   * Get Management Team Members for Organization
-   */
-  async getManagementTeam(organizationId?: string): Promise<ManagementTeamMember[]> {
-    const orgId = resolveOrgId(organizationId);
-    let rawList: ManagementTeamMember[] = [];
-
-    // 1. Try Backend API
-    try {
-      const res = await fetch(`/api/organization/${orgId}/management-team`, {
-        headers: { 'x-organization-id': orgId }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          rawList = json.data;
-        }
-      }
-    } catch (e) {}
-
-    // 2. Try Supabase school_staff canonical table
-    if (rawList.length === 0) {
-      try {
-        const { data, error } = await supabase
-          .from('school_staff')
-          .select('*')
-          .or(`organization_id.eq.${orgId},school_id.eq.${orgId}`)
-          .order('created_at', { ascending: true });
-
-        if (!error && data && data.length > 0) {
-          rawList = data.map((m: any) => ({
-            id: m.id,
-            organization_id: m.organization_id || orgId,
-            school_id: m.school_id || orgId,
-            name: m.full_name || m.name,
-            role: m.role || 'Vice-Diretor(a)',
-            custom_role_title: m.custom_role_title,
-            email: m.email || '',
-            phone: m.phone || '',
-            is_active: m.is_active ?? true,
-            created_at: m.created_at,
-            updated_at: m.updated_at
-          }));
-        }
-      } catch (e) {}
-    }
-
-    // 3. Try Supabase school_management_team table
-    if (rawList.length === 0) {
-      try {
-        const { data, error } = await supabase
-          .from('school_management_team')
-          .select('*')
-          .or(`organization_id.eq.${orgId},school_id.eq.${orgId}`)
-          .order('created_at', { ascending: true });
-
-        if (!error && data && data.length > 0) {
-          rawList = data as ManagementTeamMember[];
-        }
-      } catch (e) {}
-    }
-
-    // 4. Try reading from organization settings
-    if (rawList.length === 0) {
-      try {
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('settings')
-          .eq('id', orgId)
-          .maybeSingle();
-
-        if (orgData?.settings?.management_team && Array.isArray(orgData.settings.management_team) && orgData.settings.management_team.length > 0) {
-          rawList = orgData.settings.management_team;
-        }
-      } catch (e) {}
-    }
-
-    // 4. Try LocalStorage
-    if (rawList.length === 0) {
-      const stored = localStorage.getItem(`classium_team_${orgId}`);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) rawList = parsed;
-        } catch (e) {}
-      }
-    }
-
-    // Ensure UNIQUE IDs across all items so duplicates have distinct keys
-    const seenIds = new Set<string>();
-    const sanitizedList: ManagementTeamMember[] = rawList.map((item, idx) => {
-      let baseId = item.id || `team-${idx}-${Date.now()}`;
-      if (seenIds.has(baseId)) {
-        baseId = `${baseId}-dup-${idx}`;
-      }
-      seenIds.add(baseId);
-      return {
-        ...item,
-        id: baseId,
-        organization_id: item.organization_id || orgId,
-        school_id: item.school_id || orgId
-      };
-    });
-
-    localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(sanitizedList));
-    return sanitizedList;
-  },
-
-  /**
-   * Add a Management Team Member
-   */
-  async addManagementTeamMember(organizationId: string, member: Partial<ManagementTeamMember>): Promise<{ success: boolean; data?: ManagementTeamMember; error?: string }> {
-    const orgId = resolveOrgId(organizationId);
-    const generatedId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' 
-      ? crypto.randomUUID() 
-      : '11111111-1111-4000-8000-' + Math.random().toString(16).substring(2, 14).padEnd(12, '0');
-    const memberId = member.id && isValidUUID(member.id) ? member.id : generatedId;
-
-    const newMember: ManagementTeamMember = {
-      id: memberId,
-      organization_id: orgId,
-      school_id: orgId,
-      name: (member.name || '').trim(),
-      role: member.role || 'Vice-Diretor(a)',
-      custom_role_title: member.role === 'Outro' ? (member.custom_role_title || '').trim() : undefined,
-      email: (member.email || '').trim(),
-      phone: (member.phone || '').trim(),
-      is_active: member.is_active ?? true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    // 1. Try Backend API
-    try {
-      const res = await fetch(`/api/organization/${orgId}/management-team`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-organization-id': orgId },
-        body: JSON.stringify(newMember)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          const current = await this.getManagementTeam(orgId);
-          const updated = [...current.filter(m => m.id !== json.data.id), json.data];
-          localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-          return { success: true, data: json.data };
-        }
-      }
-    } catch (e) {}
-
-    // 2. Try Supabase school_staff canonical table
-    try {
-      const { data, error } = await supabase
-        .from('school_staff')
-        .insert([{
-          id: newMember.id,
-          organization_id: orgId,
-          full_name: newMember.name,
-          role: newMember.role,
-          email: newMember.email,
-          phone: newMember.phone,
-          created_at: newMember.created_at,
-          updated_at: newMember.updated_at
-        }])
-        .select()
-        .single();
-
-      if (!error && data) {
-        const current = await this.getManagementTeam(orgId);
-        const updated = [...current.filter(m => m.id !== data.id), {
-          ...newMember,
-          id: data.id
-        }];
-        localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-        return { success: true, data: { ...newMember, id: data.id } };
-      }
-    } catch (e) {}
-
-    // 3. Try Supabase school_management_team table
-    try {
-      const { data, error } = await supabase
-        .from('school_management_team')
-        .insert([newMember])
-        .select()
-        .single();
-
-      if (!error && data) {
-        const current = await this.getManagementTeam(orgId);
-        const updated = [...current.filter(m => m.id !== data.id), data];
-        localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-        return { success: true, data };
-      }
-    } catch (e) {}
-
-    // 4. Fallback: Save inside organization settings
-    try {
-      const current = await this.getManagementTeam(orgId);
-      const updated = [...current, newMember];
-      localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('settings')
-        .eq('id', orgId)
-        .maybeSingle();
-
-      const newSettings = {
-        ...(orgData?.settings || {}),
-        management_team: updated
-      };
-
-      await supabase
-        .from('organizations')
-        .update({ settings: newSettings, updated_at: new Date().toISOString() })
-        .eq('id', orgId);
-
-      return { success: true, data: newMember };
-    } catch (e: any) {
-      console.warn('[institutionService] Team fallback update warning:', e);
-      return { success: true, data: newMember };
-    }
-  },
-
-  /**
-   * Update a Management Team Member
-   */
-  async updateManagementTeamMember(organizationId: string, memberId: string, updates: Partial<ManagementTeamMember>): Promise<{ success: boolean; data?: ManagementTeamMember; error?: string }> {
-    const orgId = resolveOrgId(organizationId);
-    const realMemberId = memberId.split('-dup-')[0];
-
-    // 1. Try Backend API
-    try {
-      const res = await fetch(`/api/organization/${orgId}/management-team/${encodeURIComponent(realMemberId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-organization-id': orgId },
-        body: JSON.stringify(updates)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          const current = await this.getManagementTeam(orgId);
-          const updated = current.map(m => (m.id === memberId || m.id === realMemberId) ? { ...m, ...json.data } : m);
-          localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-          return { success: true, data: json.data };
-        }
-      }
-    } catch (e) {}
-
-    // 2. Try Supabase school_staff canonical table
-    try {
-      const staffUpdates: any = { updated_at: new Date().toISOString() };
-      if (updates.name) staffUpdates.full_name = updates.name;
-      if (updates.role) staffUpdates.role = updates.role;
-      if (updates.email !== undefined) staffUpdates.email = updates.email;
-      if (updates.phone !== undefined) staffUpdates.phone = updates.phone;
-
-      const { data: staffData } = await supabase
-        .from('school_staff')
-        .update(staffUpdates)
-        .eq('id', realMemberId)
-        .select()
-        .maybeSingle();
-
-      if (staffData) {
-        const current = await this.getManagementTeam(orgId);
-        const updated = current.map(m => (m.id === memberId || m.id === realMemberId) ? { ...m, ...updates, ...staffData, name: staffData.full_name || updates.name || m.name } : m);
-        localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-        return { success: true, data: { ...updates, ...staffData, name: staffData.full_name || updates.name } as ManagementTeamMember };
-      }
-    } catch (e) {}
-
-    // 3. Try Supabase school_management_team table
-    try {
-      const { data, error } = await supabase
-        .from('school_management_team')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', realMemberId)
-        .select()
-        .single();
-
-      if (!error && data) {
-        const current = await this.getManagementTeam(orgId);
-        const updated = current.map(m => (m.id === memberId || m.id === realMemberId) ? { ...m, ...data } : m);
-        localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-        return { success: true, data };
-      }
-    } catch (e) {}
-
-    // 4. Fallback: Save inside organization settings
-    try {
-      const current = await this.getManagementTeam(orgId);
-      const updated = current.map(m => (m.id === memberId || m.id === realMemberId) ? { ...m, ...updates, updated_at: new Date().toISOString() } : m);
-      localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(updated));
-
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('settings')
-        .eq('id', orgId)
-        .maybeSingle();
-
-      const newSettings = {
-        ...(orgData?.settings || {}),
-        management_team: updated
-      };
-
-      await supabase
-        .from('organizations')
-        .update({ settings: newSettings, updated_at: new Date().toISOString() })
-        .eq('id', orgId);
-
-      const target = updated.find(m => m.id === memberId || m.id === realMemberId);
-      return { success: true, data: target };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Erro ao atualizar membro' };
-    }
-  },
-
-  /**
-   * Delete a Management Team Member
-   */
-  async deleteManagementTeamMember(organizationId: string, memberId: string): Promise<{ success: boolean; error?: string }> {
-    const orgId = resolveOrgId(organizationId);
-    const realMemberId = memberId.split('-dup-')[0];
-
-    // 1. Try Backend API
-    try {
-      const res = await fetch(`/api/organization/${orgId}/management-team/${encodeURIComponent(realMemberId)}`, {
-        method: 'DELETE',
-        headers: { 'x-organization-id': orgId }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) {
-          // Success via API
-        }
-      }
-    } catch (e) {}
-
-    // 2. Direct Supabase delete from school_staff table
-    try {
-      await supabase
-        .from('school_staff')
-        .delete()
-        .eq('id', realMemberId);
-    } catch (e) {}
-
-    // 3. Direct Supabase delete from school_management_team table
-    try {
-      await supabase
-        .from('school_management_team')
-        .delete()
-        .eq('id', realMemberId);
-    } catch (e) {}
-
-    // 4. ALWAYS clean up from organizations.settings.management_team
-    try {
-      const { data: orgData } = await supabase
-        .from('organizations')
-        .select('settings')
-        .eq('id', orgId)
-        .maybeSingle();
-
-      if (orgData?.settings?.management_team && Array.isArray(orgData.settings.management_team)) {
-        const currentTeam = orgData.settings.management_team;
-        const updatedSettingsTeam = currentTeam.filter((m: any) => m.id !== realMemberId && m.id !== memberId);
-
-        if (currentTeam.length !== updatedSettingsTeam.length) {
-          await supabase
-            .from('organizations')
-            .update({
-              settings: { ...(orgData.settings || {}), management_team: updatedSettingsTeam },
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', orgId);
-        }
-      }
-    } catch (e) {}
-
-    // 4. Update LocalStorage cache
-    try {
-      const stored = localStorage.getItem(`classium_team_${orgId}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const filtered = parsed.filter((m: any) => m.id !== realMemberId && m.id !== memberId);
-          localStorage.setItem(`classium_team_${orgId}`, JSON.stringify(filtered));
-        }
-      }
-    } catch (e) {}
-
+    const { data, error } = await supabase.from('school_shifts').delete().eq('id', shiftId).select('id');
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível excluir o turno.') };
+    if (!data || data.length === 0) return { success: false, error: 'Turno não encontrado ou sem permissão.' };
     return { success: true };
-  }
+  },
+
+  /* ------------------------ Equipe gestora ------------------------ */
+
+  /** Direção e coordenação (registros de school_staff marcados como gestão) */
+  async getManagementTeam(organizationId?: string): Promise<ManagementTeamMember[]> {
+    if (!isUuid(organizationId)) throw new Error(NO_SCHOOL);
+    const { data, error } = await supabase
+      .from('school_staff')
+      .select('id, organization_id, school_id, full_name, name, role, custom_role_title, email, phone, status, deleted_at, created_at, updated_at')
+      .eq('organization_id', organizationId)
+      .eq('is_management', true)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(friendlyDbError(error.message, 'Não foi possível carregar a equipe gestora.'));
+
+    const order = (r: ManagementRole) => MANAGEMENT_ROLES.indexOf(r);
+    return ((data || []) as any[]).map(toMember).sort((a, b) => order(a.role) - order(b.role));
+  },
+
+  async addManagementTeamMember(organizationId: string, member: Partial<ManagementTeamMember>): Promise<{ success: boolean; data?: ManagementTeamMember; error?: string }> {
+    if (!isUuid(organizationId)) return { success: false, error: NO_SCHOOL };
+    const name = (member.name || '').trim();
+    if (!name) return { success: false, error: 'Informe o nome.' };
+    if (member.role === 'Outro' && !member.custom_role_title?.trim()) return { success: false, error: 'Informe o nome do cargo.' };
+
+    const { data, error } = await supabase
+      .from('school_staff')
+      .insert([{
+        organization_id: organizationId,
+        full_name: name,
+        name,
+        role: member.role || 'Outro',
+        custom_role_title: member.role === 'Outro' ? member.custom_role_title?.trim() : null,
+        job_title: member.role === 'Outro' ? member.custom_role_title?.trim() : member.role,
+        email: member.email?.trim() || null,
+        phone: member.phone?.trim() || null,
+        is_management: true,
+        status: 'ativo',
+      }])
+      .select()
+      .single();
+
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível adicionar.') };
+    return { success: true, data: toMember(data) };
+  },
+
+  async updateManagementTeamMember(_organizationId: string, memberId: string, updates: Partial<ManagementTeamMember>): Promise<{ success: boolean; data?: ManagementTeamMember; error?: string }> {
+    if (!isUuid(memberId)) return { success: false, error: 'Registro inválido. Atualize a tela.' };
+    if (updates.name !== undefined && !updates.name.trim()) return { success: false, error: 'Informe o nome.' };
+    if (updates.role === 'Outro' && !updates.custom_role_title?.trim()) return { success: false, error: 'Informe o nome do cargo.' };
+
+    const payload: Record<string, any> = {};
+    if (updates.name !== undefined) {
+      payload.full_name = updates.name.trim();
+      payload.name = payload.full_name;
+    }
+    if (updates.role !== undefined) {
+      payload.role = updates.role;
+      payload.custom_role_title = updates.role === 'Outro' ? updates.custom_role_title?.trim() || null : null;
+      payload.job_title = updates.role === 'Outro' ? payload.custom_role_title : updates.role;
+    }
+    if (updates.email !== undefined) payload.email = updates.email.trim() || null;
+    if (updates.phone !== undefined) payload.phone = updates.phone.trim() || null;
+
+    const { data, error } = await supabase.from('school_staff').update(payload).eq('id', memberId).select().maybeSingle();
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível salvar.') };
+    if (!data) return { success: false, error: 'Registro não encontrado ou sem permissão.' };
+    return { success: true, data: toMember(data) };
+  },
+
+  /** Tira a pessoa da equipe gestora (o cadastro em Funcionários continua) */
+  async deleteManagementTeamMember(_organizationId: string, memberId: string): Promise<{ success: boolean; error?: string }> {
+    if (!isUuid(memberId)) return { success: false, error: 'Registro inválido. Atualize a tela.' };
+    const { data, error } = await supabase.from('school_staff').update({ is_management: false }).eq('id', memberId).select('id');
+    if (error) return { success: false, error: friendlyDbError(error.message, 'Não foi possível remover.') };
+    if (!data || data.length === 0) return { success: false, error: 'Registro não encontrado ou sem permissão.' };
+    return { success: true };
+  },
 };

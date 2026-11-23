@@ -7447,6 +7447,266 @@ Sua resposta deve ser estritamente um JSON válido contendo exatamente a estrutu
     }
   });
 
+  // =====================================================================
+  // FUNCIONÁRIOS COM ACESSO AO SISTEMA
+  // Cria a conta (e-mail + senha provisória), o perfil, o vínculo com a escola
+  // e o cadastro em Funcionários. Só direção/secretaria da escola pode usar.
+  // Na primeira entrada o sistema pede para a pessoa trocar a senha.
+  // =====================================================================
+
+  const STAFF_SYSTEM_ROLES = ['gestor', 'secretaria', 'coordenacao', 'docente', 'portaria', 'funcionario'];
+
+  const generateTemporaryPassword = (): string => {
+    const letters = 'abcdefghjkmnpqrstuvwxyz';
+    const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+    const pick = (set: string, n: number) => Array.from({ length: n }, () => set[crypto.randomInt(set.length)]).join('');
+    return `${pick(upper, 1)}${pick(letters, 3)}-${crypto.randomInt(1000, 9999)}-${pick(letters, 2)}`;
+  };
+
+  /** Confere o login e se a pessoa é da direção/secretaria da escola */
+  const requireSchoolManager = async (req: any, res: any): Promise<{ userId: string; orgId: string; admin: any } | null> => {
+    const rawAuth = req.headers['authorization'];
+    const authHeader = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth;
+    if (!authHeader || !String(authHeader).startsWith('Bearer ')) {
+      res.status(401).json({ success: false, error: 'Sua sessão expirou. Entre de novo.' });
+      return null;
+    }
+    const token = String(authHeader).slice(7).trim();
+    const sb = getSupabaseServerClient(String(authHeader));
+    const admin = getSupabaseAdminClient();
+    if (!sb || !admin) {
+      res.status(503).json({ success: false, error: 'Serviço indisponível no momento. Tente de novo em instantes.' });
+      return null;
+    }
+
+    const { data: { user }, error: authErr } = await sb.auth.getUser(token);
+    if (authErr || !user?.id) {
+      res.status(401).json({ success: false, error: 'Sua sessão expirou. Entre de novo.' });
+      return null;
+    }
+
+    let orgId: string | null = isValidUUID(req.body?.organization_id) ? req.body.organization_id : null;
+    if (!orgId) {
+      const { data: current } = await sb.rpc('classium_current_org');
+      orgId = isValidUUID(current) ? current : null;
+    }
+    if (!orgId) {
+      res.status(400).json({ success: false, error: 'Não foi possível identificar a escola.' });
+      return null;
+    }
+
+    const { data: isManager, error: mgrErr } = await sb.rpc('classium_is_manager', { p_org: orgId });
+    if (mgrErr || isManager !== true) {
+      res.status(403).json({ success: false, error: 'Só a direção ou a secretaria pode criar e gerenciar acessos.' });
+      return null;
+    }
+
+    return { userId: user.id, orgId, admin };
+  };
+
+  // POST /api/staff-accounts — cria funcionário com acesso (ou dá acesso a um já cadastrado)
+  app.post('/api/staff-accounts', async (req, res) => {
+    let createdUserId: string | null = null;
+    let admin: any = null;
+    try {
+      const ctx = await requireSchoolManager(req, res);
+      if (!ctx) return;
+      admin = ctx.admin;
+      const { orgId } = ctx;
+
+      const body = req.body || {};
+      const fullName = String(body.full_name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const cpf = String(body.cpf || '').replace(/\D/g, '') || null;
+      const phone = String(body.phone || '').trim() || null;
+      const role = STAFF_SYSTEM_ROLES.includes(body.role) ? body.role : 'funcionario';
+      const jobTitle = String(body.job_title || '').trim() || null;
+      const staffId: string | null = isValidUUID(body.staff_id) ? body.staff_id : null;
+
+      if (!fullName) return res.status(400).json({ success: false, error: 'Informe o nome completo.' });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ success: false, error: 'Para criar o acesso, informe um e-mail válido. É com ele que a pessoa entra.' });
+      }
+
+      if (staffId) {
+        const { data: existingStaff } = await admin.from('school_staff').select('id, organization_id, user_id').eq('id', staffId).maybeSingle();
+        if (!existingStaff || existingStaff.organization_id !== orgId) {
+          return res.status(404).json({ success: false, error: 'Funcionário não encontrado nesta escola.' });
+        }
+        if (existingStaff.user_id) {
+          return res.status(409).json({ success: false, error: 'Este funcionário já tem acesso. Use "Gerar nova senha".' });
+        }
+      }
+
+      // 1. Conta
+      const temporaryPassword = generateTemporaryPassword();
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        email,
+        password: temporaryPassword,
+        email_confirm: true,
+        user_metadata: { full_name: fullName, must_change_password: true },
+      });
+
+      if (createErr || !created?.user?.id) {
+        const msg = String(createErr?.message || '').toLowerCase();
+        if (msg.includes('already') || msg.includes('registered') || msg.includes('exists')) {
+          return res.status(409).json({ success: false, error: 'Já existe uma conta com este e-mail. Use outro e-mail ou peça ao suporte para vincular a conta à escola.' });
+        }
+        console.error('[POST /api/staff-accounts] createUser:', createErr);
+        return res.status(500).json({ success: false, error: 'Não foi possível criar a conta agora. Tente de novo.' });
+      }
+      createdUserId = created.user.id;
+
+      // 2. Perfil (pede troca de senha na primeira entrada)
+      const profileRow: Record<string, any> = {
+        id: createdUserId,
+        full_name: fullName,
+        email,
+        phone,
+        cpf,
+        job_title: jobTitle,
+        role,
+        organization_id: orgId,
+        school_id: orgId,
+        is_active: true,
+        must_change_password: true,
+      };
+      let { error: profileErr } = await admin.from('profiles').upsert(profileRow, { onConflict: 'id' });
+      if (profileErr && /check|constraint|enum|invalid input/i.test(profileErr.message || '')) {
+        // O perfil pode ter uma lista fechada de papéis: o papel na escola fica em organization_members
+        delete profileRow.role;
+        ({ error: profileErr } = await admin.from('profiles').upsert(profileRow, { onConflict: 'id' }));
+      }
+      if (profileErr) throw new Error(`profiles: ${profileErr.message}`);
+
+      // 3. Vínculo com a escola
+      const { error: memberErr } = await admin.from('organization_members').insert({
+        user_id: createdUserId,
+        organization_id: orgId,
+        role,
+        is_active: true,
+      });
+      if (memberErr) throw new Error(`organization_members: ${memberErr.message}`);
+
+      // 4. Cadastro em Funcionários
+      const staffPayload: Record<string, any> = {
+        organization_id: orgId,
+        school_id: orgId,
+        user_id: createdUserId,
+        profile_id: createdUserId,
+        full_name: fullName,
+        name: fullName,
+        email,
+        phone,
+        cpf,
+        role,
+        job_title: jobTitle,
+        department: String(body.department || '').trim() || null,
+        shifts: Array.isArray(body.shifts) ? body.shifts.filter((s: any) => typeof s === 'string') : [],
+        access_enabled: true,
+        status: 'ativo',
+      };
+
+      const staffQuery = staffId
+        ? admin.from('school_staff').update(staffPayload).eq('id', staffId).select().single()
+        : admin.from('school_staff').insert(staffPayload).select().single();
+      const { data: staff, error: staffErr } = await staffQuery;
+      if (staffErr || !staff) throw new Error(`school_staff: ${staffErr?.message || 'sem retorno'}`);
+
+      // 5. Professor também entra na lista de professores (horários, turmas, diário)
+      if (role === 'docente') {
+        const { data: existingTeacher } = await admin.from('teachers').select('id').eq('staff_id', staff.id).maybeSingle();
+        const teacherPayload = {
+          organization_id: orgId,
+          school_id: orgId,
+          staff_id: staff.id,
+          user_id: createdUserId,
+          profile_id: createdUserId,
+          full_name: fullName,
+          name: fullName,
+          email,
+          phone,
+          cpf,
+          specialty: jobTitle,
+          status: 'ativo',
+        };
+        const { error: teacherErr } = existingTeacher
+          ? await admin.from('teachers').update(teacherPayload).eq('id', existingTeacher.id)
+          : await admin.from('teachers').insert(teacherPayload);
+        if (teacherErr) throw new Error(`teachers: ${teacherErr.message}`);
+      }
+
+      return res.status(201).json({ success: true, staff, temporaryPassword, email });
+    } catch (err: any) {
+      console.error('[POST /api/staff-accounts]', err?.message || err);
+      // Desfaz a conta criada para não deixar login solto
+      if (createdUserId && admin) {
+        try {
+          await admin.from('organization_members').delete().eq('user_id', createdUserId);
+          await admin.auth.admin.deleteUser(createdUserId);
+        } catch (_) { /* nada a fazer */ }
+      }
+      return res.status(500).json({ success: false, error: 'Não foi possível concluir o cadastro. Nada foi criado; tente de novo.' });
+    }
+  });
+
+  // POST /api/staff-accounts/:staffId/reset-password — gera nova senha provisória
+  app.post('/api/staff-accounts/:staffId/reset-password', async (req, res) => {
+    try {
+      const ctx = await requireSchoolManager(req, res);
+      if (!ctx) return;
+      const { admin, orgId } = ctx;
+
+      const { data: staff } = await admin.from('school_staff').select('id, organization_id, user_id, email').eq('id', req.params.staffId).maybeSingle();
+      if (!staff || staff.organization_id !== orgId) return res.status(404).json({ success: false, error: 'Funcionário não encontrado nesta escola.' });
+      if (!staff.user_id) return res.status(400).json({ success: false, error: 'Este funcionário ainda não tem acesso ao sistema.' });
+
+      const temporaryPassword = generateTemporaryPassword();
+      const { error } = await admin.auth.admin.updateUserById(staff.user_id, {
+        password: temporaryPassword,
+        user_metadata: { must_change_password: true },
+      });
+      if (error) {
+        console.error('[reset-password]', error);
+        return res.status(500).json({ success: false, error: 'Não foi possível gerar a nova senha. Tente de novo.' });
+      }
+      await admin.from('profiles').update({ must_change_password: true }).eq('id', staff.user_id);
+
+      return res.json({ success: true, temporaryPassword, email: staff.email });
+    } catch (err: any) {
+      console.error('[POST /api/staff-accounts/:id/reset-password]', err?.message || err);
+      return res.status(500).json({ success: false, error: 'Não foi possível gerar a nova senha.' });
+    }
+  });
+
+  // POST /api/staff-accounts/:staffId/access — bloqueia ou libera a entrada no sistema
+  app.post('/api/staff-accounts/:staffId/access', async (req, res) => {
+    try {
+      const ctx = await requireSchoolManager(req, res);
+      if (!ctx) return;
+      const { admin, orgId, userId } = ctx;
+      const enabled = req.body?.enabled === true;
+
+      const { data: staff } = await admin.from('school_staff').select('id, organization_id, user_id').eq('id', req.params.staffId).maybeSingle();
+      if (!staff || staff.organization_id !== orgId) return res.status(404).json({ success: false, error: 'Funcionário não encontrado nesta escola.' });
+      if (!staff.user_id) return res.status(400).json({ success: false, error: 'Este funcionário não tem acesso ao sistema.' });
+      if (staff.user_id === userId && !enabled) return res.status(400).json({ success: false, error: 'Você não pode bloquear o próprio acesso.' });
+
+      const { error: banErr } = await admin.auth.admin.updateUserById(staff.user_id, { ban_duration: enabled ? 'none' : '876000h' });
+      if (banErr) {
+        console.error('[access]', banErr);
+        return res.status(500).json({ success: false, error: 'Não foi possível alterar o acesso. Tente de novo.' });
+      }
+      await admin.from('organization_members').update({ is_active: enabled }).eq('user_id', staff.user_id).eq('organization_id', orgId);
+      await admin.from('school_staff').update({ access_enabled: enabled }).eq('id', staff.id);
+
+      return res.json({ success: true, enabled });
+    } catch (err: any) {
+      console.error('[POST /api/staff-accounts/:id/access]', err?.message || err);
+      return res.status(500).json({ success: false, error: 'Não foi possível alterar o acesso.' });
+    }
+  });
+
   // POST /api/staff
   app.post("/api/staff", async (req, res) => {
     try {

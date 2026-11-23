@@ -2,21 +2,22 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { usePlatform } from '../../context/PlatformContext';
 import { studentsService, deduplicateStudents } from '../../services/students/students.service';
-import { classesService } from '../../services/classes/classes.service';
 import { 
-  GraduationCap, RefreshCw, Search, Filter, ShieldCheck, ShieldAlert, 
-  User, Users, Mail, Phone, Calendar, FileText, CheckCircle2, XCircle, 
-  Sparkles, AlertCircle, BadgeCheck, Eye, X, BookOpen, UserCheck, 
-  DollarSign, Clock, Shield, Hash, Heart, Plus, UserPlus, Edit, Trash2,
-  Truck, Bus, Pencil, Cake, MapPin, Check, Utensils, AlertTriangle, Activity,
+  GraduationCap, RefreshCw, Search, Filter, User, Users, Mail, Phone, Calendar, CheckCircle2, XCircle, 
+  AlertCircle, BadgeCheck, Eye, X, BookOpen, Clock, UserPlus, Trash2,
+  Truck, Pencil, Cake, MapPin, AlertTriangle, Activity,
   ChevronLeft, ChevronRight, CalendarDays
 } from 'lucide-react';
 import { StudentEnrollmentWizard } from './StudentEnrollmentWizard';
 import { StudentAbsenceModal } from './StudentAbsenceModal';
 import { StudentAbsenceHistoryModal } from './StudentAbsenceHistoryModal';
 import { attendanceFrequencyService } from '../../services/attendanceFrequencyService';
-import { cleanCPF, formatCPF } from '../../lib/normalization';
+import { cleanCPF } from '../../lib/normalization';
 import { RealtimeService } from '../../services/RealtimeService';
+import { useActiveOrgId } from '../../hooks/useActiveOrgId';
+import { StudentGuardiansModal } from '../StudentGuardiansModal';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 const realtimeService = RealtimeService.getInstance();
 
@@ -112,7 +113,10 @@ export interface StudentItem {
 
 export function AdminEstudantes() {
   const { schoolInfo, currentUser } = usePlatform();
-  const activeOrgId = schoolInfo?.id || currentUser?.organization_id || currentUser?.organizationId || '11111111-1111-1111-1111-111111111111';
+  const { orgId: activeOrgId, resolving: resolvingOrg } = useActiveOrgId(schoolInfo?.id, currentUser?.organization_id, currentUser?.organizationId);
+
+  // Responsáveis do estudante (janela própria)
+  const [guardiansStudent, setGuardiansStudent] = useState<StudentItem | null>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -145,8 +149,8 @@ export function AdminEstudantes() {
   const [linkClassForm, setLinkClassForm] = useState({
     selectedClassId: '',
     customClassName: '',
-    shift: 'Matutino',
-    academicYear: '2026'
+    shift: '',
+    academicYear: String(CURRENT_YEAR)
   });
 
   // Attendance Frequency State & Modals
@@ -169,9 +173,11 @@ export function AdminEstudantes() {
     document_number: '',
     sex: 'M' as 'M' | 'F',
     status: 'Matriculado',
+    class_id: '',
+    original_class_id: '',
     class_name: '',
-    academic_year: '2026',
-    shift: 'Matutino',
+    academic_year: String(CURRENT_YEAR),
+    shift: '',
     aee: false,
     laudo: false,
     dietary_info: '',
@@ -191,7 +197,7 @@ export function AdminEstudantes() {
 
   // Client-side Filters & Pagination
   const [search, setSearch] = useState<string>('');
-  const [academicYearFilter, setAcademicYearFilter] = useState<string>('2026');
+  const [academicYearFilter, setAcademicYearFilter] = useState<string>('Todos');
   const [classFilter, setClassFilter] = useState<string>('Todas');
   const [shiftFilter, setShiftFilter] = useState<string>('Todos');
   const [statusFilter, setStatusFilter] = useState<string>('Todos');
@@ -199,6 +205,12 @@ export function AdminEstudantes() {
   const [pageSize, setPageSize] = useState<number>(10);
 
   const loadStudents = async () => {
+    if (!activeOrgId) {
+      if (resolvingOrg) return;
+      setLoading(false);
+      setErrorMessage('Não foi possível identificar a escola. Saia e entre de novo no sistema.');
+      return;
+    }
     setLoading(true);
     setErrorMessage(null);
 
@@ -216,19 +228,21 @@ export function AdminEstudantes() {
       await loadAttendanceData();
     } catch (err: any) {
       console.error('[AdminEstudantes] loadStudents error:', err);
-      setErrorMessage('Erro ao carregar lista de estudantes do Supabase.');
+      setErrorMessage('Não foi possível carregar os estudantes. Verifique a conexão e tente de novo.');
     } finally {
       setLoading(false);
     }
   };
 
   const loadRealClasses = async () => {
+    if (!activeOrgId) return;
     try {
       const { data: classesData } = await supabase
         .from('classes')
         .select('id, name, shift, room')
         .eq('organization_id', activeOrgId)
-        .eq('is_active', true)
+        .neq('is_active', false)
+        .is('deleted_at', null)
         .order('name');
       if (classesData && Array.isArray(classesData)) {
         setRealOrgClasses(classesData);
@@ -239,6 +253,7 @@ export function AdminEstudantes() {
   };
 
   const loadAttendanceData = async () => {
+    if (!activeOrgId) return;
     try {
       const radarData = await attendanceFrequencyService.getSchoolAttendanceRadar(activeOrgId);
       const map: Record<string, { absences: number; justified: number; milestone: string }> = {};
@@ -269,14 +284,14 @@ export function AdminEstudantes() {
       loadAttendanceData();
     };
 
-    const unsubStudents = realtimeService.subscribe('students-sub', { table: 'students' }, onDataChanged);
-    const unsubEnrollments = realtimeService.subscribe('enrollments-sub', { table: 'student_enrollments' }, onDataChanged);
-    const unsubGuardians = realtimeService.subscribe('guardians-sub', { table: 'guardians' }, onDataChanged);
-    const unsubRespLinks = realtimeService.subscribe('resp-links-sub', { table: 'student_responsible_links' }, onDataChanged);
-    const unsubFamilyLinks = realtimeService.subscribe('family-links-sub', { table: 'family_links' }, onDataChanged);
-    const unsubClassStudents = realtimeService.subscribe('class-students-sub', { table: 'class_students' }, onDataChanged);
-    const unsubClasses = realtimeService.subscribe('classes-sub', { table: 'classes' }, onDataChanged);
-    const unsubTransport = realtimeService.subscribe('transport-sub', { table: 'transport_students' }, onDataChanged);
+    if (!activeOrgId) return;
+    const byOrg = `organization_id=eq.${activeOrgId}`;
+    const unsubs = [
+      realtimeService.subscribe(`students-${activeOrgId}`, { table: 'students', filter: byOrg }, onDataChanged),
+      realtimeService.subscribe(`guardians-${activeOrgId}`, { table: 'guardians', filter: byOrg }, onDataChanged),
+      realtimeService.subscribe(`resp-links-${activeOrgId}`, { table: 'student_responsible_links', filter: byOrg }, onDataChanged),
+      realtimeService.subscribe(`classes-${activeOrgId}`, { table: 'classes', filter: byOrg }, onDataChanged),
+    ];
 
     const handleLocalSync = () => {
       onDataChanged();
@@ -286,18 +301,12 @@ export function AdminEstudantes() {
     window.addEventListener('classium_school_updated', handleLocalSync);
 
     return () => {
-      unsubStudents();
-      unsubEnrollments();
-      unsubGuardians();
-      unsubRespLinks();
-      unsubFamilyLinks();
-      unsubClassStudents();
-      unsubClasses();
-      unsubTransport();
+      unsubs.forEach(u => u());
       window.removeEventListener('classium_students_updated', handleLocalSync);
       window.removeEventListener('classium_school_updated', handleLocalSync);
     };
-  }, [activeOrgId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrgId, resolvingOrg]);
 
   // Fetch ViaCEP for Edit Form
   const handleFetchCepInEdit = async (cepInput: string) => {
@@ -316,7 +325,7 @@ export function AdminEstudantes() {
           address_city: data.localidade || prev.address_city,
           address_state: data.uf || prev.address_state
         }));
-        showToast('Endereço autocompletado via CEP!');
+        showToast('Endereço preenchido pelo CEP. Confira o número.');
       }
     } catch (err) {
       console.warn('Erro ao consultar ViaCEP no form de edição:', err);
@@ -338,9 +347,11 @@ export function AdminEstudantes() {
       document_number: student.document_number || student.cpf || '',
       sex: (student.sex === 'F' || student.gender === 'F') ? 'F' : 'M',
       status: student.status || student.enrollment_status || 'Matriculado',
-      class_name: mainClass.class_name || mainClass.name || student.class_name || '8º Ano A',
-      academic_year: mainClass.academic_year || student.academic_year || '2026',
-      shift: (mainClass.shift as any) || student.shift || 'Matutino',
+      class_id: student.class_id || mainClass.id || mainClass.class_id || '',
+      original_class_id: student.class_id || mainClass.id || mainClass.class_id || '',
+      class_name: mainClass.class_name || mainClass.name || student.class_name || '',
+      academic_year: String(mainClass.academic_year || student.academic_year || CURRENT_YEAR),
+      shift: (mainClass.shift as any) || student.shift || '',
       aee: !!student.aee,
       laudo: !!student.laudo,
       dietary_info: student.dietary_info || student.dietary_restrictions || '',
@@ -376,83 +387,33 @@ export function AdminEstudantes() {
     const mainClass = (student.classes && student.classes[0]) || {};
     const matchedClass = realOrgClasses.find(c => c.name === mainClass.name || c.id === student.class_id);
     setLinkClassForm({
-      selectedClassId: matchedClass ? matchedClass.id : (realOrgClasses[0]?.id || ''),
-      customClassName: !matchedClass && mainClass.name && mainClass.name !== 'Sem Turma' ? mainClass.name : '',
-      shift: (mainClass.shift as any) || matchedClass?.shift || student.shift || 'Matutino',
-      academicYear: mainClass.academic_year || student.academic_year || '2026'
+      selectedClassId: matchedClass ? matchedClass.id : '',
+      customClassName: '',
+      shift: matchedClass?.shift || '',
+      academicYear: String(CURRENT_YEAR)
     });
     setIsLinkModalOpen(true);
   };
 
-  // Save Quick Class Link
+  // Save Quick Class Link (o banco confere a escola e as vagas da turma)
   const handleSaveQuickLink = async () => {
     if (!studentToLink) return;
     const studentId = studentToLink.id || studentToLink.student_id;
     if (!studentId) return;
 
+    const cls = realOrgClasses.find(c => c.id === linkClassForm.selectedClassId) || null;
     setIsLinkingClass(true);
-    let targetClassName = 'Sem Turma';
-    let targetClassId: string | null = null;
-    let targetShift = linkClassForm.shift;
-
-    if (linkClassForm.selectedClassId && linkClassForm.selectedClassId !== '__custom__') {
-      const cls = realOrgClasses.find(c => c.id === linkClassForm.selectedClassId);
-      if (cls) {
-        targetClassName = cls.name;
-        targetClassId = cls.id;
-        targetShift = (cls.shift as any) || linkClassForm.shift;
-      }
-    } else if (linkClassForm.customClassName.trim()) {
-      targetClassName = linkClassForm.customClassName.trim();
-    }
-
     try {
-      if (targetClassId) {
-        const linkRes = await classesService.linkStudent(targetClassId, studentId, activeOrgId);
-        if (!linkRes.success && linkRes.error) {
-          console.warn("Notice linking student:", linkRes.error);
-        }
-      } else {
-        const prevClassId = studentToLink.class_id || (studentToLink.classes && studentToLink.classes[0]?.id);
-        if (prevClassId) {
-          await classesService.unlinkStudent(prevClassId, studentId, activeOrgId);
-        }
+      const res = await studentsService.setStudentClass(studentId, cls ? cls.id : null);
+      if (!res.success) {
+        showToast(res.error || 'Não foi possível alterar a turma.');
+        return;
       }
-
-      // Update state
-      setItems(prev => prev.map(s => {
-        if (s.id === studentId || s.student_id === studentId) {
-          return {
-            ...s,
-            class_id: targetClassId,
-            class_name: targetClassName,
-            shift: targetShift,
-            academic_year: linkClassForm.academicYear,
-            classes: [{ id: targetClassId || '', name: targetClassName, class_name: targetClassName, shift: targetShift, academic_year: linkClassForm.academicYear }]
-          };
-        }
-        return s;
-      }));
-
-      if (selectedStudent && (selectedStudent.id === studentId || selectedStudent.student_id === studentId)) {
-        setSelectedStudent(prev => prev ? {
-          ...prev,
-          class_id: targetClassId,
-          class_name: targetClassName,
-          shift: targetShift,
-          academic_year: linkClassForm.academicYear,
-          classes: [{ id: targetClassId || '', name: targetClassName, class_name: targetClassName, shift: targetShift, academic_year: linkClassForm.academicYear }]
-        } : null);
-      }
-
       setIsLinkModalOpen(false);
       setStudentToLink(null);
-      showToast(`Estudante vinculado com sucesso à turma ${targetClassName}!`);
-      window.dispatchEvent(new CustomEvent('classium_students_updated'));
-      window.dispatchEvent(new CustomEvent('classium_school_updated'));
-    } catch (err: any) {
-      console.error('Error linking student to class:', err);
-      showToast(`Erro ao vincular estudante: ${err.message || err}`);
+      showToast(cls ? `${studentToLink.full_name || studentToLink.name} agora está na turma ${cls.name}.` : 'Estudante tirado da turma.');
+      await loadStudents();
+      await loadRealClasses();
     } finally {
       setIsLinkingClass(false);
     }
@@ -474,7 +435,7 @@ export function AdminEstudantes() {
       const res = await studentsService.deleteStudent(studentId);
 
       if (!res.success) {
-        throw new Error(res.error || 'Erro ao processar exclusão no banco de dados.');
+        throw new Error(res.error || 'Não foi possível excluir o estudante.');
       }
 
       // ONLY remove from UI state after confirmed database deletion
@@ -485,13 +446,13 @@ export function AdminEstudantes() {
         setSelectedStudent(null);
       }
 
-      showToast(`Estudante ${studentToDelete.full_name || studentToDelete.name} excluído do banco de dados com sucesso!`);
+      showToast(`${studentToDelete.full_name || studentToDelete.name} foi excluído.`);
       setStudentToDelete(null);
       window.dispatchEvent(new CustomEvent('classium_students_updated'));
       window.dispatchEvent(new CustomEvent('classium_school_updated'));
     } catch (err: any) {
       console.error('Delete student database error:', err);
-      showToast(`Não foi possível excluir: ${err.message || 'Erro de conexão com o banco de dados.'}`);
+      showToast(err.message || 'Não foi possível excluir. Verifique a conexão e tente de novo.');
     } finally {
       setIsDeleting(false);
     }
@@ -511,302 +472,98 @@ export function AdminEstudantes() {
       setSelectedStudent(prev => prev ? { ...prev, uses_transport: nextVal, transport_required: nextVal } : null);
     }
 
-    try {
-      // 2. Direct Supabase update on students table
-      const { error: updateErr } = await supabase
-        .from('students')
-        .update({ 
-          uses_transport: nextVal, 
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', studentId);
-
-      if (updateErr) {
-        console.warn('[AdminEstudantes] Direct update error, attempting fallback:', updateErr);
-        await safeSupabaseUpdate('students', studentId, { uses_transport: nextVal });
+    const res = await studentsService.setTransport(studentId, nextVal, activeOrgId);
+    if (!res.success) {
+      // Desfaz a mudança na tela
+      setItems(prev => prev.map(s => (s.id === studentId || s.student_id === studentId) ? { ...s, uses_transport: !nextVal, transport_required: !nextVal } : s));
+      if (selectedStudent && (selectedStudent.id === studentId || selectedStudent.student_id === studentId)) {
+        setSelectedStudent(prev => prev ? { ...prev, uses_transport: !nextVal, transport_required: !nextVal } : null);
       }
-
-      // 3. If turned off, remove from transport_students allocation queue
-      if (!nextVal) {
-        try {
-          await supabase.from('transport_students').delete().eq('student_id', studentId);
-        } catch (delErr) {
-          console.warn('[AdminEstudantes] Error cleaning transport_students link:', delErr);
-        }
-      }
-
-      window.dispatchEvent(new CustomEvent('classium_students_updated'));
-      window.dispatchEvent(new CustomEvent('classium_school_updated'));
-
-      if (nextVal) {
-        showToast(`🚌 Transporte escolar ATIVADO para ${studentName}! O aluno agora aparece no Menu Transporte para alocação.`);
-      } else {
-        showToast(`Transporte escolar desativado para ${studentName}. O aluno não será direcionado ao Menu Transporte.`);
-      }
-    } catch (err: any) {
-      console.error('[AdminEstudantes] Error toggling transport:', err);
-      showToast(`Erro ao atualizar transporte escolar: ${err.message || err}`);
+      showToast(res.error || 'Não foi possível alterar o transporte.');
+      return;
     }
+    showToast(nextVal
+      ? `${studentName} passa a usar transporte escolar e entrou na fila do Transporte.`
+      : `${studentName} não usa mais transporte escolar.`);
   };
 
-  // Helper function to extract missing column from Supabase / PostgREST errors
-  function extractMissingColumn(errorMessage: string): string | null {
-    if (!errorMessage) return null;
-    const match1 = errorMessage.match(/Could not find the ['"]([^'"]+)['"] column/i);
-    if (match1) return match1[1];
+  // Save Student Edit Form (só mostra "salvo" depois que o banco confirma)
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
-    const match2 = errorMessage.match(/column ['"]([^'"]+)['"] of relation/i);
-    if (match2) return match2[1];
-
-    const match3 = errorMessage.match(/column ['"]([^'"]+)['"] does not exist/i);
-    if (match3) return match3[1];
-
-    return null;
-  }
-
-  // Resilient Supabase Update function that strips non-existent columns automatically
-  async function safeSupabaseUpdate(tableName: string, recordId: string, payload: Record<string, any>) {
-    if (!recordId) return { data: null, error: null };
-    
-    // Skip direct DB query for synthetic/fallback client IDs
-    const isSyntheticId = recordId.startsWith('st-') || recordId.startsWith('prof-') || recordId.startsWith('student-');
-    if (isSyntheticId) {
-      return { data: null, error: null };
-    }
-
-    const currentPayload = { ...payload };
-    const maxRetries = 20;
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const { data, error } = await supabase
-        .from(tableName)
-        .update(currentPayload)
-        .eq('id', recordId);
-
-      if (!error) {
-        return { data, error: null };
-      }
-
-      const errMsg = error.message || '';
-      console.warn(`[safeSupabaseUpdate] Attempt ${attempt + 1} on '${tableName}' failed with error:`, errMsg);
-
-      const missingColumn = extractMissingColumn(errMsg);
-      if (missingColumn && missingColumn in currentPayload) {
-        console.warn(`[safeSupabaseUpdate] Column '${missingColumn}' does not exist on table '${tableName}'. Removing and retrying...`);
-        delete currentPayload[missingColumn];
-        continue;
-      }
-
-      // Check for RLS error server fallback via canonical studentsService
-      const isRlsError = errMsg.toLowerCase().includes('row-level security') || 
-                        errMsg.toLowerCase().includes('policy') || 
-                        errMsg.toLowerCase().includes('violates');
-      if (isRlsError) {
-        try {
-          if (tableName === 'students') {
-            const res = await studentsService.updateStudent(recordId, currentPayload);
-            if (res.success) {
-              return { data: { id: recordId, ...currentPayload }, error: null };
-            }
-          }
-        } catch (bypassErr) {
-          console.warn('[safeSupabaseUpdate] Canonical studentsService fallback attempted:', bypassErr);
-        }
-      }
-
-      // If missing column wasn't in payload or error is non-recoverable, break loop gracefully
-      return { data: null, error: null };
-    }
-
-    return { data: null, error: null };
-  }
-
-  // Save Student Edit Form
   const handleSaveStudentEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editForm.full_name) return;
+    setEditError(null);
+    if (!editForm.full_name.trim()) {
+      setEditError('Informe o nome do estudante.');
+      return;
+    }
+    if (!editForm.id) return;
 
+    setIsSavingEdit(true);
     try {
-      const primaryGuardianObj = editForm.guardians && editForm.guardians.length > 0 ? editForm.guardians[0] : null;
-      const gName = primaryGuardianObj?.full_name || primaryGuardianObj?.name || '';
-      const gPhone = primaryGuardianObj?.phone || '';
-      const gRel = primaryGuardianObj?.relationship || 'Responsável';
-      const gCpfClean = cleanCPF(primaryGuardianObj?.cpf || primaryGuardianObj?.document_number || '');
-      const gCpfFormatted = formatCPF(gCpfClean);
-
-      const payload = {
-        name: editForm.full_name,
-        full_name: editForm.full_name,
-        registration_code: editForm.registration_code,
+      const cpfDigits = cleanCPF(editForm.document_number || '');
+      const res = await studentsService.updateStudentFields(editForm.id, {
+        full_name: editForm.full_name.trim(),
+        registration_code: editForm.registration_code.trim(),
         birth_date: editForm.birth_date || null,
-        cpf: editForm.document_number ? cleanCPF(editForm.document_number) : null,
-        document_number: editForm.document_number || null,
+        cpf: cpfDigits || null,
+        document_number: cpfDigits || null,
         sex: editForm.sex,
+        gender: editForm.sex,
         status: editForm.status,
-        class_name: editForm.class_name,
-        academic_year: editForm.academic_year,
-        shift: editForm.shift,
         aee: editForm.aee,
         laudo: editForm.laudo,
-        dietary_info: editForm.dietary_info,
-        medical_notes: editForm.medical_notes,
+        has_special_needs: editForm.aee || editForm.laudo,
+        dietary_info: editForm.dietary_info.trim(),
+        medical_notes: editForm.medical_notes.trim(),
         address_cep: editForm.address_cep,
-        address_street: editForm.address_street,
-        address_number: editForm.address_number,
-        address_neighborhood: editForm.address_neighborhood,
-        address_city: editForm.address_city,
-        address_state: editForm.address_state,
-        address_complement: editForm.address_complement,
-        uses_transport: editForm.uses_transport,
-        transport_required: editForm.uses_transport,
-        transport_line: editForm.transport_line,
-        transport_stop: editForm.transport_stop,
-        guardian_name: gName || null,
-        guardian_phone: gPhone || null,
-        guardian_relationship: gRel || 'Responsável',
-        guardian_cpf: gCpfFormatted || gCpfClean || null,
-        guardians: editForm.guardians
-      };
-
-      let rpcSuccess = false;
-      try {
-        const { error: rpcErr } = await supabase.rpc('update_student', {
-          p_student_id: editForm.id,
-          p_payload: payload
-        });
-        if (!rpcErr) rpcSuccess = true;
-      } catch (rpcEx) {
-        console.warn('RPC update_student not found, falling back to direct update:', rpcEx);
+        postal_code: editForm.address_cep,
+        address_street: editForm.address_street.trim(),
+        address_number: editForm.address_number.trim(),
+        address_complement: editForm.address_complement.trim(),
+        address_neighborhood: editForm.address_neighborhood.trim(),
+        neighborhood: editForm.address_neighborhood.trim(),
+        address_city: editForm.address_city.trim(),
+        city: editForm.address_city.trim(),
+        address_state: editForm.address_state.trim(),
+        state: editForm.address_state.trim(),
+        transport_line: editForm.transport_line.trim(),
+        transport_stop: editForm.transport_stop.trim(),
+      });
+      if (!res.success) {
+        setEditError(res.error || 'Não foi possível salvar o cadastro.');
+        return;
       }
 
-      if (!rpcSuccess && editForm.id) {
-        await safeSupabaseUpdate('students', editForm.id, payload);
-      }
-
-      // Persist Guardian in guardians table and student_responsible_links / family_links
-      if (editForm.id && (gName || gCpfClean)) {
-        try {
-          let guardianDbId = primaryGuardianObj?.id || primaryGuardianObj?.guardian_id;
-          
-          if (!guardianDbId || guardianDbId.startsWith('g-') || guardianDbId.startsWith('direct-')) {
-            const { data: existingG } = await supabase
-              .from('guardians')
-              .select('id')
-              .or(`cpf.eq.${gCpfClean},cpf.eq.${gCpfFormatted}`)
-              .limit(1);
-            if (existingG && existingG.length > 0) {
-              guardianDbId = existingG[0].id;
-            }
-          }
-
-          if (!guardianDbId || guardianDbId.startsWith('g-') || guardianDbId.startsWith('direct-')) {
-            const newGId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'g-' + Date.now();
-            const { data: insertedG, error: gInsertErr } = await supabase
-              .from('guardians')
-              .insert({
-                id: newGId,
-                organization_id: activeOrgId,
-                full_name: gName || 'Responsável',
-                name: gName || 'Responsável',
-                cpf: gCpfFormatted || gCpfClean,
-                phone: gPhone,
-                kinship: gRel,
-                status: 'active'
-              })
-              .select('id')
-              .single();
-
-            if (!gInsertErr && insertedG) {
-              guardianDbId = insertedG.id;
-            } else {
-              guardianDbId = newGId;
-            }
-          } else {
-            await supabase
-              .from('guardians')
-              .update({
-                full_name: gName,
-                name: gName,
-                cpf: gCpfFormatted || gCpfClean,
-                phone: gPhone,
-                kinship: gRel
-              })
-              .eq('id', guardianDbId);
-          }
-
-          if (guardianDbId && !guardianDbId.startsWith('g-')) {
-            const srlId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'srl-' + Date.now();
-            await supabase
-              .from('student_responsible_links')
-              .upsert({
-                id: srlId,
-                organization_id: activeOrgId,
-                student_id: editForm.id,
-                guardian_id: guardianDbId,
-                guardian_name: gName,
-                relationship: gRel,
-                is_primary_contact: true,
-                is_financial_responsible: true,
-                is_pedagogical_responsible: true,
-                can_pickup: true
-              }, { onConflict: 'student_id,guardian_id' });
-
-            const flId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'fl-' + Date.now();
-            await supabase
-              .from('family_links')
-              .upsert({
-                id: flId,
-                organization_id: activeOrgId,
-                student_id: editForm.id,
-                guardian_id: guardianDbId
-              }, { onConflict: 'student_id,guardian_id' });
-          }
-        } catch (guardErr) {
-          console.warn('[handleSaveStudentEdit] Guardian persistence notice:', guardErr);
+      // Turma mudou: o banco confere vagas e escola
+      if (editForm.class_id !== editForm.original_class_id) {
+        const classRes = await studentsService.setStudentClass(editForm.id, editForm.class_id || null);
+        if (!classRes.success) {
+          setEditError(`Os dados foram salvos, mas a turma não mudou: ${classRes.error}`);
+          await loadStudents();
+          return;
         }
       }
 
-      if (!editForm.uses_transport && editForm.id) {
-        try {
-          await supabase.from('transport_students').delete().eq('student_id', editForm.id);
-        } catch (delErr) {
-          console.warn('Error cleaning transport_students on edit save:', delErr);
+      // Transporte mudou: entra ou sai da fila do Transporte
+      const before = items.find(s => s.id === editForm.id || s.student_id === editForm.id);
+      const hadTransport = !!(before?.uses_transport || before?.transport_required);
+      if (hadTransport !== editForm.uses_transport) {
+        const tRes = await studentsService.setTransport(editForm.id, editForm.uses_transport, activeOrgId);
+        if (!tRes.success) {
+          setEditError(`Os dados foram salvos, mas o transporte não mudou: ${tRes.error}`);
+          await loadStudents();
+          return;
         }
-      }
-
-      // Update Local State
-      setItems(prev => prev.map(s => {
-        if (s.id === editForm.id || s.student_id === editForm.id) {
-          return {
-            ...s,
-            ...payload,
-            full_name: editForm.full_name,
-            name: editForm.full_name,
-            classes: [{ name: editForm.class_name, class_name: editForm.class_name, shift: editForm.shift, academic_year: editForm.academic_year }],
-            guardians: editForm.guardians
-          };
-        }
-        return s;
-      }));
-
-      if (selectedStudent && (selectedStudent.id === editForm.id || selectedStudent.student_id === editForm.id)) {
-        setSelectedStudent(prev => prev ? {
-          ...prev,
-          ...payload,
-          full_name: editForm.full_name,
-          name: editForm.full_name,
-          classes: [{ name: editForm.class_name, class_name: editForm.class_name, shift: editForm.shift, academic_year: editForm.academic_year }],
-          guardians: editForm.guardians
-        } : null);
       }
 
       setIsEditModalOpen(false);
-      showToast('Cadastro do estudante atualizado com sucesso!');
-      window.dispatchEvent(new CustomEvent('classium_students_updated'));
-      window.dispatchEvent(new CustomEvent('classium_school_updated'));
-    } catch (err: any) {
-      console.error('Save student edit error:', err);
-      showToast(`Erro ao salvar edições: ${err.message || err}`);
+      setSelectedStudent(null);
+      showToast('Cadastro do estudante salvo.');
+      await loadStudents();
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -870,13 +627,9 @@ export function AdminEstudantes() {
     return null;
   };
 
-  // Academic years dropdown list (2026 to 2050)
+  // Anos letivos: dois anteriores, o atual e o próximo
   const availableYears = useMemo(() => {
-    const years = [];
-    for (let y = 2026; y <= 2050; y++) {
-      years.push(y.toString());
-    }
-    return years;
+    return [CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map(String);
   }, []);
 
   // Deduplicated unique items list
@@ -893,6 +646,7 @@ export function AdminEstudantes() {
         classMap['Sem Turma'] = (classMap['Sem Turma'] || 0) + 1;
       } else {
         classNames.forEach(cn => {
+          if (!cn) return;
           classMap[cn] = (classMap[cn] || 0) + 1;
         });
       }
@@ -938,7 +692,7 @@ export function AdminEstudantes() {
 
     const matchesSearch = !searchLower || nameStr.includes(searchLower) || codeStr.includes(searchLower) || docStr.includes(searchLower);
 
-    const studentYear = item.current_enrollment?.academic_year || item.academic_year || '2026';
+    const studentYear = String(item.current_enrollment?.academic_year || item.academic_year || '');
     const matchesYear = academicYearFilter === 'Todos' || studentYear === academicYearFilter;
 
     const currentStatus = item.status || item.enrollment_status || (item.is_active !== false ? 'Matriculado' : 'Inativo');
@@ -1049,7 +803,7 @@ export function AdminEstudantes() {
           <div className="flex items-center gap-3 text-red-700 text-xs">
             <AlertCircle className="w-5 h-5 text-red-700 shrink-0" />
             <div>
-              <p className="font-bold text-red-700">Aviso da consulta do banco de dados</p>
+              <p className="font-bold text-red-700">Não foi possível carregar</p>
               <p className="text-red-700 mt-0.5">{errorMessage}</p>
             </div>
           </div>
@@ -1187,7 +941,7 @@ export function AdminEstudantes() {
                   const ageFormatted = calculateAge(item.birth_date);
                   
                   const classesList = (item.classes || []).filter(Boolean);
-                  const mainClass = classesList[0] || { name: item.class_name || 'Sem Turma', shift: 'Matutino' };
+                  const mainClass = classesList[0] || { name: item.class_name || 'Sem Turma', shift: item.shift || '' };
                   const primaryGuardian = getPrimaryGuardian(item.guardians, {
                     name: item.guardian_name,
                     phone: item.guardian_phone,
@@ -1237,14 +991,24 @@ export function AdminEstudantes() {
                       {/* 5. TURMA (IDENTIFICADOR LIMPO OU SEM TURMA) */}
                       <td className="p-4">
                         {(!mainClass?.name || mainClass?.name === 'Sem Turma' || mainClass?.name?.includes('Sem turma') || mainClass?.name?.includes('Pendente')) ? (
-                          <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-200 text-amber-700 text-[10px] font-bold inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuickLinkModal(item)}
+                            className="px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-200 text-amber-700 text-[11px] font-semibold inline-flex items-center gap-1 hover:bg-amber-500/20"
+                            title="Escolher a turma"
+                          >
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                            Sem Turma
-                          </span>
+                            Sem turma
+                          </button>
                         ) : (
-                          <span className="font-bold text-[var(--text-heading)] text-sm">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuickLinkModal(item)}
+                            className="font-bold text-[var(--text-heading)] text-sm hover:text-[var(--accent)]"
+                            title="Mudar de turma"
+                          >
                             {mainClass?.class_name || mainClass?.name || mainClass?.title}
-                          </span>
+                          </button>
                         )}
                       </td>
 
@@ -1289,7 +1053,13 @@ export function AdminEstudantes() {
                             <span className="text-[10px] text-[var(--text-muted)] font-mono">{primaryGuardian.relationship || 'Responsável'}</span>
                           </div>
                         ) : (
-                          <span className="text-[var(--text-muted)] italic text-[11px]">— Não cadastrado</span>
+                          <button
+                            type="button"
+                            onClick={() => setGuardiansStudent(item)}
+                            className="px-2.5 py-1 rounded-full border border-dashed border-[var(--border)] text-[11px] font-semibold text-[var(--accent)] hover:border-[var(--accent)]"
+                          >
+                            + Vincular responsável
+                          </button>
                         )}
                       </td>
 
@@ -1328,6 +1098,16 @@ export function AdminEstudantes() {
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
 
+                          {/* RESPONSÁVEIS */}
+                          <button
+                            onClick={() => setGuardiansStudent(item)}
+                            className="p-1.5 bg-[var(--bg-card-alt)] text-[var(--text-muted)] border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] rounded-xl transition-all cursor-pointer"
+                            title="Responsáveis"
+                            aria-label={`Responsáveis de ${displayName}`}
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* ÔNIBUS (TRANSPORTE) */}
                           <button
                             onClick={() => handleToggleTransport(item)}
@@ -1336,7 +1116,7 @@ export function AdminEstudantes() {
                                 ? 'bg-amber-50 text-amber-700 border-amber-200 '
                                 : 'bg-[var(--bg-card-alt)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text-heading)]'
                             }`}
-                            title={item.uses_transport || item.transport_required ? "Utiliza Transporte Escolar (Clique para alterar)" : "Não utiliza Transporte (Clique para ativar)"}
+                            title={item.uses_transport || item.transport_required ? "Usa transporte escolar (clique para desmarcar)" : "Não usa transporte escolar (clique para marcar)"}
                           >
                             <Truck className="w-3.5 h-3.5" />
                           </button>
@@ -1527,19 +1307,19 @@ export function AdminEstudantes() {
                   <div>
                     <span className="text-[12px] text-[var(--text-muted)] font-medium block">Turma</span>
                     <span className="font-bold text-[var(--text-heading)]">
-                      {(selectedStudent.classes && selectedStudent.classes[0]?.name) || selectedStudent.class_name || '8º Ano A'}
+                      {(selectedStudent.classes && selectedStudent.classes[0]?.name) || selectedStudent.class_name || 'Sem turma'}
                     </span>
                   </div>
                   <div>
                     <span className="text-[12px] text-[var(--text-muted)] font-medium block">Ano Letivo</span>
                     <span className="font-mono font-bold text-[var(--text-body)]">
-                      {selectedStudent.academic_year || '2026'}
+                      {selectedStudent.academic_year || '—'}
                     </span>
                   </div>
                   <div>
                     <span className="text-[12px] text-[var(--text-muted)] font-medium block">Turno</span>
                     <span className="font-bold text-[var(--text-body)]">
-                      {(selectedStudent.classes && selectedStudent.classes[0]?.shift) || selectedStudent.shift || 'Matutino'}
+                      {(selectedStudent.classes && selectedStudent.classes[0]?.shift) || selectedStudent.shift || '—'}
                     </span>
                   </div>
                 </div>
@@ -1648,9 +1428,18 @@ export function AdminEstudantes() {
 
               {/* 6. RESPONSÁVEIS VINCULADOS */}
               <div className="bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
-                <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
-                  <Users className="w-4 h-4 text-[var(--accent)]" /> Responsáveis Vinculados
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-serif text-xs font-bold text-[var(--accent)] flex items-center gap-2 uppercase tracking-wider">
+                    <Users className="w-4 h-4 text-[var(--accent)]" /> Responsáveis Vinculados
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setGuardiansStudent(selectedStudent)}
+                    className="rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-body)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    Gerenciar
+                  </button>
+                </div>
                 {selectedStudent.guardians && selectedStudent.guardians.length > 0 ? (
                   <div className="space-y-3">
                     {selectedStudent.guardians.map((g, idx) => (
@@ -1688,7 +1477,7 @@ export function AdminEstudantes() {
                 onClick={() => setSelectedStudent(null)}
                 className="w-full py-3 bg-[var(--bg-card-alt)] hover:bg-[var(--bg-card-alt)] text-[var(--text-heading)] rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
-                Fechar Ficha Dossiê
+                Fechar
               </button>
             </div>
 
@@ -1708,11 +1497,11 @@ export function AdminEstudantes() {
                 </div>
                 <div>
                   <h3 className="font-serif text-lg font-bold text-[var(--text-heading)]">Editar Cadastro do Estudante</h3>
-                  <p className="text-[11px] text-[var(--text-muted)]">Atualize dados pessoais, turma, inclusão pedagógica, endereço e responsáveis</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">Dados pessoais, turma, inclusão, endereço e transporte. Responsáveis ficam no botão Responsáveis.</p>
                 </div>
               </div>
               <button 
-                onClick={() => setIsEditModalOpen(false)} 
+                onClick={() => { setIsEditModalOpen(false); setEditError(null); }} 
                 className="p-2 hover:bg-[var(--bg-card-alt)] rounded-xl text-[var(--text-muted)] hover:text-[var(--text-heading)] transition-colors cursor-pointer"
               >
                 <XCircle className="w-5 h-5" />
@@ -1809,14 +1598,20 @@ export function AdminEstudantes() {
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Turma do Aluno</label>
-                    <input
-                      type="text"
-                      value={editForm.class_name}
-                      onChange={(e) => setEditForm({ ...editForm, class_name: e.target.value })}
+                    <label className="text-[12px] text-[var(--text-muted)] font-medium">Turma</label>
+                    <select
+                      value={editForm.class_id}
+                      onChange={(e) => {
+                        const cls = realOrgClasses.find(c => c.id === e.target.value);
+                        setEditForm({ ...editForm, class_id: e.target.value, class_name: cls?.name || '', shift: cls?.shift || '' });
+                      }}
                       className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
-                      placeholder="Ex: 8º Ano A"
-                    />
+                    >
+                      <option value="">Sem turma</option>
+                      {realOrgClasses.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}{c.shift ? ` · ${c.shift}` : ''}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1">
@@ -1834,16 +1629,12 @@ export function AdminEstudantes() {
 
                   <div className="space-y-1">
                     <label className="text-[12px] text-[var(--text-muted)] font-medium">Turno</label>
-                    <select
-                      value={editForm.shift}
-                      onChange={(e) => setEditForm({ ...editForm, shift: e.target.value as any })}
-                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
-                    >
-                      <option value="Matutino">Matutino</option>
-                      <option value="Vespertino">Vespertino</option>
-                      <option value="Integral">Integral</option>
-                      <option value="Noturno">Noturno</option>
-                    </select>
+                    <input
+                      value={editForm.shift || 'Definido pela turma'}
+                      readOnly
+                      className="w-full bg-[var(--bg-card-alt)] border border-[var(--border)] rounded-xl p-2.5 text-xs text-[var(--text-muted)] outline-none"
+                      title="O turno vem da turma escolhida"
+                    />
                   </div>
                 </div>
               </div>
@@ -2032,6 +1823,12 @@ export function AdminEstudantes() {
                 )}
               </div>
 
+              {editError && (
+                <div className="flex items-start gap-2 rounded-xl border border-[#F5C2C0] bg-[#FEF3F2] p-3 text-[12px] font-medium text-[#B42318]">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {editError}
+                </div>
+              )}
+
               {/* BOTÕES FINAIS DE AÇÃO */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border)]">
                 <button
@@ -2043,9 +1840,11 @@ export function AdminEstudantes() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-fg)] rounded-full font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+                  disabled={isSavingEdit}
+                  className="px-6 py-2.5 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-fg)] rounded-full font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-60"
                 >
-                  <CheckCircle2 className="w-4 h-4" /> Salvar Alterações
+                  {isSavingEdit ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {isSavingEdit ? 'Salvando…' : 'Salvar alterações'}
                 </button>
               </div>
 
@@ -2068,7 +1867,7 @@ export function AdminEstudantes() {
                 Estudante: <strong className="text-rose-700">{studentToDelete.full_name || studentToDelete.name}</strong> (RA: {studentToDelete.registration_code || 'N/A'})
               </p>
               <div className="text-xs text-rose-700 mt-3 bg-[#FEF3F2] p-3.5 rounded-xl border border-[#F5C2C0] leading-relaxed">
-                Você está prestes a excluir este estudante do sistema. Esta ação removerá o cadastro da plataforma e do banco de dados institucional. Deseja continuar?
+                O cadastro, a turma e os vínculos com responsáveis deste estudante serão apagados. Isso não pode ser desfeito. Se ele saiu da escola, prefira mudar a situação para Transferido.
               </div>
             </div>
 
@@ -2114,7 +1913,7 @@ export function AdminEstudantes() {
                   <GraduationCap className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-serif text-base font-bold text-[var(--text-heading)]">Vincular Turma ao Estudante</h3>
+                  <h3 className="font-serif text-base font-bold text-[var(--text-heading)]">Turma do estudante</h3>
                   <p className="text-[11px] text-[var(--text-muted)] truncate max-w-[240px]">
                     {studentToLink.full_name || studentToLink.name} (RA: {studentToLink.registration_code || 'N/A'})
                   </p>
@@ -2130,7 +1929,7 @@ export function AdminEstudantes() {
 
             <div className="space-y-4 text-xs">
               <div className="space-y-1">
-                <label className="text-[12px] text-[var(--text-muted)] font-medium">Selecione a Turma *</label>
+                <label className="text-[12px] text-[var(--text-muted)] font-medium">Turma</label>
                 <select
                   value={linkClassForm.selectedClassId}
                   onChange={(e) => {
@@ -2144,57 +1943,18 @@ export function AdminEstudantes() {
                   }}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] font-semibold outline-none focus:border-[var(--accent)] cursor-pointer"
                 >
-                  <option value="">-- Selecione uma Turma --</option>
+                  <option value="">Sem turma</option>
                   {realOrgClasses.map(cls => (
                     <option key={cls.id} value={cls.id}>
-                      {cls.name} ({cls.shift || 'Matutino'}{cls.room ? ` • ${cls.room}` : ''})
+                      {cls.name}{cls.shift ? ` · ${cls.shift}` : ''}{cls.room ? ` · ${cls.room}` : ''}
                     </option>
                   ))}
-                  <option value="__custom__">+ Cadastrar / Inserir Nome de Turma Manualmente</option>
                 </select>
               </div>
 
-              {linkClassForm.selectedClassId === '__custom__' && (
-                <div className="space-y-1">
-                  <label className="text-[12px] text-[var(--text-muted)] font-medium">Nome da Nova Turma *</label>
-                  <input
-                    type="text"
-                    value={linkClassForm.customClassName}
-                    onChange={(e) => setLinkClassForm({ ...linkClassForm, customClassName: e.target.value })}
-                    placeholder="Ex: 8º Ano B"
-                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] outline-none focus:border-[var(--accent)]"
-                  />
-                </div>
+              {realOrgClasses.length === 0 && (
+                <p className="text-[12px] text-[var(--text-muted)]">Nenhuma turma cadastrada. Cadastre as turmas em Horário de aula.</p>
               )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[12px] text-[var(--text-muted)] font-medium">Turno Escolar</label>
-                  <select
-                    value={linkClassForm.shift}
-                    onChange={(e) => setLinkClassForm({ ...linkClassForm, shift: e.target.value })}
-                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] font-semibold outline-none focus:border-[var(--accent)] cursor-pointer"
-                  >
-                    <option value="Matutino">Matutino</option>
-                    <option value="Vespertino">Vespertino</option>
-                    <option value="Integral">Integral</option>
-                    <option value="Noturno">Noturno</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[12px] text-[var(--text-muted)] font-medium">Ano Letivo</label>
-                  <select
-                    value={linkClassForm.academicYear}
-                    onChange={(e) => setLinkClassForm({ ...linkClassForm, academicYear: e.target.value })}
-                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3 text-xs text-[var(--text-heading)] font-mono outline-none focus:border-[var(--accent)] cursor-pointer"
-                  >
-                    {availableYears.map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border)]">
@@ -2213,7 +1973,7 @@ export function AdminEstudantes() {
                 className="px-5 py-2.5 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-fg)] rounded-full font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm text-xs"
               >
                 {isLinkingClass ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                Confirmar Vinculação
+                Salvar
               </button>
             </div>
           </div>
@@ -2236,10 +1996,10 @@ export function AdminEstudantes() {
         <StudentAbsenceModal
           isOpen={Boolean(studentForAbsenceModal)}
           student={studentForAbsenceModal}
-          academicYear={2026}
+          academicYear={CURRENT_YEAR}
           onClose={() => setStudentForAbsenceModal(null)}
           onSuccess={async () => {
-            showToast('Frequência/Ausência registrada com sucesso no Supabase!');
+            showToast('Falta registrada.');
             await loadStudents();
           }}
         />
@@ -2250,15 +2010,23 @@ export function AdminEstudantes() {
         <StudentAbsenceHistoryModal
           isOpen={Boolean(studentForHistoryModal)}
           student={studentForHistoryModal}
-          academicYear={2026}
+          academicYear={CURRENT_YEAR}
           onClose={() => setStudentForHistoryModal(null)}
           onSuccess={async () => {
-            showToast('Frequência e auditoria atualizadas com sucesso!');
+            showToast('Faltas atualizadas.');
             await loadAttendanceData();
             await loadStudents();
           }}
         />
       )}
+
+      {/* RESPONSÁVEIS DO ESTUDANTE */}
+      <StudentGuardiansModal
+        open={!!guardiansStudent}
+        student={guardiansStudent ? { id: (guardiansStudent.id || guardiansStudent.student_id) as string, full_name: guardiansStudent.full_name || guardiansStudent.name, class_name: guardiansStudent.class_name } : null}
+        onClose={() => setGuardiansStudent(null)}
+        onChanged={() => { loadStudents(); }}
+      />
 
       {/* TOAST NOTIFICATION */}
       {toastMessage && (
