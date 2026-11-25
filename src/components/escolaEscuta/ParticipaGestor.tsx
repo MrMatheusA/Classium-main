@@ -341,6 +341,16 @@ function IniciativasTab({ org, dados, encontros, toast }: { org: string; dados: 
   );
 }
 
+/** Limites aceitos pelo banco para o mínimo de respostas por grupo */
+const MIN_PRIV = 3;
+const MAX_PRIV = 50;
+/** Número dentro dos limites; vazio ou inválido vira o padrão */
+const limitar = (v: unknown, min: number, max: number, padrao: number) => {
+  const n = Math.round(Number(v));
+  if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return padrao;
+  return Math.min(max, Math.max(min, n));
+};
+
 const ESCALA_PADRAO = ['Muito insatisfeito', 'Insatisfeito', 'Neutro', 'Satisfeito', 'Muito satisfeito'];
 
 function EditorIniciativa({
@@ -406,13 +416,25 @@ function EditorIniciativa({
       onErro('Perguntas de escolha precisam de pelo menos 2 opções.');
       return null;
     }
+    const minimo = Number(i.minimo_privacidade);
+    if (!Number.isFinite(minimo) || minimo < MIN_PRIV || minimo > MAX_PRIV) {
+      onErro(`O mínimo de respostas por grupo precisa ser de ${MIN_PRIV} a ${MAX_PRIV}.`);
+      return null;
+    }
     setSalvando(true);
     const { id, status, total_elegivel, publicada_em, created_at, ...resto } = i as Iniciativa;
     void status;
     void total_elegivel;
     void publicada_em;
     void created_at;
-    const payload = { ...resto, organization_id: org, titulo: i.titulo.trim(), encontro_id: i.encontro_id || null };
+    const payload = {
+      ...resto,
+      organization_id: org,
+      titulo: i.titulo.trim(),
+      encontro_id: i.encontro_id || null,
+      minimo_privacidade: Math.round(minimo),
+      tempo_estimado_min: limitar(i.tempo_estimado_min, 1, 120, 3),
+    };
     const res = id ? await supabase.from('participa_iniciativas').update(payload).eq('id', id).select('*').single() : await supabase.from('participa_iniciativas').insert(payload).select('*').single();
     if (res.error) {
       setSalvando(false);
@@ -692,11 +714,35 @@ function EditorIniciativa({
               onChange={(v) => set({ politica_resultado: v as Iniciativa['politica_resultado'] })}
               options={(Object.keys(POLITICA) as Iniciativa['politica_resultado'][]).map((k) => ({ value: k, label: POLITICA[k] }))}
             />
-            <Field label="Mínimo de respostas por grupo">
-              {(id) => <input id={id} type="number" min={3} max={50} value={i.minimo_privacidade ?? 5} onChange={(e) => set({ minimo_privacidade: Number(e.target.value) })} className={inputCls} />}
+            <Field label="Mínimo de respostas por grupo" hint="De 3 a 50. Grupos menores ficam ocultos para proteger quem respondeu.">
+              {(id) => (
+                <input
+                  id={id}
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_PRIV}
+                  max={MAX_PRIV}
+                  value={i.minimo_privacidade ?? ''}
+                  onChange={(e) => set({ minimo_privacidade: e.target.value === '' ? (null as any) : Number(e.target.value) })}
+                  onBlur={() => set({ minimo_privacidade: limitar(i.minimo_privacidade, MIN_PRIV, MAX_PRIV, 5) })}
+                  className={inputCls}
+                />
+              )}
             </Field>
             <Field label="Tempo estimado (min)">
-              {(id) => <input id={id} type="number" min={1} value={i.tempo_estimado_min ?? 3} onChange={(e) => set({ tempo_estimado_min: Number(e.target.value) })} className={inputCls} />}
+              {(id) => (
+                <input
+                  id={id}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={120}
+                  value={i.tempo_estimado_min ?? ''}
+                  onChange={(e) => set({ tempo_estimado_min: e.target.value === '' ? (null as any) : Number(e.target.value) })}
+                  onBlur={() => set({ tempo_estimado_min: limitar(i.tempo_estimado_min, 1, 120, 3) })}
+                  className={inputCls}
+                />
+              )}
             </Field>
           </div>
           <CampoTexto label="Responsável institucional" value={i.responsavel_nome || ''} onChange={(v) => set({ responsavel_nome: v })} placeholder="Ex.: Direção" />
