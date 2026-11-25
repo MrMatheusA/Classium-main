@@ -2303,36 +2303,37 @@ Sua resposta deve ser estritamente um JSON válido contendo exatamente a estrutu
     const authHeader = req.headers['authorization'] || req.headers['x-supabase-auth'];
     const sb = getSupabaseServerClient(authHeader);
 
+    // sem dados inventados: campos vazios quando a escola não preencheu
     const defaultOrgData = {
       id: orgId,
-      name: 'Classium Colégio Modelo',
-      official_name: 'Classium Colégio Modelo',
-      legal_name: 'Classium Colégio Modelo Ltda.',
-      fantasy_name: 'Colégio Modelo',
-      trade_name: 'Colégio Modelo',
-      document_number: '12.345.678/0001-90',
-      cnpj: '12.345.678/0001-90',
-      state_registration: '123.456.789.110',
-      inep_code: '35012345',
-      email: 'contato@classium.edu.br',
-      phone: '(31) 3456-7890',
-      phone_fixed: '(31) 3456-7890',
-      phone_mobile: '(31) 99849-5659',
-      address: 'Rua Principal, 1000',
-      city: 'Belo Horizonte',
-      state: 'MG',
-      postal_code: '30100-000',
+      name: '',
+      official_name: '',
+      legal_name: '',
+      fantasy_name: '',
+      trade_name: '',
+      document_number: '',
+      cnpj: '',
+      state_registration: '',
+      inep_code: '',
+      email: '',
+      phone: '',
+      phone_fixed: '',
+      phone_mobile: '',
+      address: '',
+      city: '',
+      state: '',
+      postal_code: '',
       logo_url: null,
-      platform_url: 'https://classium.edu.br/portal',
-      website: 'https://colegiomodelo.educacao.gov.br',
+      platform_url: '',
+      website: '',
       status: 'active',
-      plan_status: 'STANDARD',
+      plan_status: '',
       is_active: true,
-      can_edit: true,
+      can_edit: false,
       settings: {}
     };
 
-    if (!sb) return res.json({ success: true, data: defaultOrgData });
+    if (!sb) return res.status(503).json({ success: false, error: 'Serviço indisponível no momento.' });
 
     try {
       const { data: orgData, error } = await sb
@@ -2383,13 +2384,11 @@ Sua resposta deve ser estritamente um JSON válido contendo exatamente a estrutu
         return res.json({ success: true, data: responseData });
       }
 
-      // Fallback if not found or blocked by RLS
-      return res.json({
-        success: true,
-        data: defaultOrgData
-      });
+      // não encontrada ou sem permissão: não inventa escola
+      return res.status(404).json({ success: false, error: 'Escola não encontrada para esta conta.' });
     } catch (err: any) {
-      return res.json({ success: true, data: defaultOrgData });
+      console.error('[GET /api/organization]', err);
+      return res.status(500).json({ success: false, error: 'Não foi possível carregar os dados da escola.' });
     }
   };
 
@@ -18888,690 +18887,144 @@ Regras:
       .replace(/\s+/g, ' ');
   };
 
-  // GET /api/family/search-students (Name-based secure multi-tenant search with sibling aggregation & homonym protection)
+  /* Portal da Família: busca, vínculo e lista de filhos feitos por funções do banco
+   * (rodam com a conta da própria família; o banco confere nome do estudante +
+   * nome/CPF do responsável da matrícula e nunca devolve dados de outra família). */
+  const familyRpc = async (req: any, fn: string, args: Record<string, any>) => {
+    const header = String(req.headers?.authorization || '');
+    if (!/^Bearer\s+\S+/i.test(header)) {
+      return { status: 401, body: { success: false, error: 'Sua sessão expirou. Entre de novo.' } } as const;
+    }
+    const sbUser = getSupabaseServerClient(header);
+    if (!sbUser) {
+      return { status: 503, body: { success: false, error: 'Serviço indisponível no momento. Tente de novo.' } } as const;
+    }
+    const { data, error } = await sbUser.rpc(fn, args);
+    if (error) {
+      console.error(`[family:${fn}]`, error);
+      const missing = /could not find the function|does not exist/i.test(error.message || '');
+      return {
+        status: missing ? 503 : 500,
+        body: { success: false, error: missing ? 'Atualização do banco pendente (parte 11). Avise o suporte.' : 'Não foi possível consultar agora. Tente de novo.' },
+      } as const;
+    }
+    return { status: 200, data } as const;
+  };
+
+  const familyStudentNames = (q: any): string[] => {
+    let list: string[] = [];
+    if (Array.isArray(q.student_names)) list = q.student_names;
+    else if (typeof q.student_names === 'string') list = q.student_names.split(',');
+    else if (q['student_names[]']) list = Array.isArray(q['student_names[]']) ? q['student_names[]'] : [q['student_names[]']];
+    else if (typeof q.student_name === 'string') list = [q.student_name];
+    return Array.from(new Set(list.map((x: any) => String(x).trim().replace(/\s+/g, ' ')).filter((x: string) => x.length > 0))).slice(0, 10);
+  };
+
+  // GET /api/family/search-students
   app.get("/api/family/search-students", async (req, res) => {
     try {
-      const auth = await resolveFamilyAuth(req);
-      if (!auth || !auth.authenticated || !auth.user || auth.error) {
-        return res.status(auth?.error?.status || 401).json({
-          success: false,
-          error: auth?.error?.message || "Não autenticado: acesso restrito a responsáveis autenticados."
-        });
-      }
-
-      // Anti-enumeration rate-limiting per authenticated user
-      const rateKey = auth.user.id;
+      const rateKey = String(req.headers?.authorization || req.ip || 'anon').slice(-40);
       if (!checkFamilyRateLimit(rateKey)) {
-        return res.status(429).json({
-          success: false,
-          error: "Muitas tentativas de consulta. Aguarde 1 minuto para pesquisar novamente.",
-          count: 0,
-          students: []
-        });
+        return res.status(429).json({ success: false, error: 'Muitas tentativas de consulta. Aguarde 1 minuto para pesquisar novamente.', count: 0, students: [] });
       }
-
-      // Extract Guardian Name
-      const rawGuardianName = ((req.query.guardian_name || req.query.name || '') as string).trim().replace(/\s+/g, ' ');
-      
-      // Extract multiple Student Names (supports string array, comma-separated string, or individual params)
-      let studentNamesInput: string[] = [];
-      if (Array.isArray(req.query.student_names)) {
-        studentNamesInput = (req.query.student_names as string[]).map(s => String(s).trim()).filter(s => s.length > 0);
-      } else if (typeof req.query.student_names === 'string' && req.query.student_names.trim()) {
-        studentNamesInput = req.query.student_names.split(',').map(s => s.trim()).filter(s => s.length > 0);
-      } else if (req.query.student_name && typeof req.query.student_name === 'string') {
-        studentNamesInput = [req.query.student_name.trim()];
-      } else if (req.query['student_names[]']) {
-        const rawArr = Array.isArray(req.query['student_names[]']) ? req.query['student_names[]'] : [req.query['student_names[]']];
-        studentNamesInput = rawArr.map((s: any) => String(s).trim()).filter((s: string) => s.length > 0);
+      const guardianName = String(req.query.guardian_name || req.query.name || '').trim().replace(/\s+/g, ' ');
+      const names = familyStudentNames(req.query);
+      if (!guardianName || names.length === 0) {
+        return res.json({ success: true, count: 0, students: [], message: 'Informe o nome completo do responsável e do estudante.' });
       }
-
-      // Deduplicate student names (case & accent normalized)
-      const uniqueStudentNames: string[] = [];
-      const seenNormStudents = new Set<string>();
-      for (const stName of studentNamesInput) {
-        const norm = normalizeSearchText(stName);
-        if (norm.length >= 2 && !seenNormStudents.has(norm)) {
-          seenNormStudents.add(norm);
-          uniqueStudentNames.push(stName);
-        }
-      }
-
-      if (!rawGuardianName && uniqueStudentNames.length === 0) {
-        return res.json({
-          success: true,
-          count: 0,
-          students: []
-        });
-      }
-
-      // Strict Name validation
-      if (!rawGuardianName || rawGuardianName.length < 3) {
-        return res.json({
-          success: true,
-          count: 0,
-          invalid_guardian: true,
-          message: "Informe o nome completo do responsável cadastrado.",
-          students: []
-        });
-      }
-
-      if (uniqueStudentNames.length === 0) {
-        return res.json({
-          success: true,
-          count: 0,
-          invalid_student: true,
-          message: "Informe ao menos um nome completo de estudante para pesquisar.",
-          students: []
-        });
-      }
-
-      const sb = auth.sb;
-      const orgId = auth.organizationId;
-      const normGuardian = normalizeSearchText(rawGuardianName);
-      const guardianTokens = normGuardian.split(' ').filter(t => t.length >= 2);
-
-      let matchedStudents: any[] = [];
-      const alreadyLinkedIds = new Set<string>();
-      const linkIdMap = new Map<string, string>();
-
-      try {
-        // 1. Identify which students are already linked in student_responsible_links for this guardian/user
-        if (auth.guardian?.id) {
-          const { data: srlExisting } = await sb
-            .from('student_responsible_links')
-            .select('id, student_id')
-            .eq('guardian_id', auth.guardian.id);
-
-          if (srlExisting) {
-            srlExisting.forEach((l: any) => {
-              alreadyLinkedIds.add(l.student_id);
-              linkIdMap.set(l.student_id, l.id);
-            });
-          }
-        }
-
-        if (auth.user?.id) {
-          const { data: gList } = await sb.from('guardians').select('id').eq('user_id', auth.user.id);
-          if (gList && gList.length > 0) {
-            const gIds = gList.map(g => g.id);
-            const { data: srlExisting } = await sb
-              .from('student_responsible_links')
-              .select('id, student_id')
-              .in('guardian_id', gIds);
-
-            if (srlExisting) {
-              srlExisting.forEach((l: any) => {
-                alreadyLinkedIds.add(l.student_id);
-                if (!linkIdMap.has(l.student_id)) linkIdMap.set(l.student_id, l.id);
-              });
-            }
-          }
-        }
-
-        // 2. Fetch all students within the authorized tenant with relations
-        const { data: tenantStudents, error: dbErr } = await sb
-          .from('students')
-          .select(`
-            id, name, full_name, registration_code, status, photo_url, avatar_url,
-            guardian_name, guardian_relationship,
-            classes ( id, name, grade, shift, room ),
-            organizations ( id, name, trade_name ),
-            student_responsible_links (
-              id, guardian_id, guardian_name, relationship, is_primary_contact,
-              guardians ( id, full_name, name, user_id )
-            )
-          `)
-          .eq('organization_id', orgId);
-
-        if (dbErr) {
-          console.warn('[GET /api/family/search-students] Supabase search notice:', dbErr);
-        }
-
-        const allStudentsList: any[] = (tenantStudents && Array.isArray(tenantStudents)) ? tenantStudents : [];
-
-        // Helper to check if a guardian name string matches the requested guardian name
-        const matchesGuardianName = (dbGuardianName: string | null | undefined): boolean => {
-          if (!dbGuardianName) return false;
-          const normDb = normalizeSearchText(dbGuardianName);
-          if (!normDb) return false;
-          if (normDb === normGuardian) return true;
-          if (normDb.includes(normGuardian) || normGuardian.includes(normDb)) return true;
-          // Match if at least 2 tokens match for multi-word names
-          const dbTokens = normDb.split(' ').filter(t => t.length >= 2);
-          const commonTokens = guardianTokens.filter(t => dbTokens.includes(t));
-          return commonTokens.length >= 2 || (guardianTokens.length === 1 && commonTokens.length === 1 && normDb === normGuardian);
-        };
-
-        // Helper to check if a student record matches any of the requested student names
-        const matchesRequestedStudentName = (st: any): { matched: boolean; searchedName: string } => {
-          const normStName = normalizeSearchText(st.full_name || st.name || '');
-          for (const sName of uniqueStudentNames) {
-            const normReq = normalizeSearchText(sName);
-            if (normStName === normReq || normStName.includes(normReq) || normReq.includes(normStName)) {
-              return { matched: true, searchedName: sName };
-            }
-          }
-          return { matched: false, searchedName: '' };
-        };
-
-        // 3. Find candidate students directly queried
-        const explicitlyMatchedIds = new Set<string>();
-        const studentHomonymsMap = new Map<string, any[]>();
-        const confirmedGuardianNames = new Set<string>();
-
-        for (const st of allStudentsList) {
-          const { matched, searchedName } = matchesRequestedStudentName(st);
-          if (matched) {
-            explicitlyMatchedIds.add(st.id);
-            const normReq = normalizeSearchText(searchedName);
-            const list = studentHomonymsMap.get(normReq) || [];
-            list.push(st);
-            studentHomonymsMap.set(normReq, list);
-
-            // Check if this student verifies the guardian
-            let guardianConfirmed = matchesGuardianName(st.guardian_name);
-            if (!guardianConfirmed && Array.isArray(st.student_responsible_links)) {
-              for (const l of st.student_responsible_links) {
-                if (matchesGuardianName(l.guardian_name) || matchesGuardianName(l.guardians?.full_name || l.guardians?.name)) {
-                  guardianConfirmed = true;
-                  break;
-                }
-                if (auth.guardian?.id && l.guardian_id === auth.guardian.id) {
-                  guardianConfirmed = true;
-                  break;
-                }
-              }
-            }
-
-            if (guardianConfirmed) {
-              confirmedGuardianNames.add(normGuardian);
-              if (st.guardian_name) confirmedGuardianNames.add(normalizeSearchText(st.guardian_name));
-            }
-          }
-        }
-
-        // 4. Sibling Aggregation (Requirement #6: When a valid match is found, include all other students
-        // in the same school related to the same guardian)
-        const siblingIds = new Set<string>();
-        if (confirmedGuardianNames.size > 0) {
-          for (const st of allStudentsList) {
-            if (explicitlyMatchedIds.has(st.id)) continue;
-
-            let isSibling = false;
-            for (const gName of confirmedGuardianNames) {
-              if (matchesGuardianName(st.guardian_name)) {
-                isSibling = true;
-                break;
-              }
-              if (Array.isArray(st.student_responsible_links)) {
-                for (const l of st.student_responsible_links) {
-                  if (matchesGuardianName(l.guardian_name) || matchesGuardianName(l.guardians?.full_name || l.guardians?.name)) {
-                    isSibling = true;
-                    break;
-                  }
-                  if (auth.guardian?.id && l.guardian_id === auth.guardian.id) {
-                    isSibling = true;
-                    break;
-                  }
-                }
-              }
-              if (isSibling) break;
-            }
-
-            if (isSibling) {
-              siblingIds.add(st.id);
-            }
-          }
-        }
-
-        // 5. Build final student candidates with security & status validation
-        const allTargetStudentIds = new Set([...explicitlyMatchedIds, ...siblingIds]);
-
-        for (const stId of allTargetStudentIds) {
-          const st = allStudentsList.find(s => s.id === stId);
-          if (!st) continue;
-
-          const cls = st.classes;
-          const org = st.organizations;
-          const isLinked = alreadyLinkedIds.has(st.id);
-          const isSiblingMatch = siblingIds.has(st.id);
-
-          // Check guardian relationship validity
-          let hasOfficialGuardianRecord = matchesGuardianName(st.guardian_name);
-          let linkRelationTitle = st.guardian_relationship || 'Responsável Legal';
-
-          if (Array.isArray(st.student_responsible_links)) {
-            for (const l of st.student_responsible_links) {
-              if (matchesGuardianName(l.guardian_name) || matchesGuardianName(l.guardians?.full_name || l.guardians?.name)) {
-                hasOfficialGuardianRecord = true;
-                linkRelationTitle = l.relationship || linkRelationTitle;
-                break;
-              }
-              if (auth.guardian?.id && l.guardian_id === auth.guardian.id) {
-                hasOfficialGuardianRecord = true;
-                linkRelationTitle = l.relationship || linkRelationTitle;
-                break;
-              }
-            }
-          }
-
-          // Check homonym ambiguity (if multiple students with the same name exist and guardian is not clear)
-          const normStName = normalizeSearchText(st.full_name || st.name || '');
-          const homonyms = studentHomonymsMap.get(normStName) || [];
-          const isAmbiguous = homonyms.length > 1 && !hasOfficialGuardianRecord;
-
-          // Eligibility criteria:
-          // - Must not be ambiguous
-          // - If has official guardian record in school database: eligible for immediate linking
-          // - If no official guardian record found yet: requires school validation / pending request
-          const isEligible = hasOfficialGuardianRecord && !isAmbiguous;
-          const requiresApproval = !hasOfficialGuardianRecord || isAmbiguous;
-
-          matchedStudents.push({
-            student_id: st.id,
-            name: st.full_name || st.name || 'Estudante',
-            full_name: st.full_name || st.name || 'Estudante',
-            registration_code: st.registration_code || st.ra || 'RA-OFICIAL',
-            ra: st.registration_code || st.ra || 'RA-OFICIAL',
-            class_name: cls?.name || 'Turma Regular',
-            grade: cls?.grade || 'Ensino Fundamental',
-            shift: cls?.shift || 'Matutino',
-            room: cls?.room || 'Sala 01',
-            school_id: orgId,
-            school_name: org?.trade_name || org?.name || 'Classium Colégio Modelo',
-            relationship: linkRelationTitle,
-            status: st.status || 'active',
-            is_active: st.status !== 'inactive',
-            photo_url: st.photo_url || st.avatar_url || '',
-            is_linked: isLinked,
-            is_eligible: isEligible,
-            is_pending: requiresApproval && !isLinked,
-            is_ambiguous: isAmbiguous,
-            is_sibling_match: isSiblingMatch,
-            link_id: linkIdMap.get(st.id) || null
-          });
-        }
-
-      } catch (dbErr) {
-        console.warn('[GET /api/family/search-students] Supabase search notice:', dbErr);
-      }
-
-      return res.json({
-        success: true,
-        count: matchedStudents.length,
-        has_siblings: matchedStudents.some(s => s.is_sibling_match),
-        students: matchedStudents
-      });
+      const r = await familyRpc(req, 'classium_family_search_students', { p_guardian_name: guardianName, p_student_names: names });
+      if (r.status !== 200) return res.status(r.status).json(r.body);
+      const out: any = r.data || {};
+      if (out.success === false) return res.json({ success: false, count: 0, students: [], error: out.error, message: out.error });
+      const students = (out.students || []).map((st: any) => ({
+        ...st,
+        ra: st.registration_code || '',
+        grade: st.grade || '',
+        room: st.room || '',
+        is_active: !['inativo', 'inativa', 'inactive', 'transferido', 'transferida'].includes(String(st.status || '').toLowerCase()),
+        is_pending: false,
+        is_ambiguous: false,
+        is_sibling_match: false,
+        link_id: null,
+        photo_url: '',
+      }));
+      return res.json({ success: true, count: students.length, has_siblings: false, students, message: out.message || undefined });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message || "Erro na busca de estudantes." });
+      console.error('[GET /api/family/search-students]', err);
+      return res.status(500).json({ success: false, error: 'Erro na busca de estudantes.' });
     }
   });
 
-  // GET /api/family/linked-students (Session-based multi-tenant retrieval of authorized dependents)
+  // GET /api/family/linked-students
   app.get("/api/family/linked-students", async (req, res) => {
     try {
-      const auth = await resolveFamilyAuth(req);
-      if (!auth || !auth.authenticated || !auth.user || auth.error) {
-        return res.status(auth?.error?.status || 401).json({
-          success: false,
-          error: auth?.error?.message || "Não autenticado: acesso restrito a responsáveis autenticados."
-        });
-      }
-
-      const sb = auth.sb;
-      const orgId = auth.organizationId;
-      const matchedStudentIds = new Set<string>();
-      const guardianLinks: any[] = [];
-
-      try {
-        // 1. Look up by authenticated guardian ID if available
-        if (auth.guardian?.id) {
-          const { data: srlList } = await sb
-            .from('student_responsible_links')
-            .select('*')
-            .eq('guardian_id', auth.guardian.id);
-
-          if (srlList && srlList.length > 0) {
-            guardianLinks.push(...srlList);
-            srlList.forEach(r => matchedStudentIds.add(r.student_id));
-          }
-
-          // Also check family_links
-          const { data: flList } = await sb
-            .from('family_links')
-            .select('*')
-            .eq('guardian_id', auth.guardian.id);
-
-          if (flList && flList.length > 0) {
-            flList.forEach(r => matchedStudentIds.add(r.student_id));
-          }
-        }
-
-        // 2. Look up by authenticated user_id in guardians
-        if (auth.user?.id) {
-          const { data: userGuardians } = await sb
-            .from('guardians')
-            .select('id')
-            .eq('user_id', auth.user.id);
-
-          if (userGuardians && userGuardians.length > 0) {
-            const gIds = userGuardians.map(g => g.id);
-            const { data: srlList } = await sb
-              .from('student_responsible_links')
-              .select('*')
-              .in('guardian_id', gIds);
-
-            if (srlList && srlList.length > 0) {
-              srlList.forEach(r => {
-                if (!guardianLinks.some(gl => gl.id === r.id)) {
-                  guardianLinks.push(r);
-                }
-                matchedStudentIds.add(r.student_id);
-              });
-            }
-          }
-        }
-
-        // 3. Look up by Guardian Name if profile full_name matches in this tenant
-        const profileName = (auth.profile?.full_name || auth.profile?.name || '').trim();
-        if (profileName && profileName.length >= 3) {
-          const { data: stByGuardianName } = await sb
-            .from('students')
-            .select('id')
-            .ilike('guardian_name', profileName)
-            .eq('organization_id', orgId);
-
-          if (stByGuardianName && stByGuardianName.length > 0) {
-            stByGuardianName.forEach(s => matchedStudentIds.add(s.id));
-          }
-        }
-
-        // 4. Fetch full student details with class and organization info
-        if (matchedStudentIds.size > 0) {
-          const idArray = Array.from(matchedStudentIds);
-          const { data: studentRecords } = await sb
-            .from('students')
-            .select(`
-              id, name, full_name, registration_code, status, photo_url, avatar_url,
-              classes ( id, name, grade, shift, room ),
-              organizations ( id, name, trade_name )
-            `)
-            .in('id', idArray)
-            .eq('organization_id', orgId);
-
-          if (studentRecords && studentRecords.length > 0) {
-            const children = studentRecords.map((st: any, idx: number) => {
-              const cls: any = st.classes;
-              const org: any = st.organizations;
-              const link = guardianLinks.find(l => l.student_id === st.id);
-              return {
-                link_id: link?.id || `link-${st.id}`,
-                student_id: st.id,
-                name: st.full_name || st.name,
-                full_name: st.full_name || st.name,
-                registration_code: st.registration_code || st.ra || 'RA-OFICIAL',
-                ra: st.registration_code || st.ra || 'RA-OFICIAL',
-                class_name: cls?.name || 'Turma Regular',
-                grade: cls?.grade || 'Ensino Fundamental',
-                shift: cls?.shift || 'Matutino',
-                room: cls?.room || 'Sala 01',
-                school_id: orgId,
-                school_name: org?.trade_name || org?.name || 'Classium Colégio Modelo',
-                relationship: link?.relationship || 'Responsável Legal',
-                status: st.status || 'active',
-                is_active: st.status !== 'inactive',
-                photo_url: st.photo_url || st.avatar_url || '',
-                is_active_on_panel: idx === 0
-              };
-            });
-
-            return res.json({ success: true, count: children.length, children });
-          }
-        }
-      } catch (err) {
-        console.warn('[GET /api/family/linked-students] Query notice:', err);
-      }
-
-      return res.json({ success: true, count: 0, children: [] });
+      const r = await familyRpc(req, 'classium_family_my_students', {});
+      if (r.status !== 200) return res.status(r.status).json(r.body);
+      const list: any[] = Array.isArray(r.data) ? r.data : [];
+      const children = list.map((st: any, idx: number) => ({
+        link_id: `link-${st.student_id}`,
+        student_id: st.student_id,
+        id: st.student_id,
+        name: st.full_name,
+        full_name: st.full_name,
+        registration_code: st.registration_code || '',
+        ra: st.registration_code || '',
+        birth_date: st.birth_date || null,
+        sex: st.sex || null,
+        class_id: st.class_id || null,
+        class_name: st.class_name || '',
+        grade: st.grade || '',
+        shift: st.shift || '',
+        room: st.room || '',
+        school_id: st.school_id,
+        school_name: st.school_name || '',
+        relationship: st.relationship || 'Responsável',
+        status: st.status || '',
+        is_active: !['inativo', 'inativa', 'inactive', 'transferido', 'transferida'].includes(String(st.status || '').toLowerCase()),
+        photo_url: '',
+        is_active_on_panel: idx === 0,
+      }));
+      return res.json({ success: true, count: children.length, children });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message || "Erro ao consultar alunos vinculados." });
+      console.error('[GET /api/family/linked-students]', err);
+      return res.status(500).json({ success: false, error: 'Erro ao consultar os estudantes vinculados.' });
     }
   });
 
-  // POST /api/family/link-student (Secure linking with session verification, multi-tenant isolation & approval workflow)
+  // POST /api/family/link-student
   app.post("/api/family/link-student", async (req, res) => {
     try {
-      const auth = await resolveFamilyAuth(req);
-      if (!auth || !auth.authenticated || !auth.user || auth.error) {
-        return res.status(auth?.error?.status || 401).json({
-          success: false,
-          error: auth?.error?.message || "Não autenticado: acesso restrito a responsáveis autenticados."
-        });
+      const { guardian_name, full_name, student_id, student_ids } = req.body || {};
+      const guardianName = String(guardian_name || full_name || '').trim().replace(/\s+/g, ' ');
+      const ids: string[] = Array.from(new Set([...(Array.isArray(student_ids) ? student_ids : []), ...(student_id ? [student_id] : [])].map(String)));
+      if (!guardianName) return res.status(400).json({ success: false, message: 'Informe o nome do responsável cadastrado na matrícula.' });
+      if (ids.length === 0) return res.status(400).json({ success: false, message: 'Nenhum estudante foi selecionado.' });
+
+      const linked: any[] = [];
+      const failed: string[] = [];
+      for (const id of ids.slice(0, 10)) {
+        const r = await familyRpc(req, 'classium_family_link_student', { p_student_id: id, p_guardian_name: guardianName });
+        if (r.status !== 200) return res.status(r.status).json({ ...r.body, message: (r.body as any).error });
+        const out: any = r.data || {};
+        if (out.success) linked.push({ student_id: id, name: out.student_name, status: 'approved' });
+        else failed.push(out.error || 'Não foi possível vincular.');
       }
 
-      const { guardian_name, full_name, student_id, student_ids } = req.body;
-      const cleanName = (guardian_name || full_name || auth.profile?.full_name || auth.profile?.name || '').trim();
-
-      if (!cleanName || cleanName.length < 2) {
-        return res.status(400).json({
-          success: false,
-          message: "Informe o Nome do responsável cadastrado para realizar a vinculação."
-        });
+      if (linked.length === 0) {
+        return res.status(422).json({ success: false, status: 'rejected', message: failed[0] || 'Não foi possível vincular.', error: failed[0], linked: [], pending: [] });
       }
-
-      const targetStudentIdSet = new Set<string>();
-      if (Array.isArray(student_ids) && student_ids.length > 0) {
-        student_ids.forEach(id => targetStudentIdSet.add(id));
-      } else if (student_id) {
-        targetStudentIdSet.add(student_id);
-      }
-
-      if (targetStudentIdSet.size === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Nenhum estudante foi selecionado para vinculação."
-        });
-      }
-
-      const sb = auth.sb;
-      const orgId = auth.organizationId;
-      const targetIds = Array.from(targetStudentIdSet);
-
-      // Verify that all requested students belong strictly to this tenant
-      const { data: studentRecords, error: stErr } = await sb
-        .from('students')
-        .select(`
-          id, name, full_name, registration_code, status, guardian_name, guardian_relationship,
-          classes ( id, name, grade, shift, room ),
-          organizations ( id, name, trade_name )
-        `)
-        .in('id', targetIds)
-        .eq('organization_id', orgId);
-
-      if (stErr || !studentRecords || studentRecords.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Estudante não localizado ou não pertencente a esta unidade escolar."
-        });
-      }
-
-      // 1. Resolve or create Guardian record in guardians table
-      let guardianId = auth.guardian?.id;
-      if (!guardianId) {
-        // Check if guardian with this name or user_id exists in this tenant
-        const { data: existingG } = await sb
-          .from('guardians')
-          .select('id')
-          .or(`user_id.eq.${auth.user.id},full_name.ilike.%${cleanName}%`)
-          .eq('organization_id', orgId)
-          .maybeSingle();
-
-        if (existingG) {
-          guardianId = existingG.id;
-          await sb.from('guardians').update({ user_id: auth.user.id }).eq('id', guardianId);
-        } else {
-          const { data: newG, error: newGErr } = await sb
-            .from('guardians')
-            .insert({
-              organization_id: orgId,
-              user_id: auth.user.id,
-              name: cleanName || 'Responsável Legal',
-              full_name: cleanName || 'Responsável Legal',
-              phone: auth.profile?.phone || null,
-              email: auth.user.email || auth.profile?.email || null,
-              kinship: 'Responsável Legal',
-              status: 'active'
-            })
-            .select('id')
-            .maybeSingle();
-
-          if (!newGErr && newG) {
-            guardianId = newG.id;
-          }
-        }
-      }
-
-      if (!guardianId) {
-        return res.status(500).json({
-          success: false,
-          message: "Não foi possível consolidar o registro do responsável no sistema."
-        });
-      }
-
-      // 2. Process each student: check if relationship is verifiable in school records
-      const normGuardian = normalizeSearchText(cleanName);
-      const linkedOutput: any[] = [];
-      const pendingOutput: any[] = [];
-
-      for (const st of studentRecords) {
-        const studentGuardianName = normalizeSearchText(st.guardian_name || '');
-        const isOfficiallyVerified = studentGuardianName.length >= 3 && 
-          (studentGuardianName === normGuardian || studentGuardianName.includes(normGuardian) || normGuardian.includes(studentGuardianName));
-
-        // If officially verified: create permanent active link
-        if (isOfficiallyVerified) {
-          // Check if link already exists in student_responsible_links
-          const { data: existingLink } = await sb
-            .from('student_responsible_links')
-            .select('id')
-            .eq('student_id', st.id)
-            .eq('guardian_id', guardianId)
-            .maybeSingle();
-
-          let linkId = existingLink?.id;
-          if (!linkId) {
-            const { data: newLink } = await sb
-              .from('student_responsible_links')
-              .insert({
-                organization_id: orgId,
-                student_id: st.id,
-                guardian_id: guardianId,
-                guardian_name: cleanName || st.guardian_name || 'Responsável Legal',
-                relationship: st.guardian_relationship || 'Responsável Legal',
-                is_primary_contact: true,
-                is_financial_responsible: true,
-                is_pedagogical_responsible: true,
-                can_pickup: true
-              })
-              .select('id')
-              .maybeSingle();
-
-            linkId = newLink?.id;
-          }
-
-          // Also keep family_links in sync
-          try {
-            await sb.from('family_links').upsert({
-              organization_id: orgId,
-              student_id: st.id,
-              guardian_id: guardianId
-            }, { onConflict: 'student_id,guardian_id' });
-          } catch (_) {}
-
-          // Audit log for official link
-          try {
-            await sb.from('audit_logs').insert({
-              organization_id: orgId,
-              action: 'LINK_FAMILY_STUDENT',
-              table_name: 'student_responsible_links',
-              record_id: linkId || st.id,
-              user_id: auth.user?.id || null,
-              new_data: {
-                student_id: st.id,
-                student_name: st.full_name || st.name,
-                guardian_id: guardianId,
-                guardian_name: cleanName,
-                status: 'approved',
-                timestamp: new Date().toISOString()
-              }
-            });
-          } catch (_) {}
-
-          linkedOutput.push({
-            student_id: st.id,
-            name: st.full_name || st.name,
-            status: 'approved',
-            link_id: linkId
-          });
-
-        } else {
-          // If relationship is not yet verified in school records: record as PENDING REQUEST
-          try {
-            await sb.from('audit_logs').insert({
-              organization_id: orgId,
-              action: 'REQUEST_FAMILY_LINK',
-              table_name: 'student_responsible_links',
-              record_id: st.id,
-              user_id: auth.user?.id || null,
-              new_data: {
-                student_id: st.id,
-                student_name: st.full_name || st.name,
-                guardian_id: guardianId,
-                guardian_name: cleanName,
-                status: 'pending_secretariat_review',
-                notes: 'Solicitação criada via Portal Família aguardando conferência de vínculo cadastral pela secretaria.',
-                timestamp: new Date().toISOString()
-              }
-            });
-          } catch (_) {}
-
-          pendingOutput.push({
-            student_id: st.id,
-            name: st.full_name || st.name,
-            status: 'pending'
-          });
-        }
-      }
-
-      if (linkedOutput.length > 0 && pendingOutput.length === 0) {
-        return res.json({
-          success: true,
-          status: 'approved',
-          message: `${linkedOutput.length} estudante(s) vinculado(s) com sucesso à sua conta familiar.`,
-          linked: linkedOutput,
-          pending: []
-        });
-      } else if (pendingOutput.length > 0 && linkedOutput.length === 0) {
-        return res.json({
-          success: true,
-          status: 'pending',
-          message: "Solicitação enviada com sucesso à secretaria escolar para análise e aprovação de vínculo.",
-          linked: [],
-          pending: pendingOutput
-        });
-      } else {
-        return res.json({
-          success: true,
-          status: 'partial',
-          message: `${linkedOutput.length} estudante(s) vinculado(s) diretamente e ${pendingOutput.length} solicitação(ões) enviada(s) à secretaria para aprovação.`,
-          linked: linkedOutput,
-          pending: pendingOutput
-        });
-      }
-
+      return res.json({
+        success: true,
+        status: failed.length ? 'partial' : 'approved',
+        message: failed.length
+          ? `${linked.length} estudante(s) vinculado(s). ${failed.length} não: ${failed[0]}`
+          : `${linked.length} estudante(s) vinculado(s) à sua conta.`,
+        linked,
+        pending: [],
+      });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message || "Erro ao processar solicitação de vinculação." });
+      console.error('[POST /api/family/link-student]', err);
+      return res.status(500).json({ success: false, error: 'Erro ao vincular o estudante.' });
     }
   });
 
@@ -19724,18 +19177,22 @@ Regras:
         guardians: []
       };
 
+      // Só estudantes realmente vinculados a esta conta (nunca "o primeiro da escola")
+      const mine = await familyRpc(req, 'classium_family_my_students', {});
+      const allowedIds: string[] = mine.status === 200 && Array.isArray(mine.data) ? (mine.data as any[]).map((x: any) => x.student_id) : [];
+      const targetId = studentId && allowedIds.includes(studentId) ? studentId : allowedIds[0];
+      if (!targetId) {
+        return res.json({ success: true, profile: profileData, no_linked_students: true });
+      }
+
       if (sb) {
         try {
-          // 1. Fetch student strictly scoped to tenant
-          let stQuery = sb
+          // 1. Estudante vinculado
+          const { data: stData } = await sb
             .from('students')
-            .select('*, classes(id, name, grade, shift, room), organizations(id, name, trade_name)')
-            .eq('organization_id', orgId);
-
-          if (studentId && isValidUUID(studentId)) {
-            stQuery = stQuery.eq('id', studentId);
-          }
-          const { data: stData } = await stQuery.limit(1).maybeSingle();
+            .select('*, classes!class_id(id, name, grade, shift, room), organizations(id, name, trade_name)')
+            .eq('id', targetId)
+            .maybeSingle();
 
           if (stData) {
             profileData.student = {
@@ -19745,14 +19202,14 @@ Regras:
               cpf: stData.cpf,
               rg: stData.rg,
               birthDate: stData.birth_date,
-              gender: stData.gender || 'Masculino',
-              matricula: stData.registration_number || stData.ra,
-              schoolYear: '2026',
-              schoolUnit: stData.school_unit || stData.organizations?.trade_name || stData.organizations?.name || 'Unidade Sede',
-              grade: stData.grade || stData.classes?.grade || 'Ensino Fundamental',
-              className: stData.class_name || stData.classes?.name || '',
-              shift: stData.shift || stData.classes?.shift || 'Integral',
-              status: stData.status || 'Ativo',
+              gender: stData.gender || stData.sex || '',
+              matricula: stData.registration_code || stData.registration_number || stData.ra || '',
+              schoolYear: String(stData.academic_year || new Date().getFullYear()),
+              schoolUnit: stData.organizations?.trade_name || stData.organizations?.name || '',
+              grade: stData.classes?.grade || stData.grade || '',
+              className: stData.classes?.name || stData.class_name || '',
+              shift: stData.classes?.shift || stData.shift || '',
+              status: stData.status || '',
               photoUrl: stData.photo_url || stData.avatar_url || ''
             };
 
@@ -19782,8 +19239,7 @@ Regras:
             const { data: guardData } = await sb
               .from('student_responsible_links')
               .select('id, relationship, is_primary_contact, guardians(*)')
-              .eq('student_id', stData.id)
-              .eq('organization_id', orgId);
+              .eq('student_id', stData.id);
 
             if (guardData && Array.isArray(guardData) && guardData.length > 0) {
               profileData.guardians = guardData
@@ -20081,56 +19537,28 @@ Regras:
   // GET /api/family/students/:familyId (P2.274.356 - Fail-Closed Auth)
   app.get("/api/family/students/:familyId", async (req, res) => {
     try {
-      const auth = await resolveFamilyAuth(req);
-      if (!auth || !auth.authenticated || !auth.user || auth.error) {
-        return res.status(auth?.error?.status || 401).json({
-          success: false,
-          error: auth?.error?.message || "Não autenticado: acesso restrito a responsáveis autenticados."
-        });
-      }
-
-      const { familyId } = req.params;
-      const sb = auth.sb;
-      const orgId = auth.organizationId;
-
-      if (!familyId || !isValidUUID(familyId)) {
-        return res.status(400).json({ success: false, error: "Identificador familiar inválido." });
-      }
-
-      if (sb) {
-        try {
-          const { data: studentsData } = await sb
-            .from('students')
-            .select('id, name, full_name, ra, registration_number, grade, class_name, shift, room, status, photo_url, avatar_url, class_id')
-            .eq('organization_id', orgId)
-            .or(`family_id.eq.${familyId},id.in.(select student_id from student_guardians where guardian_id='${familyId}')`);
-
-          if (studentsData && studentsData.length > 0) {
-            return res.json({
-              success: true,
-              students: studentsData.map((s: any) => ({
-                id: s.id,
-                name: s.name || s.full_name,
-                full_name: s.full_name || s.name,
-                ra: s.ra || s.registration_number,
-                grade: s.grade || s.class_name || 'Turma Regular',
-                class_id: s.class_id,
-                shift: s.shift || 'Matutino',
-                room: s.room || 'Sala de Aula',
-                status: s.status || 'active',
-                photoUrl: s.photo_url || s.avatar_url || ''
-              }))
-            });
-          }
-        } catch (_) {}
-      }
-
+      // os filhos vêm sempre da conta logada (o identificador da URL não amplia o acesso)
+      const r = await familyRpc(req, 'classium_family_my_students', {});
+      if (r.status !== 200) return res.status(r.status).json(r.body);
+      const list: any[] = Array.isArray(r.data) ? r.data : [];
       return res.json({
         success: true,
-        students: []
+        students: list.map((s: any) => ({
+          id: s.student_id,
+          name: s.full_name,
+          full_name: s.full_name,
+          ra: s.registration_code || '',
+          grade: s.class_name || s.grade || '',
+          class_id: s.class_id || null,
+          shift: s.shift || '',
+          room: s.room || '',
+          status: s.status || '',
+          photoUrl: '',
+        })),
       });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message || "Erro ao consultar estudantes da família." });
+      console.error('[GET /api/family/students]', err);
+      return res.status(500).json({ success: false, error: 'Erro ao consultar os estudantes da família.' });
     }
   });
 

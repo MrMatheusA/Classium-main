@@ -128,8 +128,9 @@ export function FamilyDashboard() {
   /** Os filhos vêm do banco: só aparecem os alunos ligados a esta conta */
   const loadChildren = useCallback(async () => {
     try {
-      const { data, error } = await supabase.rpc('get_my_family_children');
-      const list = !error && data?.ok && Array.isArray(data.children) ? (data.children as FamilyChildRPC[]) : [];
+      // só os estudantes realmente vinculados a esta conta
+      const { data, error } = await supabase.rpc('classium_family_my_students');
+      const list = !error && Array.isArray(data) ? (data as FamilyChildRPC[]) : [];
       setChildren(list);
       syncContext(list);
     } catch (err) {
@@ -145,6 +146,7 @@ export function FamilyDashboard() {
     // atualiza sozinho quando a escola liga um aluno à família
     const channel = supabase
       .channel('familia-vinculos')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_responsible_links' }, () => loadChildren())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_guardians' }, () => loadChildren())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guardians' }, () => loadChildren())
       .subscribe();
@@ -225,7 +227,7 @@ export function FamilyDashboard() {
           <EmptyState
             icon={Heart}
             title="Ainda não encontramos seus filhos"
-            text="Assim que a escola registrar a matrícula com o seu CPF e o seu e-mail, os alunos aparecem aqui automaticamente. Se já fez a matrícula, confirme esses dados com a secretaria."
+            text='Vincule seu filho em "Filhos e vínculos", informando o seu nome e o nome completo dele como estão na matrícula. Se não encontrar, fale com a secretaria.'
           />
         </Card>
       ) : (

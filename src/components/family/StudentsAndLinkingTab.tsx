@@ -145,7 +145,7 @@ export function StudentsAndLinkingTab() {
             class: first.class_name,
             grade: first.grade,
             shift: first.shift,
-            photoUrl: first.photo_url || `https://images.unsplash.com/photo-1544717305-2782549b5136?w=150`
+            photoUrl: first.photo_url || ''
           });
         }
       }
@@ -161,7 +161,7 @@ export function StudentsAndLinkingTab() {
     fetchLinkedChildren();
   }, [fetchLinkedChildren]);
 
-  // 2. Supabase Realtime synchronization
+  // 2. Atualiza sozinho quando a escola muda um vínculo
   useEffect(() => {
     const channel = supabase
       .channel('family-student-links-sync')
@@ -248,14 +248,17 @@ export function StudentsAndLinkingTab() {
         cache: 'no-store'
       });
 
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 429) {
           throw new Error('Muitas tentativas em pouco tempo. Por segurança, aguarde 1 minuto.');
         }
-        throw new Error('Falha ao comunicar com o servidor escolar.');
+        throw new Error(json.error || 'Não foi possível consultar a escola agora. Tente de novo.');
       }
-
-      const json = await res.json();
+      if (json.success === false) {
+        setSearchError(json.error || json.message || 'Não foi possível pesquisar.');
+        return;
+      }
 
       if (json.invalid_guardian) {
         setSearchError(json.message || 'Nome do responsável inválido ou muito curto.');
@@ -273,7 +276,8 @@ export function StudentsAndLinkingTab() {
 
       if (results.length === 0) {
         setSearchError(
-          'Nenhum estudante foi localizado nesta unidade com os nomes informados. Verifique a grafia conforme o cadastro da secretaria escolar.'
+          json.message ||
+            'Nenhum estudante encontrado. Confira se o seu nome e o nome do estudante estão completos e iguais aos da matrícula.'
         );
       }
     } catch (err: any) {
@@ -300,10 +304,10 @@ export function StudentsAndLinkingTab() {
         })
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
 
       if (!res.ok || json.success === false) {
-        throw new Error(json.message || 'Não foi possível vincular o estudante.');
+        throw new Error(json.message || json.error || 'Não foi possível vincular o estudante.');
       }
 
       setCandidateToConfirm(null);
@@ -334,7 +338,7 @@ export function StudentsAndLinkingTab() {
 
   // 6. Execute Batch Link (All eligible unlinked)
   const executeLinkAll = async () => {
-    const unlinkedEligible = candidateStudents.filter(c => !c.is_linked);
+    const unlinkedEligible = candidateStudents.filter(c => !c.is_linked && !(c as any).linked_to_other_account);
     if (unlinkedEligible.length === 0) return;
 
     setIsLinkingAll(true);
@@ -362,12 +366,8 @@ export function StudentsAndLinkingTab() {
       await fetchLinkedChildren();
 
       // Update candidates state
-      setCandidateStudents(prev =>
-        prev.map(c => ({
-          ...c,
-          is_linked: true
-        }))
-      );
+      const linkedIds = new Set((json.linked || []).map((l: any) => l.student_id));
+      setCandidateStudents(prev => prev.map(c => (linkedIds.has(c.student_id) ? { ...c, is_linked: true } : c)));
     } catch (err: any) {
       setActionError(err.message || 'Erro ao processar vinculações em lote.');
     } finally {
@@ -427,7 +427,7 @@ export function StudentsAndLinkingTab() {
       class: child.class_name,
       grade: child.grade,
       shift: child.shift,
-      photoUrl: child.photo_url || `https://images.unsplash.com/photo-1544717305-2782549b5136?w=150`
+      photoUrl: child.photo_url || ''
     });
 
     fetch('/api/family/set-active-student', {
@@ -530,10 +530,12 @@ export function StudentsAndLinkingTab() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-xs font-medium">
-            <Building2 className="w-3.5 h-3.5 text-oxford" />
-            <span>Unidade: <strong>{organization?.trade_name || organization?.name || 'Classium Colégio Modelo'}</strong></span>
-          </div>
+          {(organization?.trade_name || organization?.name || linkedChildren[0]?.school_name) && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-xs font-medium">
+              <Building2 className="w-3.5 h-3.5 text-oxford" />
+              <span>Escola: <strong>{organization?.trade_name || organization?.name || linkedChildren[0]?.school_name}</strong></span>
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSearch} className="mt-6 space-y-6">
@@ -553,7 +555,7 @@ export function StudentsAndLinkingTab() {
                   required
                   value={guardianName}
                   onChange={(e) => setGuardianName(e.target.value)}
-                  placeholder="Ex: Sandra Cristina da Silva"
+                  placeholder="Seu nome completo, como na matrícula"
                   className="w-full px-4 py-3 rounded-2xl bg-gray-50/70 border border-gray-200 text-sm font-medium text-oxford placeholder-gray-400 focus:bg-white focus:border-oxford focus:ring-2 focus:ring-oxford/10 transition-all outline-none"
                 />
                 <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
@@ -595,7 +597,7 @@ export function StudentsAndLinkingTab() {
                         required={idx === 0}
                         value={nameVal}
                         onChange={(e) => handleStudentNameChange(idx, e.target.value)}
-                        placeholder={idx === 0 ? "Ex: Roberth dos Santos Silva" : "Ex: Ryan dos Santos Silva"}
+                        placeholder="Nome e sobrenome, como na matrícula"
                         className="w-full px-4 py-3 rounded-2xl bg-gray-50/70 border border-gray-200 text-sm font-medium text-oxford placeholder-gray-400 focus:bg-white focus:border-oxford focus:ring-2 focus:ring-oxford/10 transition-all outline-none"
                         aria-label={`Nome completo do estudante ${idx + 1}`}
                       />
@@ -769,10 +771,10 @@ export function StudentsAndLinkingTab() {
                         </h4>
                         <p className="text-xs text-gray-600 flex items-center gap-1">
                           <Building2 className="w-3 h-3 text-gray-400 shrink-0" />
-                          <span className="truncate">{candidate.class_name} • {candidate.grade}</span>
+                          <span className="truncate">{[candidate.class_name || 'Sem turma', candidate.grade].filter(Boolean).join(' • ')}</span>
                         </p>
                         <p className="text-2xs text-gray-500">
-                          {candidate.shift} • {candidate.room}
+                          {[candidate.shift, candidate.school_name].filter(Boolean).join(' • ')}
                         </p>
                       </div>
                     </div>
@@ -791,6 +793,10 @@ export function StudentsAndLinkingTab() {
                         <div className="w-full py-2 px-3 rounded-xl bg-emerald-50 text-emerald-700 text-2xs font-bold flex items-center justify-center gap-1.5">
                           <UserCheck className="w-3.5 h-3.5" />
                           <span>Ativo na Sua Conta Familiar</span>
+                        </div>
+                      ) : (candidate as any).linked_to_other_account ? (
+                        <div className="w-full py-2 px-3 rounded-xl bg-amber-50 text-amber-800 text-2xs font-bold text-center">
+                          Este responsável já está ligado a outra conta. Fale com a secretaria.
                         </div>
                       ) : candidate.is_pending ? (
                         <div className="w-full py-2 px-3 rounded-xl bg-amber-50 text-amber-700 text-2xs font-bold flex items-center justify-center gap-1.5">
@@ -850,7 +856,7 @@ export function StudentsAndLinkingTab() {
           {isLoadingLinked ? (
             <div className="py-12 flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-8 h-8 animate-spin text-oxford" />
-              <p className="text-xs font-medium text-gray-500">Consultando vínculos no Supabase...</p>
+              <p className="text-xs font-medium text-gray-500">Carregando seus filhos...</p>
             </div>
           ) : linkedChildren.length === 0 ? (
             <div className="py-12 px-6 text-center bg-gray-50/70 rounded-3xl border border-dashed border-gray-200">
@@ -880,7 +886,7 @@ export function StudentsAndLinkingTab() {
                       {/* TOP BADGE */}
                       <div className="flex items-center justify-between gap-2 mb-3">
                         <span className="text-2xs font-mono font-bold text-gray-500">
-                          RA: {child.registration_code || child.ra}
+                          {child.registration_code || child.ra ? `Matrícula: ${child.registration_code || child.ra}` : ''}
                         </span>
 
                         {isSelectedOnPanel ? (
@@ -910,10 +916,10 @@ export function StudentsAndLinkingTab() {
                             {child.name}
                           </h4>
                           <p className="text-xs text-gray-600 font-medium truncate">
-                            {child.class_name} • {child.grade}
+                            {[child.class_name || 'Sem turma', child.grade].filter(Boolean).join(' • ')}
                           </p>
                           <p className="text-2xs text-gray-400">
-                            {child.shift} • {child.room}
+                            {[child.shift, child.room].filter(Boolean).join(' • ')}
                           </p>
                         </div>
                       </div>
@@ -921,7 +927,7 @@ export function StudentsAndLinkingTab() {
                       {/* SCHOOL TAG */}
                       <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 mb-4 flex items-center gap-2 text-2xs text-gray-600">
                         <Building2 className="w-3.5 h-3.5 text-oxford shrink-0" />
-                        <span className="truncate">{child.school_name || 'Classium Colégio Modelo'}</span>
+                        <span className="truncate">{child.school_name || 'Escola'}</span>
                       </div>
                     </div>
 
@@ -1028,7 +1034,7 @@ export function StudentsAndLinkingTab() {
 
             <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-4 space-y-1">
               <p className="text-sm font-bold text-oxford">{candidateToConfirm.name}</p>
-              <p className="text-xs text-gray-600">{candidateToConfirm.class_name} • {candidateToConfirm.grade}</p>
+              <p className="text-xs text-gray-600">{[candidateToConfirm.class_name || 'Sem turma', candidateToConfirm.grade].filter(Boolean).join(' • ')}</p>
               <p className="text-2xs text-gray-400 font-mono">RA: {candidateToConfirm.registration_code}</p>
             </div>
 
