@@ -146,6 +146,19 @@ export function MuralGestor({ organizationId }: { organizationId?: string }) {
   );
   useRealtime(['mural_recados', 'mural_leituras'], () => lista.recarregar(true), !!org);
 
+  // exclusão automática configurada no cabeçalho do mural (6 meses ou virada do ano)
+  useEffect(() => {
+    if (!org) return;
+    rpc<any>('classium_mural_limpeza', { p_org: org }).then((r) => {
+      const n = r.data?.apagados || 0;
+      if (n > 0) {
+        toast.show(`${n} recado(s) encerrado(s) antigo(s) foram excluídos automaticamente.`);
+        lista.recarregar(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org]);
+
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return lista.data.filter((r) => {
@@ -165,12 +178,11 @@ export function MuralGestor({ organizationId }: { organizationId?: string }) {
     setProcessando(true);
     try {
       if (confirmar.acao === 'excluir') {
-        const { error } = await supabase.from('mural_recados').delete().eq('id', confirmar.recado.id);
-        if (error) throw new Error(mensagemErro(error));
+        await rpcOrThrow('classium_mural_excluir', { p_recado: confirmar.recado.id });
       } else {
         await rpcOrThrow('mural_alterar', { p_recado: confirmar.recado.id, p_acao: confirmar.acao });
       }
-      toast.show('Pronto.');
+      toast.show(confirmar.acao === 'excluir' ? 'Recado excluído.' : 'Pronto.');
       setConfirmar(null);
       lista.recarregar(true);
     } catch (e: any) {
@@ -222,6 +234,16 @@ export function MuralGestor({ organizationId }: { organizationId?: string }) {
       </div>
 
       {lista.error && <ErroBox error={lista.error} onRetry={() => lista.recarregar()} />}
+
+      {aba === 'arquivo' && (
+        <InfoBox>
+          Recados encerrados, arquivados ou cancelados podem ser excluídos um a um. Para excluir automaticamente, abra{' '}
+          <button type="button" className="font-semibold underline" onClick={() => setConfigAberta(true)}>
+            Cabeçalho do mural
+          </button>{' '}
+          e escolha após 6 meses ou na virada do ano.
+        </InfoBox>
+      )}
 
       {lista.loading ? (
         <Carregando linhas={4} />
@@ -321,11 +343,22 @@ export function MuralGestor({ organizationId }: { organizationId?: string }) {
                         <Archive className="h-4 w-4" /> Arquivar
                       </button>
                     )}
-                    {r.status === 'rascunho' && (
+                    {['rascunho', 'encerrado', 'arquivado', 'cancelado'].includes(r.status) && (
                       <button
                         type="button"
                         className={btn.ghost}
-                        onClick={() => setConfirmar({ recado: r, acao: 'excluir', titulo: 'Excluir rascunho?', texto: 'Esta ação não pode ser desfeita.', danger: true })}
+                        onClick={() =>
+                          setConfirmar({
+                            recado: r,
+                            acao: 'excluir',
+                            titulo: r.status === 'rascunho' ? 'Excluir rascunho?' : 'Excluir recado?',
+                            texto:
+                              r.status === 'rascunho'
+                                ? 'Esta ação não pode ser desfeita.'
+                                : 'O recado, os anexos e o registro de leituras e ciências são apagados de vez. Esta ação não pode ser desfeita.',
+                            danger: true,
+                          })
+                        }
                       >
                         <Trash2 className="h-4 w-4" /> Excluir
                       </button>
@@ -786,7 +819,7 @@ function ConfigMural({ org, onClose, onSalvo }: { org: string; onClose: () => vo
   const cfg = useCarregar<any>(
     async () => {
       const { data, error } = await supabase.from('mural_config').select('*').eq('organization_id', org).maybeSingle();
-      return error ? { error: mensagemErro(error) } : { data: data || { organization_id: org, titulo: 'Mural de Recados', apresentacao: '' } };
+      return error ? { error: mensagemErro(error) } : { data: data || { organization_id: org, titulo: 'Mural de Recados', apresentacao: '', auto_excluir: 'nunca' } };
     },
     [org],
     null,
@@ -800,7 +833,14 @@ function ConfigMural({ org, onClose, onSalvo }: { org: string; onClose: () => vo
     setErro(null);
     const { error } = await supabase
       .from('mural_config')
-      .upsert({ organization_id: org, titulo: c.titulo || 'Mural de Recados', apresentacao: c.apresentacao || null, banner_path: c.banner_path || null, updated_at: new Date().toISOString() });
+      .upsert({
+        organization_id: org,
+        titulo: c.titulo || 'Mural de Recados',
+        apresentacao: c.apresentacao || null,
+        banner_path: c.banner_path || null,
+        auto_excluir: c.auto_excluir || 'nunca',
+        updated_at: new Date().toISOString(),
+      });
     setSalvando(false);
     if (error) return setErro(mensagemErro(error));
     onSalvo();
@@ -840,6 +880,15 @@ function ConfigMural({ org, onClose, onSalvo }: { org: string; onClose: () => vo
                 onChange={(e) => cfg.setData({ ...c, apresentacao: e.target.value })}
                 className={`${inputCls} h-auto py-2.5`}
               />
+            )}
+          </Field>
+          <Field label="Excluir recados encerrados automaticamente" hint="Vale para recados encerrados, arquivados ou cancelados. Libera espaço e mantém o mural organizado.">
+            {(id) => (
+              <select id={id} value={c.auto_excluir || 'nunca'} onChange={(e) => cfg.setData({ ...c, auto_excluir: e.target.value })} className={inputCls}>
+                <option value="nunca">Nunca (excluo manualmente)</option>
+                <option value="6_meses">6 meses depois de encerrado</option>
+                <option value="virada_ano">Na virada do ano</option>
+              </select>
             )}
           </Field>
           <div>

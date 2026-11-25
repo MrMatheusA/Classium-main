@@ -123,9 +123,7 @@ export function StudentGuardiansModal({
     if (!form.fullName.trim()) return setFormError('Informe o nome do responsável.');
     const cpf = form.cpf.replace(/\D/g, '');
     if (cpf && !isValidCPF(cpf)) return setFormError('CPF inválido. Confira os números.');
-    if (!cpf && !form.guardianId) {
-      return setFormError('Informe o CPF do responsável. É com ele que a família encontra o estudante ao criar a conta no portal.');
-    }
+
 
     setSaving(true);
     const res = await studentsService.linkGuardian(student.id, {
@@ -223,7 +221,7 @@ export function StudentGuardiansModal({
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="CPF" required hint="A família usa este CPF para entrar no portal">
+                <Field label="CPF" hint="Opcional. Com o CPF, a família encontra o estudante ao criar a conta no portal">
                   {id => (
                     <input
                       id={id}

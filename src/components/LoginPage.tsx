@@ -176,12 +176,24 @@ export function LoginPage() {
       const { data, error: updError } = await supabase.auth.updateUser({ password: newPass });
       if (updError) return setError(friendlyError(updError.message));
       if (data.user) {
-        await supabase.from('profiles').update({ must_change_password: false }).eq('id', data.user.id);
+        // desliga a troca obrigatória da senha provisória (função do banco; a tabela de perfis não deixa a própria pessoa mudar isso)
+        const { data: done, error: doneError } = await supabase.rpc('classium_finish_password_change');
+        if (doneError || (done as any)?.success === false) {
+          const { error: fallbackError } = await supabase.from('profiles').update({ must_change_password: false }).eq('id', data.user.id);
+          if (fallbackError) {
+            console.error('[Nova senha]', doneError || done, fallbackError);
+            return setError('A senha foi trocada, mas não conseguimos liberar o acesso. Avise a gestão da escola.');
+          }
+        }
+        await supabase.auth.updateUser({ data: { must_change_password: false } }).catch(() => null);
       }
       finishPasswordRecovery();
       setNewPass('');
       setNewPass2('');
-      await refresh(); // o App leva ao painel
+      const fresh = await refresh(); // o App leva ao portal certo
+      if (fresh?.mustChangePassword) {
+        setError('A senha foi trocada, mas o acesso ainda não foi liberado. Saia e entre de novo com a nova senha.');
+      }
     } finally {
       setBusy(false);
     }

@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { usePlatform } from '../../context/PlatformContext';
-import { studentsService } from '../../services/students/students.service';
+import { useActiveOrgId } from '../../hooks/useActiveOrgId';
 import { maskCPF, maskDate, maskCellPhone, maskCEP } from '../../utils/masks';
 import { Alert, Badge, Field, cx, inputCls, EASE } from '../ui/kit';
 
@@ -98,7 +98,7 @@ const initialFormState: EnrollmentFormState = {
   guardians: [{ name: '', cpf: '', email: '', phone: '', relationship: 'Mãe', isFinancial: true }],
   schoolId: '',
   grade: '',
-  academicYear: '2026',
+  academicYear: String(new Date().getFullYear()),
   shift: 'Matutino',
   transportRequired: false,
 };
@@ -216,8 +216,9 @@ interface StudentEnrollmentWizardProps {
 type LogStatus = 'pending' | 'running' | 'success' | 'failed';
 
 export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmentWizardProps) {
-  const { currentUser } = usePlatform();
-  const organizationId = currentUser?.organizationId || '11111111-1111-1111-1111-111111111111';
+  const { currentUser, currentOrganization, schoolInfo } = usePlatform() as any;
+  // escola real de quem está logado (sem código fixo de teste)
+  const { orgId: organizationId, resolving: orgResolving } = useActiveOrgId(currentOrganization?.id, currentUser?.organizationId, schoolInfo?.id);
 
   const [step, setStep] = useState<number>(1);
   const [formData, setFormData] = useState<EnrollmentFormState>(initialFormState);
@@ -227,6 +228,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
 
   const [dbClasses, setDbClasses] = useState<{ id: string; name: string; shift?: string; room?: string }[]>([]);
   const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState<string | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
 
   const [cepLoading, setCepLoading] = useState(false);
@@ -256,7 +258,6 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
 
   // Rascunho + ano letivo + turmas
   useEffect(() => {
-    let cancelled = false;
     const saved = localStorage.getItem(DRAFT_KEY);
     if (saved) {
       try {
@@ -267,28 +268,47 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
         localStorage.removeItem(DRAFT_KEY);
       }
     }
+  }, []);
 
+  // Turmas e ano letivo da escola
+  useEffect(() => {
+    if (orgResolving) return;
+    if (!organizationId) {
+      setClassesLoading(false);
+      setClassesError('Não identificamos a escola da sua conta. Atualize a página.');
+      return;
+    }
+    let cancelled = false;
     (async () => {
-      const [{ data: years }, { data: classes }] = await Promise.all([
+      setClassesLoading(true);
+      setClassesError(null);
+      const [years, classes] = await Promise.all([
         supabase.from('academic_years').select('id,name,is_current').eq('organization_id', organizationId),
-        supabase.from('classes').select('id,name,shift,room').eq('organization_id', organizationId).eq('is_active', true).order('name'),
+        supabase.from('classes').select('*').eq('organization_id', organizationId).order('name'),
       ]);
       if (cancelled) return;
 
-      const year = years?.find((y: any) => y.is_current) ?? years?.[0];
+      const year = (years.data as any[] | null)?.find((y: any) => y.is_current) ?? (years.data as any[] | null)?.[0];
       if (year?.name) setFormData((prev) => ({ ...prev, academicYear: year.name }));
 
-      const list = (classes as any[]) || [];
-      setDbClasses(list);
+      if (classes.error) {
+        setClassesError('Não foi possível carregar as turmas. Você pode matricular sem turma e vincular depois.');
+        setDbClasses([]);
+      } else {
+        // esconde só as turmas desativadas
+        const list = ((classes.data as any[]) || [])
+          .filter((c) => c.is_active !== false && !['inativa', 'inactive', 'arquivada'].includes(String(c.status || '').toLowerCase()))
+          .map((c) => ({ id: c.id, name: c.name || c.code || 'Turma', shift: c.shift || '', room: c.room || '' }));
+        setDbClasses(list);
+      }
       setClassesLoading(false);
       // não pré-seleciona turma: evita matricular na turma errada sem perceber
       setSelectedClassId('');
     })();
-
     return () => {
       cancelled = true;
     };
-  }, [organizationId]);
+  }, [organizationId, orgResolving]);
 
   const handleFetchCep = async (cepInput: string) => {
     const cleanCep = cepInput.replace(/\D/g, '');
@@ -361,10 +381,8 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
       if (formData.guardians.length === 0) errors.guardians = 'Cadastre pelo menos um responsável.';
       formData.guardians.forEach((g, idx) => {
         if (!g.name.trim()) errors[`guardian_${idx}_name`] = 'Informe o nome.';
-        if (!g.cpf.trim()) errors[`guardian_${idx}_cpf`] = 'Informe o CPF.';
-        else if (!isValidCPF(g.cpf)) errors[`guardian_${idx}_cpf`] = 'CPF inválido.';
-        if (!g.email.trim()) errors[`guardian_${idx}_email`] = 'Informe o e-mail.';
-        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) errors[`guardian_${idx}_email`] = 'E-mail inválido.';
+        if (g.cpf.trim() && !isValidCPF(g.cpf)) errors[`guardian_${idx}_cpf`] = 'CPF inválido. Confira ou deixe em branco.';
+        if (g.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email.trim())) errors[`guardian_${idx}_email`] = 'E-mail inválido. Confira ou deixe em branco.';
         if (g.phone.replace(/\D/g, '').length < 10) errors[`guardian_${idx}_phone`] = 'Informe o celular com DDD.';
       });
       if (!formData.guardians.some((g) => g.isFinancial)) errors.financial = 'Marque quem é o responsável financeiro.';
@@ -410,7 +428,12 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
 
   const selectedClass = useMemo(() => dbClasses.find((c) => c.id === selectedClassId) || null, [dbClasses, selectedClassId]);
 
-  /* ---------------- gravação (mesma sequência de antes, com rollback completo) ---------------- */
+  /* ---------------- gravação ----------------
+   * 1. salva o estudante (a turma vai junto: a lista da turma se atualiza sozinha)
+   * 2. salva e vincula cada responsável pela função do banco, que reaproveita
+   *    quem já existe (por CPF ou e-mail) e liga a conta do portal se houver
+   * Se algo falhar, o estudante criado nesta tentativa é apagado.
+   */
   const executeEnrollmentTransaction = async () => {
     setIsExecuting(true);
     setExecutionSuccess(null);
@@ -418,75 +441,31 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
 
     setExecutionLog([
       { step: 1, label: 'Conferindo os dados', status: 'running' },
-      { step: 2, label: 'Salvando responsáveis', status: 'pending' },
-      { step: 3, label: 'Salvando o estudante', status: 'pending' },
-      { step: 4, label: 'Vinculando responsáveis ao estudante', status: 'pending' },
-      { step: 5, label: 'Colocando na turma', status: 'pending' },
-      { step: 6, label: 'Atualizando as outras telas', status: 'pending' },
+      { step: 2, label: 'Salvando o estudante', status: 'pending' },
+      { step: 3, label: 'Salvando e vinculando os responsáveis', status: 'pending' },
+      { step: 4, label: 'Colocando na turma', status: 'pending' },
+      { step: 5, label: 'Atualizando as outras telas', status: 'pending' },
     ]);
     const advance = (done: number, label?: string) =>
       setExecutionLog((prev) =>
         prev.map((l) => (l.step === done ? { ...l, status: 'success', label: label || l.label } : l.step === done + 1 ? { ...l, status: 'running' } : l)),
       );
 
-    const createdGuardians: string[] = [];
     let createdStudentId: string | null = null;
-    const created = { srl: [] as string[], fl: [] as string[], cs: [] as string[] };
 
     try {
-      const primaryGuardian = formData.guardians[0];
-      if (!primaryGuardian?.name.trim()) throw new Error('Os dados do responsável são obrigatórios.');
+      if (!organizationId) throw new Error('Não identificamos a escola da sua conta. Atualize a página e tente de novo.');
+      const guardians = formData.guardians.filter((g) => g.name.trim());
+      if (guardians.length === 0) throw new Error('Informe pelo menos um responsável.');
+      const primaryGuardian = guardians[0];
 
       const birthDate = formData.studentBirthDate.includes('/') ? formData.studentBirthDate.split('/').reverse().join('-') : formData.studentBirthDate || null;
       advance(1);
 
-      // 2. Responsáveis — reaproveita quem já existe (CPF com ou sem máscara, na mesma escola)
-      const guardianRecords: { id: string; name: string; relationship: string; isPrimary: boolean; isFinancial: boolean }[] = [];
-      for (const [idx, g] of formData.guardians.entries()) {
-        const gName = g.name.trim();
-        if (!gName) continue;
-        const cpfDigits = g.cpf.replace(/\D/g, '');
-        let gId: string | null = null;
-
-        if (cpfDigits) {
-          const { data: existing } = await supabase
-            .from('guardians')
-            .select('id')
-            .eq('organization_id', organizationId)
-            .or(`cpf.eq.${cpfDigits},cpf.eq.${maskCPF(cpfDigits)}`)
-            .limit(1);
-          if (existing && existing.length > 0) gId = existing[0].id;
-        }
-
-        if (!gId) {
-          gId = generateUUID();
-          const { error: gErr } = await supabase.from('guardians').insert({
-            id: gId,
-            organization_id: organizationId,
-            school_id: organizationId,
-            full_name: gName,
-            name: gName,
-            cpf: g.cpf || null,
-            email: g.email || null,
-            phone: g.phone || null,
-            kinship: g.relationship || 'Responsável',
-            status: 'active',
-          });
-          if (gErr) throw new Error(`Não foi possível salvar o responsável ${gName}: ${gErr.message}`);
-          createdGuardians.push(gId);
-        }
-
-        guardianRecords.push({ id: gId, name: gName, relationship: g.relationship || 'Responsável', isPrimary: idx === 0, isFinancial: !!g.isFinancial });
-      }
-      advance(2, `${guardianRecords.length} responsável(is) salvo(s)`);
-
-      // 3. Estudante
+      // 1. Estudante
       const newStudentId = generateUUID();
-      createdStudentId = newStudentId;
-      const regCode = `RA-${(formData.academicYear || '2026').replace(/\D/g, '').slice(0, 4) || '2026'}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const className = selectedClass ? selectedClass.name : 'Sem Turma';
-      const classShift = selectedClass?.shift || formData.shift;
-
+      const year = (formData.academicYear || String(new Date().getFullYear())).replace(/\D/g, '').slice(0, 4);
+      const regCode = `RA-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
       const studentPayload: any = {
         id: newStudentId,
         organization_id: organizationId,
@@ -506,104 +485,75 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
         state: formData.addressState || null,
         postal_code: formData.addressCep || null,
         has_special_needs: !!formData.studentAee,
+        aee: !!formData.studentAee,
+        laudo: !!formData.studentLaudo,
+        dietary_info: formData.studentDietaryInfo || null,
         allergies: formData.studentDietaryInfo || null,
+        medical_notes: formData.studentMedicalNotes || null,
         medical_conditions: formData.studentMedicalNotes || null,
         uses_transport: !!formData.transportRequired,
-        guardian_name: primaryGuardian.name,
-        guardian_phone: primaryGuardian.phone,
+        guardian_name: primaryGuardian.name.trim(),
+        guardian_phone: primaryGuardian.phone || null,
         guardian_relationship: primaryGuardian.relationship,
-        guardian_cpf: primaryGuardian.cpf,
+        guardian_cpf: primaryGuardian.cpf ? primaryGuardian.cpf.replace(/\D/g, '') : null,
       };
       if (formData.studentPhotoUrl.trim()) studentPayload.avatar_url = formData.studentPhotoUrl.trim();
 
+      // colunas opcionais que algumas bases não têm: tira e tenta de novo
       let { error: stErr } = await supabase.from('students').insert(studentPayload);
-      if (stErr && /avatar_url/.test(stErr.message)) {
-        delete studentPayload.avatar_url; // coluna opcional
+      for (let i = 0; stErr && i < 6; i++) {
+        const missing = /'([a-z_]+)' column|column "?([a-z_]+)"? (?:of relation|does not exist)/i.exec(stErr.message || '');
+        const col = missing?.[1] || missing?.[2];
+        if (!col || !(col in studentPayload) || ['id', 'organization_id', 'full_name'].includes(col)) break;
+        delete studentPayload[col];
         ({ error: stErr } = await supabase.from('students').insert(studentPayload));
       }
       if (stErr) throw new Error(`Não foi possível salvar o estudante: ${stErr.message}`);
-      advance(3);
+      createdStudentId = newStudentId;
+      advance(2);
 
-      // 4. Vínculos
-      for (const g of guardianRecords) {
-        const srlId = generateUUID();
-        const { error: srlErr } = await supabase.from('student_responsible_links').insert({
-          id: srlId,
-          organization_id: organizationId,
-          student_id: newStudentId,
-          guardian_id: g.id,
-          guardian_name: g.name,
-          relationship: g.relationship,
-          is_primary_contact: g.isPrimary,
-          is_financial_responsible: g.isFinancial,
-          is_pedagogical_responsible: true,
-          can_pickup: true,
+      // 2. Responsáveis (cria ou reaproveita) + vínculo com o estudante
+      for (const [idx, g] of guardians.entries()) {
+        const { data, error } = await supabase.rpc('classium_link_guardian', {
+          p_student_id: newStudentId,
+          p_full_name: g.name.trim(),
+          p_cpf: g.cpf.replace(/\D/g, '') || null,
+          p_phone: g.phone || null,
+          p_email: g.email.trim().toLowerCase() || null,
+          p_relationship: g.relationship || 'Responsável',
+          p_is_primary: idx === 0,
+          p_is_financial: !!g.isFinancial,
+          p_can_pickup: true,
+          p_guardian_id: null,
         });
-        if (srlErr) throw new Error(`Erro ao vincular responsável: ${srlErr.message}`);
-        created.srl.push(srlId);
-
-        const flId = generateUUID();
-        const { error: flErr } = await supabase.from('family_links').insert({ id: flId, organization_id: organizationId, student_id: newStudentId, guardian_id: g.id });
-        if (flErr) throw new Error(`Erro ao criar vínculo familiar: ${flErr.message}`);
-        created.fl.push(flId);
+        const res = (data || {}) as any;
+        if (error || res.success === false) {
+          throw new Error(`Não foi possível salvar o responsável ${g.name.trim()}: ${res.error || error?.message || 'erro desconhecido'}`);
+        }
       }
-      advance(4);
+      advance(3, `${guardians.length} responsável(is) vinculado(s)`);
 
-      // 5. Turma
-      if (selectedClass) {
-        const csId = generateUUID();
-        const { error: csErr } = await supabase
-          .from('class_students')
-          .insert([{ id: csId, organization_id: organizationId, class_id: selectedClass.id, student_id: newStudentId, status: 'active' }]);
-        if (csErr) throw new Error(`Erro ao colocar na turma: ${csErr.message}`);
-        created.cs.push(csId);
-        advance(5, `Na turma ${selectedClass.name}`);
-      } else {
-        advance(5, 'Sem turma por enquanto');
-      }
-
-      // 6. Sincronização do serviço. O estudante já está salvo: se esta etapa falhar,
-      // não desfazemos a matrícula — só registramos o aviso.
-      try {
-        await studentsService.createStudent({
-          ...studentPayload,
-          class_name: className,
-          shift: classShift || 'Matutino',
-          academic_year: formData.academicYear || '2026',
-          guardians: formData.guardians.map((g, i) => ({
-            full_name: g.name,
-            name: g.name,
-            relationship: g.relationship,
-            phone: g.phone,
-            email: g.email,
-            document_number: g.cpf,
-            cpf: g.cpf,
-            is_primary: i === 0,
-            is_financial: !!g.isFinancial,
-          })),
-        });
-      } catch (syncErr) {
-        console.warn('[Matrícula] studentsService.createStudent falhou (estudante já salvo):', syncErr);
-      }
+      // 3. Turma: já foi junto com o estudante
+      advance(4, selectedClass ? `Na turma ${selectedClass.name}` : 'Sem turma por enquanto');
 
       window.dispatchEvent(new CustomEvent('classium_students_updated'));
+      window.dispatchEvent(new CustomEvent('classium_classes_updated'));
       window.dispatchEvent(new CustomEvent('classium_school_updated'));
-      advance(6, 'Tudo atualizado');
+      advance(5, 'Tudo atualizado');
 
       setCreatedRegCode(regCode);
       setExecutionSuccess(true);
       localStorage.removeItem(DRAFT_KEY);
     } catch (err: any) {
       console.error('[Matrícula] falhou:', err);
-      // Desfaz o que foi criado nesta tentativa, na ordem inversa
-      try {
-        if (created.cs.length) await supabase.from('class_students').delete().in('id', created.cs);
-        if (created.fl.length) await supabase.from('family_links').delete().in('id', created.fl);
-        if (created.srl.length) await supabase.from('student_responsible_links').delete().in('id', created.srl);
-        if (createdStudentId) await supabase.from('students').delete().eq('id', createdStudentId);
-        if (createdGuardians.length) await supabase.from('guardians').delete().in('id', createdGuardians);
-      } catch (rollbackErr) {
-        console.warn('[Matrícula] rollback parcial:', rollbackErr);
+      // desfaz: apagar o estudante apaga também os vínculos dele
+      if (createdStudentId) {
+        try {
+          await supabase.from('student_responsible_links').delete().eq('student_id', createdStudentId);
+          await supabase.from('students').delete().eq('id', createdStudentId);
+        } catch (rollbackErr) {
+          console.warn('[Matrícula] desfazer parcial:', rollbackErr);
+        }
       }
       setExecutionLog((prev) => prev.map((l) => (l.status === 'running' ? { ...l, status: 'failed' } : l)));
       setExecutionSuccess(false);
@@ -917,7 +867,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
                             )}
                           </Field>
                           <div>
-                            <Field label="CPF *">
+                            <Field label="CPF (opcional)">
                               {(id) => (
                                 <input id={id} type="text" inputMode="numeric" value={g.cpf} onChange={(e) => handleGuardianChange(idx, 'cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" aria-invalid={!!err('cpf')} className={cx(inputCls, 'tabular-nums', err('cpf') && 'border-[#F04438]')} />
                               )}
@@ -933,7 +883,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
                             <ErrorText>{err('phone')}</ErrorText>
                           </div>
                           <div>
-                            <Field label="E-mail * (login do portal)">
+                            <Field label="E-mail (opcional)">
                               {(id) => (
                                 <input id={id} type="email" value={g.email} onChange={(e) => handleGuardianChange(idx, 'email', e.target.value)} placeholder="nome@email.com" aria-invalid={!!err('email')} className={cx(inputCls, err('email') && 'border-[#F04438]')} />
                               )}
@@ -958,7 +908,12 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
               {step === 3 && (
                 <div className="grid gap-4 lg:grid-cols-2">
                   <Section icon={GraduationCap} title="Turma" subtitle="Se a turma ainda não existir, matricule agora e vincule depois.">
-                    {!classesLoading && dbClasses.length === 0 && (
+                    {classesError && (
+                      <div className="mb-4">
+                        <Alert tone="warning">{classesError}</Alert>
+                      </div>
+                    )}
+                    {!classesLoading && !classesError && dbClasses.length === 0 && (
                       <div className="mb-4">
                         <Alert tone="info">Nenhuma turma cadastrada ainda. O estudante fica como “Sem turma” e você vincula depois na lista.</Alert>
                       </div>
@@ -966,7 +921,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
                     <div className="space-y-4">
                       <div className="grid gap-4 sm:grid-cols-2">
                         <Field label="Ano letivo">
-                          {(id) => <input id={id} type="text" readOnly value={formData.academicYear || '2026'} className={cx(inputCls, 'cursor-not-allowed bg-[var(--bg-card-alt)] tabular-nums')} />}
+                          {(id) => <input id={id} type="text" readOnly value={formData.academicYear || String(new Date().getFullYear())} className={cx(inputCls, 'cursor-not-allowed bg-[var(--bg-card-alt)] tabular-nums')} />}
                         </Field>
                         <Field label="Turno">
                           {(id) => (
@@ -1053,7 +1008,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
                         {formData.studentBirthDate || '—'} · {selectedClass ? selectedClass.name : 'Sem turma'} · {selectedClass?.shift || formData.shift}
                       </p>
                     </div>
-                    <Badge tone="accent">Ano {formData.academicYear || '2026'}</Badge>
+                    <Badge tone="accent">Ano {formData.academicYear || String(new Date().getFullYear())}</Badge>
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-3">
@@ -1081,7 +1036,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
                               <Badge>{g.relationship}</Badge>
                             </div>
                             <p className="mt-1 text-[12px] tabular-nums text-[var(--text-muted)]">
-                              {g.phone} · {g.email}
+                              {[g.phone, g.cpf, g.email].filter(Boolean).join(' · ')}
                             </p>
                             {g.isFinancial && <p className="mt-1 text-[12px] font-medium text-[#067647]">Responsável financeiro</p>}
                           </li>
@@ -1093,7 +1048,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
                       <dl className="divide-y divide-[var(--border)]">
                         <SummaryRow label="Turma" value={selectedClass ? selectedClass.name : 'Sem turma'} tone={selectedClass ? undefined : 'muted'} />
                         <SummaryRow label="Turno" value={selectedClass?.shift || formData.shift} />
-                        <SummaryRow label="Ano letivo" value={formData.academicYear || '2026'} />
+                        <SummaryRow label="Ano letivo" value={formData.academicYear || String(new Date().getFullYear())} />
                         <SummaryRow label="Transporte" value={formData.transportRequired ? 'Sim' : 'Não'} tone={formData.transportRequired ? 'ok' : 'muted'} />
                       </dl>
                     </Section>
@@ -1183,7 +1138,7 @@ export function StudentEnrollmentWizard({ onClose, onSuccess }: StudentEnrollmen
                       </span>
                       <h3 className="mt-4 font-serif text-[22px] font-semibold text-[var(--text-heading)]">Não deu para concluir</h3>
                       <p className="mx-auto mt-3 max-w-md rounded-2xl bg-[#FEF3F2] p-3 text-left text-[13px] text-[#B42318]">{errorMessage}</p>
-                      <p className="mt-3 text-[13px] text-[var(--text-muted)]">Nada ficou pela metade e o que você digitou continua aqui.</p>
+                      <p className="mt-3 text-[13px] text-[var(--text-muted)]">O que foi salvo nesta tentativa foi desfeito, e o que você digitou continua aqui.</p>
                       <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
                         <button type="button" className={btnSecondary} onClick={() => setStep(4)}>
                           Revisar dados
